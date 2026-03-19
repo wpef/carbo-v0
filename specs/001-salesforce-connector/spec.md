@@ -7,7 +7,7 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Connect to a Salesforce instance and browse its schema (Priority: P1)
+### User Story 1 - Connect to a Salesforce org and browse its schema (Priority: P1)
 
 The consultant enters their Salesforce credentials. The system authenticates and retrieves the full
 list of available objects (Contacts, Accounts, Leads, custom objects, etc.). The consultant selects
@@ -39,7 +39,9 @@ capability that every downstream feature depends on.
 
 The consultant has selected an object and wants to preview its data before creating a mapping plan.
 The system retrieves a sample of records from the selected object so the consultant can understand
-the actual data shape, spot anomalies, and make informed mapping decisions.
+the actual data shape, spot anomalies, and make informed mapping decisions. In addition to the raw
+paginated data, the system displays basic stats per field: null count, distinct value count, and
+sample values — giving the consultant a quick data quality overview without full profiling.
 
 **Why this priority**: Schema alone is not enough — consultants need to see real data to understand
 what they're migrating (empty fields, inconsistent formats, unexpected values). This directly
@@ -51,7 +53,8 @@ list of records with all field values — without creating any mapping.
 **Acceptance Scenarios**:
 
 1. **Given** a selected object with records, **When** the consultant requests a data preview,
-   **Then** a paginated list of records is displayed with all field values.
+   **Then** a paginated list of records is displayed with all field values, and basic field stats
+   are shown (null count, distinct value count, sample values).
 2. **Given** a large object (100,000+ records), **When** the consultant requests a preview,
    **Then** the system loads the first page of results without timeout or performance degradation,
    and allows navigation to subsequent pages.
@@ -65,7 +68,7 @@ list of records with all field values — without creating any mapping.
 
 ### User Story 3 - Reconnect and refresh schema after changes (Priority: P3)
 
-The consultant returns to a previously connected Salesforce instance after some time. The system
+The consultant returns to a previously connected Salesforce org after some time. The system
 reconnects (re-authenticating if the session has expired) and refreshes the schema to reflect any
 changes made in Salesforce since the last connection (new fields, deleted objects, type changes).
 
@@ -73,7 +76,7 @@ changes made in Salesforce since the last connection (new fields, deleted object
 working with the current state. However, this is less critical than initial connection and data
 reading.
 
-**Independent Test**: A consultant can reconnect to a Salesforce instance after session expiry, see
+**Independent Test**: A consultant can reconnect to a Salesforce org after session expiry, see
 the refreshed schema, and identify any differences from the previous connection.
 
 **Acceptance Scenarios**:
@@ -105,19 +108,33 @@ the refreshed schema, and identify any differences from the previous connection.
   not hidden or omitted.
 - API rate limits are reached during record retrieval: the system reports the rate limit, pauses,
   and resumes automatically or informs the consultant of the wait time.
+- A field is restricted by field-level security: the field appears in the field list marked "no
+  access"; its values are not shown in the record preview but the field is not hidden.
+
+## Clarifications
+
+### Session 2026-03-19
+
+- Q: How many schema snapshots should be retained? → A: Current + previous only (enables diff, minimal storage).
+- Q: Should the record preview include data quality insights? → A: Yes — basic stats per field (null count, distinct values, sample values) alongside raw paginated data.
+- Q: How should field-level security (hidden/restricted fields) be handled? → A: Show all fields including inaccessible ones, mark restricted fields as "no access".
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST allow the consultant to authenticate with a Salesforce instance using
+- **FR-001**: The system MUST allow the consultant to authenticate with a Salesforce org using
   OAuth2 (Connected App flow).
 - **FR-002**: The system MUST retrieve and display the complete list of objects (standard and
   custom) from the connected Salesforce org, with label and API name.
 - **FR-003**: The system MUST retrieve and display all fields for a selected object, including:
-  label, API name, data type, required/optional, unique, read-only, and relationship info.
+  label, API name, data type, required/optional, unique, read-only, and relationship info. Fields
+  that are inaccessible due to field-level security MUST still be listed but clearly marked as
+  "no access".
 - **FR-004**: The system MUST retrieve and display records from a selected object in paginated form.
 - **FR-005**: The system MUST display the total record count for a selected object.
+- **FR-005b**: The system MUST display basic field-level stats alongside the record preview: null
+  count, distinct value count, and sample values for each field.
 - **FR-006**: The system MUST persist connection information for reuse across sessions (credentials
   stored securely, not in plaintext).
 - **FR-007**: The system MUST detect and handle expired sessions by re-authenticating or prompting
@@ -135,7 +152,8 @@ the refreshed schema, and identify any differences from the previous connection.
   identity, authentication state, and last connection timestamp. One connection per source in a
   project.
 - **SourceSchema**: A snapshot of the Salesforce org's schema at a point in time. Contains the list
-  of objects and their fields. Used as the "source" input for the mapping plan feature.
+  of objects and their fields. Used as the "source" input for the mapping plan feature. The system
+  retains only the current and previous snapshot (two maximum), enabling diff comparison on refresh.
 - **SourceObject**: An object (standard or custom) within the schema. Has a label, API name, and
   a list of fields.
 - **SourceField**: A field within an object. Has a label, API name, data type, constraints
@@ -159,7 +177,7 @@ the refreshed schema, and identify any differences from the previous connection.
 ## Assumptions
 
 - The consultant has a Salesforce account with API access enabled (API Enabled permission).
-- The Salesforce instance provides a Connected App for OAuth2 authentication (or the consultant
+- The Salesforce org has a Connected App configured for OAuth2 authentication (or the consultant
   can create one).
 - The Salesforce REST API (or Metadata API for schema) is the integration mechanism. The specific
   API choice will be determined during planning.
