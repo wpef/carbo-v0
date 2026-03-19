@@ -59,7 +59,8 @@ Use `/speckit.analyze` to cross-check consistency across spec/plan/tasks at any 
 
 ## Git Conventions
 
-- **Branch naming**: `###-feature-name` (e.g., `001-mapping-plan`)
+- **Main branch**: `master`
+- **Branch naming**: `###-feature-name` (e.g., `001-salesforce-connector`)
 - **Commits**: one commit per task or logical group; reference the task ID (e.g., `feat(T014): implement mapping engine`)
 - **PRs**: must include the Constitution Check result from `plan.md`
 
