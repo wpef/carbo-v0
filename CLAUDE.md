@@ -31,13 +31,22 @@ executes the migration.
 | — | Connector SDK (extracted from 001 + 002, bottom-up) | 001, 002 |
 | — | Audit trail | cross-cutting, integrated from 001 |
 
-**Phase 2 — Production mode**
+**Phase 2 — Production mode (after Phase 1 validated)**
 
-| # | Feature | Depends on |
-|---|---------|------------|
-| 005 | Export/Import JSON | 003 |
-| 006 | Migration execution | 003, 001, 002 |
-| — | Project management (multi-mapping) | 003, P2/P3 |
+| # | Feature | Depends on | Scope |
+|---|---------|------------|-------|
+| 005 | Export/Import JSON | 003 | Serialize a mapping plan to a portable JSON file; reimport it to restore the exact same plan (all field mappings, rules, filters). Enables backup, sharing between consultants, and version control of mapping plans outside the app. |
+| 006 | Migration execution | 003, 001, 002 | Execute the mapping plan on real data: read source records (with filters), apply transformation rules, validate with validation rules, write to destination. Must be idempotent (Principle V), resumable on failure, and fully logged (Principle VI). JS transformation functions run in a sandboxed environment. Includes dry-run mode (validate without writing) and progress reporting. |
+| — | Connector SDK | 001, 002 | Extract the common interface from Salesforce and HubSpot connectors into a shared SDK. Define ConnectorConnection, ConnectorSchema, ConnectorObject, ConnectorField abstractions. Create the `/speckit.connector` skill to industrialize adding new connectors. |
+
+**Phase 3 — Scale and extend (P2/P3 priority)**
+
+| # | Feature | Depends on | Scope |
+|---|---------|------------|-------|
+| — | Project management | 003 | Group multiple mapping plans into a project. A project represents a full migration engagement (e.g., "Acme Corp CRM Migration"). Includes project dashboard, progress tracking across plans, and consolidated audit trail. |
+| — | New connectors (Airtable, Dynamics, etc.) | Connector SDK | Each new connector follows the SDK interface. Use `/speckit.connector` skill: provide the service's API docs, generate a pre-filled spec, implement following the established pattern. |
+| — | Auto-mapping suggestions | 003 | Suggest field mappings based on name similarity, type compatibility, and common patterns. The consultant reviews and accepts/rejects suggestions — never auto-applied. |
+| — | Collaborative features | Project management | Multi-user access to projects, role-based permissions, comment threads on mappings. Requires user authentication (out of scope until this phase). |
 
 ### Connector Strategy
 
@@ -83,10 +92,17 @@ specs/
 └── templates/               # Speckit command templates
 ```
 
-## Tech Stack
+## Tech Stack (defined in 001 plan)
 
-- **Frontend**: Next.js (App Router) + TypeScript — non-negotiable standard
-- **Style, Backend, Database, Testing**: TBD — to be defined during the first `/speckit.plan`; once defined, deviations require justification in `plan.md`
+- **Frontend**: Next.js 14+ (App Router) + TypeScript + Tailwind CSS + shadcn/ui
+- **Backend**: Next.js Route Handlers (unified single project)
+- **Database**: SQLite via Prisma ORM (local-first for v0; migratable to PostgreSQL)
+- **Testing**: Vitest (unit + integration) + Playwright (E2E)
+- **Salesforce SDK**: jsforce v2.0+
+- **HubSpot SDK**: @hubspot/api-client
+- **LLM**: @anthropic-ai/sdk (Claude API) for document rule descriptions
+- **PDF**: Puppeteer (HTML → PDF)
+- Deviations require justification in `plan.md` Complexity Tracking
 
 ## Constitution (v1.1.0) — Core Principles
 
@@ -104,5 +120,6 @@ These govern all implementation decisions. Full text in `.specify/memory/constit
 
 ## Current Status
 
-Roadmap validated. Next step: `/speckit.specify` on 001-salesforce-connector.
-The existing spec at `specs/001-mapping-plan/` will be reused and adapted when we reach feature 003.
+Phase 1 fully specified (spec → clarify → plan → tasks for all 4 features).
+Branch `specs/phase-1` contains all specs merged. Pending user review before implementation.
+148 total tasks across 4 features. Next step: review, then `/speckit.implement` feature by feature.
