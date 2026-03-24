@@ -48,29 +48,34 @@ validation before implementation.
 
 ---
 
-## Phase 3: User Story 1 — Connect to Salesforce and Browse Schema (Priority: P1) MVP
+## Phase 3: User Story 1 — Connect to Salesforce, Select Objects, and Browse Schema (Priority: P1) MVP
 
-**Goal**: A consultant can authenticate with a Salesforce org via OAuth2, browse all objects (standard + custom), and view fields with types, constraints, and FLS indicators.
+**Goal**: A consultant can authenticate with a Salesforce org via OAuth2, select which objects are relevant for migration (from 1000+ available), then browse fields for selected objects only.
 
-**Independent Test**: Connect to a Salesforce sandbox, browse objects, select "Contact", and see all fields with their types, constraints, and "no access" markers for restricted fields.
+**Independent Test**: Connect to a Salesforce sandbox, see the object selection step with pre-selected common/custom objects, confirm selection, select "Contact", and see all fields with their types, constraints, and "no access" markers.
 
 ### Implementation for User Story 1
 
-- [ ] T014 [P] [US1] Create Salesforce-specific types (SFObject, SFField, SFDescribeResponse) in src/lib/connectors/salesforce/types.ts
+- [ ] T014 [P] [US1] Create Salesforce-specific types (SFObject, SFField, SFDescribeResponse, ObjectSelectionState) in src/lib/connectors/salesforce/types.ts
 - [ ] T015 [P] [US1] Implement jsforce connection wrapper (connect, getConnection, isConnected) in src/lib/connectors/salesforce/client.ts
-- [ ] T016 [US1] Implement OAuth2 flow with PKCE (buildAuthUrl with code_challenge S256, handleCallback with code_verifier via direct HTTP POST to /services/oauth2/token — jsforce does not support PKCE natively) in src/lib/connectors/salesforce/auth.ts
-- [ ] T017 [US1] Implement schema retrieval and snapshot storage (describeGlobal, describeObject, saveSnapshot) in src/lib/connectors/salesforce/schema.ts
+- [ ] T016 [US1] Implement OAuth2 flow with PKCE (buildAuthUrl with code_challenge S256, handleCallback with code_verifier via direct HTTP POST to /services/oauth2/token — jsforce does not support PKCE natively, store code_verifier on globalThis to survive hot-reloads) in src/lib/connectors/salesforce/auth.ts
+- [ ] T017 [US1] Implement schema retrieval (describeGlobal for object list, describe only for SELECTED objects) and snapshot storage in src/lib/connectors/salesforce/schema.ts — field retrieval MUST be limited to selected objects only
+- [ ] T017b [US1] Implement object selection service (getObjectList, updateSelection, getSelection, computeDefaultSelection) in src/lib/connectors/salesforce/object-selection.ts — pre-selects custom objects + common CRM objects (Account, Contact, Lead, Opportunity, Case, etc.), hides system objects by default, persists selection in DB (isSelected flag on SourceObject)
+- [ ] T017c [US1] Implement on-demand object expand (record count via SELECT COUNT(), sample fields via describe) in src/lib/connectors/salesforce/schema.ts — API call ONLY when user explicitly expands an object
 - [ ] T018 [US1] Implement POST /api/connectors/salesforce/connect route in src/app/api/connectors/salesforce/connect/route.ts
-- [ ] T019 [US1] Implement GET /api/connectors/salesforce/callback route in src/app/api/connectors/salesforce/callback/route.ts
-- [ ] T020 [US1] Implement GET /api/connectors/salesforce/[connectionId]/objects route in src/app/api/connectors/salesforce/[connectionId]/objects/route.ts
+- [ ] T019 [US1] Implement GET /api/connectors/salesforce/callback route (pass state param for PKCE) in src/app/api/connectors/salesforce/callback/route.ts
+- [ ] T020 [US1] Implement GET /api/connectors/salesforce/[connectionId]/objects route (return all objects with isSelected flag) in src/app/api/connectors/salesforce/[connectionId]/objects/route.ts
+- [ ] T020b [US1] Implement PUT /api/connectors/salesforce/[connectionId]/objects/selection route (update object selection, persist to DB) in src/app/api/connectors/salesforce/[connectionId]/objects/selection/route.ts
+- [ ] T020c [US1] Implement GET /api/connectors/salesforce/[connectionId]/objects/[apiName]/expand route (on-demand record count + sample fields) in src/app/api/connectors/salesforce/[connectionId]/objects/[apiName]/expand/route.ts
 - [ ] T021 [US1] Implement GET /api/connectors/salesforce/[connectionId]/objects/[apiName]/fields route in src/app/api/connectors/salesforce/[connectionId]/objects/[apiName]/fields/route.ts
 - [ ] T022 [P] [US1] Create connection form component (OAuth2 connect button + status) in src/app/connectors/salesforce/components/connection-form.tsx
-- [ ] T023 [US1] Create object list browser component (search/filter, standard/custom indicators) in src/app/connectors/salesforce/components/object-list.tsx
+- [ ] T022b [US1] Create object selection component (checkbox list with search, "Hide system objects" toggle, pre-selection logic, expand-on-demand with record count, confirm button) in src/app/connectors/salesforce/components/object-selection.tsx
+- [ ] T023 [US1] Create selected object list browser component (shows only selected objects, search/filter, standard/custom indicators) in src/app/connectors/salesforce/components/object-list.tsx
 - [ ] T024 [US1] Create field list table component (with FLS "no access" markers) in src/app/connectors/salesforce/components/field-list.tsx
-- [ ] T025 [US1] Create main Salesforce connector page assembling all components in src/app/connectors/salesforce/page.tsx
-- [ ] T026 [US1] Add console logging for all US1 operations: connect, schema retrieval, errors (Principle VII)
+- [ ] T025 [US1] Create main Salesforce connector page assembling all components (flow: connect → select objects → browse selected → view fields) in src/app/connectors/salesforce/page.tsx
+- [ ] T026 [US1] Add console logging for all US1 operations: connect, object selection, schema retrieval, errors (Principle VII)
 
-**Checkpoint**: User Story 1 fully functional — consultant can connect and browse the full schema
+**Checkpoint**: User Story 1 fully functional — consultant can connect, select relevant objects, and browse their schema
 
 ---
 

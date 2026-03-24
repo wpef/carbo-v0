@@ -7,31 +7,59 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Connect to a Salesforce org and browse its schema (Priority: P1)
+### User Story 1 - Connect to a Salesforce org, select relevant objects, and browse schema (Priority: P1)
 
 The consultant enters their Salesforce credentials. The system authenticates and retrieves the full
-list of available objects (Contacts, Accounts, Leads, custom objects, etc.). The consultant selects
-an object and sees all its fields with their type (text, number, date, picklist, lookup, etc.) and
-constraints (required, unique, read-only).
+list of available objects. A typical Salesforce org contains 1000+ objects, most of which are
+internal system objects irrelevant to migration. The consultant is presented with an **object
+selection step** where they choose which objects to include in the migration scope. Only selected
+objects have their fields retrieved and are available for mapping.
+
+The object selection list shows each object's label, API name, standard/custom badge, and
+description (when available). Common business objects (Account, Contact, Lead, Opportunity, Case)
+and all custom objects are **pre-selected by default**. System/internal objects are hidden by
+default via a "Hide system objects" toggle.
+
+The consultant can **expand** any object on demand to see its record count and sample fields —
+this triggers an API call only when explicitly requested, minimizing API usage.
+
+The selection is **persisted** and can be modified at any time — the consultant can always come
+back to add or remove objects from the scope.
+
+After confirming the selection, the system retrieves fields only for the selected objects. The
+consultant selects an object and sees all its fields with their type (text, number, date, picklist,
+lookup, etc.) and constraints (required, unique, read-only).
 
 **Why this priority**: Without schema access, no mapping is possible. This is the foundational
-capability that every downstream feature depends on.
+capability that every downstream feature depends on. The object selection step is critical to
+avoid overwhelming the consultant and wasting API calls on irrelevant objects.
 
-**Independent Test**: A consultant can connect to a Salesforce sandbox, browse objects, select
-"Contact", and see all fields with their types and constraints — without doing anything else.
+**Independent Test**: A consultant can connect to a Salesforce sandbox, see the object selection
+step with pre-selected common/custom objects, confirm selection, then select "Contact" and see
+all fields with their types and constraints.
 
 **Acceptance Scenarios**:
 
 1. **Given** valid Salesforce credentials, **When** the consultant initiates a connection, **Then**
    the system authenticates successfully and displays a confirmation with the org name.
-2. **Given** a successful connection, **When** the consultant browses objects, **Then** the full
-   list of standard and custom objects is displayed with their labels and API names.
-3. **Given** a selected object (e.g. Contact), **When** the consultant views its fields, **Then**
+2. **Given** a successful connection, **When** the consultant reaches the object selection step,
+   **Then** the full list of objects is displayed with labels, API names, standard/custom badges,
+   and descriptions. Custom objects and common business objects are pre-selected. System objects
+   are hidden by default.
+3. **Given** the object selection list, **When** the consultant searches by name, **Then** the
+   list is filtered in real time by label or API name.
+4. **Given** the object selection list, **When** the consultant expands an object, **Then** the
+   system fetches and displays the record count and sample fields for that object (on-demand only).
+5. **Given** confirmed object selection, **When** the consultant browses the selected objects,
+   **Then** only selected objects are shown with their fields fully retrieved.
+6. **Given** a selected object (e.g. Contact), **When** the consultant views its fields, **Then**
    each field is displayed with: label, API name, data type, required/optional status, and
    relationship info (if lookup/master-detail).
-4. **Given** a Salesforce org with custom objects (e.g. `Invoice__c`), **When** the consultant
-   browses objects, **Then** custom objects appear alongside standard objects, clearly identified
+7. **Given** a Salesforce org with custom objects (e.g. `Invoice__c`), **When** the consultant
+   views the object selection step, **Then** custom objects are pre-selected and clearly identified
    as custom.
+8. **Given** a persisted object selection, **When** the consultant returns to the connector page,
+   **Then** the previous selection is restored. The consultant can modify it at any time.
 
 ---
 
@@ -102,8 +130,13 @@ the refreshed schema, and identify any differences from the previous connection.
   displays the type as reported by Salesforce with a note that it may require special handling.
 - The network connection drops during schema retrieval: the system reports the failure and allows
   retry without losing the authentication context.
-- The Salesforce org contains 500+ objects (large enterprise): the system loads and displays them
-  without performance degradation, with search/filter to navigate.
+- The Salesforce org contains 1000+ objects (typical enterprise): the object selection list loads
+  without performance degradation. System objects are hidden by default. Search/filter helps
+  navigate the full list.
+- The consultant selects zero objects: the system prevents proceeding and displays a message
+  asking to select at least one object.
+- The consultant expands an object with millions of records: the record count query should not
+  timeout — use `SELECT COUNT() FROM ObjectName` which is optimized by Salesforce.
 - A record contains null or empty values for most fields: these are displayed as explicitly empty,
   not hidden or omitted.
 - API rate limits are reached during record retrieval: the system reports the rate limit, pauses,
@@ -122,6 +155,7 @@ the refreshed schema, and identify any differences from the previous connection.
 ### Session 2026-03-24
 
 - Q: Salesforce OAuth2 requires PKCE? → A: Yes. All Connected Apps now require PKCE (code_challenge + code_verifier, S256 method). The jsforce library does not handle PKCE natively — token exchange must be done via direct HTTP POST to /services/oauth2/token with code_verifier.
+- Q: A typical Salesforce org has 1200+ objects. How to handle this? → A: Add an object selection step after connection. Pre-select custom objects + common business objects (Account, Contact, Lead, Opportunity, Case). Hide system objects by default. Only retrieve fields for selected objects. Record count fetched on-demand per object (expand). Selection persisted in DB, modifiable at any time.
 
 ## Requirements *(mandatory)*
 
@@ -131,8 +165,21 @@ the refreshed schema, and identify any differences from the previous connection.
   OAuth2 (Connected App flow) with PKCE (Proof Key for Code Exchange, S256 method). The token
   exchange MUST include the code_verifier parameter, as Salesforce requires PKCE for all
   Connected Apps.
-- **FR-002**: The system MUST retrieve and display the complete list of objects (standard and
-  custom) from the connected Salesforce org, with label and API name.
+- **FR-002**: The system MUST retrieve the complete list of objects (standard and custom) from the
+  connected Salesforce org via describeGlobal, with label, API name, and description.
+- **FR-002b**: The system MUST present an **object selection step** after connection, allowing the
+  consultant to choose which objects to include in the migration scope. The selection list MUST
+  support search/filter by label or API name, a "Hide system objects" toggle (default: on), and
+  standard/custom badges.
+- **FR-002c**: The system MUST **pre-select** all custom objects and common business objects
+  (Account, Contact, Lead, Opportunity, Case, and other standard CRM objects) by default.
+- **FR-002d**: The system MUST allow the consultant to **expand** any object on demand to see its
+  record count (via `SELECT COUNT()`) and sample fields. This API call MUST only be made when
+  the consultant explicitly requests it.
+- **FR-002e**: The system MUST **persist** the object selection in the database, linked to the
+  connection. The selection MUST be restored on return and modifiable at any time.
+- **FR-002f**: The system MUST only retrieve field metadata (describe) for **selected objects**,
+  not for the entire org. This limits API usage and processing time.
 - **FR-003**: The system MUST retrieve and display all fields for a selected object, including:
   label, API name, data type, required/optional, unique, read-only, and relationship info. Fields
   that are inaccessible due to field-level security MUST still be listed but clearly marked as
@@ -160,8 +207,9 @@ the refreshed schema, and identify any differences from the previous connection.
 - **SourceSchema**: A snapshot of the Salesforce org's schema at a point in time. Contains the list
   of objects and their fields. Used as the "source" input for the mapping plan feature. The system
   retains only the current and previous snapshot (two maximum), enabling diff comparison on refresh.
-- **SourceObject**: An object (standard or custom) within the schema. Has a label, API name, and
-  a list of fields.
+- **SourceObject**: An object (standard or custom) within the schema. Has a label, API name, a
+  list of fields, and an **isSelected** flag indicating whether the consultant has included it
+  in the migration scope. Only selected objects have their fields retrieved.
 - **SourceField**: A field within an object. Has a label, API name, data type, constraints
   (required, unique, read-only), and relationship metadata if applicable.
 
@@ -171,8 +219,8 @@ the refreshed schema, and identify any differences from the previous connection.
 
 - **SC-001**: A consultant can connect to a Salesforce sandbox and browse its full schema in under
   2 minutes from first interaction.
-- **SC-002**: 100% of standard and custom objects and their fields are retrieved — no silent
-  omissions.
+- **SC-002**: 100% of **selected** objects and their fields are retrieved — no silent omissions.
+  Non-selected objects are deliberately excluded and not counted as omissions.
 - **SC-003**: Record preview loads the first page of results in under 5 seconds for objects with
   up to 100,000 records.
 - **SC-004**: Schema refresh detects and reports all structural changes (added/removed/modified

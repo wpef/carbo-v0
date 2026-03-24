@@ -69,13 +69,20 @@ An object (standard or custom) within a schema snapshot.
 | schemaId | UUID | FK → SourceSchema, required | Parent schema snapshot |
 | apiName | string | required | Salesforce API name (e.g., "Contact", "Invoice__c") |
 | label | string | required | Human-readable label |
+| description | string | nullable | Object description from Salesforce describe |
 | isCustom | boolean | required | True if custom object (ends in __c) |
-| fieldCount | integer | required | Total number of fields |
-| recordCount | integer | nullable | Total records (populated on demand, not at schema capture) |
+| isSelected | boolean | required, default true | Whether the consultant has included this object in the migration scope. Fields are only retrieved for selected objects. |
+| fieldCount | integer | required | Total number of fields (0 until object is selected and described) |
+| recordCount | integer | nullable | Total records (populated on demand when consultant expands the object) |
 
 **Relationships**: One SourceObject has many SourceFields.
 
 **Uniqueness**: (schemaId, apiName) is unique.
+
+**Selection behavior**: On initial schema capture (describeGlobal), all objects are created with
+`isSelected = true` for custom objects and common CRM objects (Account, Contact, Lead, Opportunity,
+Case), and `isSelected = false` for everything else. The consultant modifies selections via the UI.
+Fields are only fetched (describe per object) for objects where `isSelected = true`.
 
 ---
 
