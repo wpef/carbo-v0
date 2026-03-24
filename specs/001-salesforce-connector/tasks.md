@@ -42,7 +42,7 @@ validation before implementation.
 - [ ] T010 [P] Implement audit trail logger service in src/lib/audit/logger.ts (Constitution Principle VI)
 - [ ] T011 [P] Create realistic Salesforce test fixtures (describe-global, describe-contact, query-contacts) in tests/fixtures/salesforce/
 - [ ] T012 Create base app layout with navigation shell in src/app/layout.tsx
-- [ ] T013 Configure environment variables for Salesforce Connected App (client ID, client secret, callback URL) in .env.local
+- [ ] T013 Configure environment variables for Salesforce Connected App (client ID, client secret, callback URL, optional login URL) in .env.local — see spec.md "Connected App Setup Prerequisites" for required Salesforce configuration (OAuth scopes, IP relaxation, permitted users)
 
 **Checkpoint**: Foundation ready — user story implementation can now begin
 

@@ -3,12 +3,26 @@
 **Feature**: 001-salesforce-connector
 **Date**: 2026-03-19
 
+## Prerequisite: Salesforce Connected App Setup
+
+Before the first connection, the consultant (or their Salesforce admin) must:
+
+1. Create a Connected App in Salesforce (Setup → App Manager → New Connected App)
+2. Enable OAuth Settings with callback URL matching `SALESFORCE_CALLBACK_URL`
+3. Add OAuth Scopes: "Full access (full)" + "Perform requests at any time (refresh_token, offline_access)"
+4. Set IP Relaxation to "Relax IP restrictions" (Manage → Edit Policies)
+5. Set Permitted Users to "All users may self-authorize"
+6. Wait 10-15 minutes for Salesforce to propagate the Connected App
+7. Copy Consumer Key and Consumer Secret into `.env.local`
+
+See `spec.md` → "Connected App Setup Prerequisites" for full details.
+
 ## Integration Scenario 1: First Connection
 
 **Actor**: Consultant opening Carbo-v0 for the first time with a Salesforce org.
 
 1. Consultant clicks "Connect Salesforce" on the source connector page
-2. App redirects to Salesforce OAuth2 login page
+2. App redirects to Salesforce OAuth2 login page (with PKCE code_challenge)
 3. Consultant logs in and grants access
 4. Salesforce redirects back to the app with an authorization code
 5. App exchanges the code for tokens, stores the refresh token (encrypted)

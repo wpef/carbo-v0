@@ -49,6 +49,13 @@
 - Access tokens are short-lived (~1 hour) — stored in memory or session, not persisted.
 - Refresh tokens stored encrypted in SQLite (FR-006).
 
+**Implementation gotchas** (discovered during v0 implementation):
+- **PKCE store must survive hot-reloads**: in Next.js dev mode, modules are re-evaluated on file change. Storing code_verifiers in a module-level `Map` loses them. Solution: attach to `globalThis`.
+- **Login URL must match**: the token exchange POST must go to the same Salesforce domain that issued the auth code. For Developer Edition orgs, this is `https://login.salesforce.com`. For sandboxes, `https://test.salesforce.com`. Mismatch causes `invalid_grant`.
+- **OAuth scopes**: use `full refresh_token`. The scope `api` alone may not be sufficient, and `id` is not allowed on all editions. The scopes requested must exactly match what's configured in the Connected App.
+- **IP Relaxation**: the Connected App must have IP Relaxation set to "Relax IP restrictions" for localhost development. Default is "Enforce IP restrictions" which blocks local callbacks.
+- **Connected App propagation delay**: after creating or modifying a Connected App, Salesforce takes up to 10-15 minutes to propagate changes. `invalid_client_id` during this window is expected.
+
 **Alternatives considered**:
 - JWT Bearer flow: designed for service-to-service (no user interaction). Would require pre-configured certificates per org — too complex for consultants.
 - Username-Password flow: deprecated by Salesforce, less secure, no MFA support.

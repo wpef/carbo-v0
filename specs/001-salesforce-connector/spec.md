@@ -191,3 +191,26 @@ the refreshed schema, and identify any differences from the previous connection.
 - Record reading is for preview and migration purposes — the system does not need to support
   real-time sync or streaming.
 - A single connection targets one Salesforce org at a time.
+
+## Connected App Setup Prerequisites
+
+The consultant must configure a Connected App in Salesforce before using this connector:
+
+1. **Create the Connected App**: Setup → App Manager → New Connected App
+2. **Enable OAuth Settings**: check "Enable OAuth Settings"
+3. **Callback URL**: must exactly match the `SALESFORCE_CALLBACK_URL` env var (e.g.,
+   `http://localhost:3001/api/connectors/salesforce/callback`)
+4. **OAuth Scopes**: select "Full access (full)" and "Perform requests at any time
+   (refresh_token, offline_access)"
+5. **IP Relaxation**: in Manage → Edit Policies, set to "Relax IP restrictions" (required for
+   localhost development)
+6. **Permitted Users**: set to "All users may self-authorize"
+7. **Propagation delay**: after creating or modifying the Connected App, wait 10-15 minutes for
+   Salesforce to propagate changes
+
+**Environment variables required**:
+- `SALESFORCE_CLIENT_ID` — Consumer Key from the Connected App
+- `SALESFORCE_CLIENT_SECRET` — Consumer Secret from the Connected App
+- `SALESFORCE_CALLBACK_URL` — must match the Connected App callback URL exactly
+- `SALESFORCE_LOGIN_URL` (optional) — defaults to `https://login.salesforce.com`, use
+  `https://test.salesforce.com` for sandbox orgs
