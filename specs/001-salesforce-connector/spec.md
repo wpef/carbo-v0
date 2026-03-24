@@ -119,12 +119,18 @@ the refreshed schema, and identify any differences from the previous connection.
 - Q: Should the record preview include data quality insights? → A: Yes — basic stats per field (null count, distinct values, sample values) alongside raw paginated data.
 - Q: How should field-level security (hidden/restricted fields) be handled? → A: Show all fields including inaccessible ones, mark restricted fields as "no access".
 
+### Session 2026-03-24
+
+- Q: Salesforce OAuth2 requires PKCE? → A: Yes. All Connected Apps now require PKCE (code_challenge + code_verifier, S256 method). The jsforce library does not handle PKCE natively — token exchange must be done via direct HTTP POST to /services/oauth2/token with code_verifier.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: The system MUST allow the consultant to authenticate with a Salesforce org using
-  OAuth2 (Connected App flow).
+  OAuth2 (Connected App flow) with PKCE (Proof Key for Code Exchange, S256 method). The token
+  exchange MUST include the code_verifier parameter, as Salesforce requires PKCE for all
+  Connected Apps.
 - **FR-002**: The system MUST retrieve and display the complete list of objects (standard and
   custom) from the connected Salesforce org, with label and API name.
 - **FR-003**: The system MUST retrieve and display all fields for a selected object, including:

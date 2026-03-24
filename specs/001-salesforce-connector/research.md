@@ -35,13 +35,16 @@
 - Bulk API 2.0: optimal for large data transfers but not needed for preview/browse. Will be relevant for feature 006 (migration execution).
 - Raw REST without jsforce: possible but would require reimplementing OAuth2 token management, pagination, and rate limit handling. jsforce is the standard Node.js library and is actively maintained.
 
-## Decision 3: OAuth2 Flow
+## Decision 3: OAuth2 Flow with PKCE
 
-**Decision**: Web Server flow (Authorization Code grant)
+**Decision**: Web Server flow (Authorization Code grant) with PKCE (S256)
 
 **Rationale**:
 - The consultant authenticates interactively via browser — this is exactly what the Authorization Code flow is designed for.
 - Flow: redirect to Salesforce login → user grants access → callback with auth code → exchange for access + refresh tokens (server-side).
+- **PKCE is mandatory**: Salesforce requires PKCE (Proof Key for Code Exchange) for all Connected Apps. The authorization request must include `code_challenge` (S256) and the token exchange must include `code_verifier`.
+- **jsforce does not support PKCE natively**: the token exchange must be done via direct HTTP POST to `/services/oauth2/token` with the `code_verifier` parameter, instead of using jsforce's `authorize()` method.
+- PKCE code verifiers are stored in-memory keyed by the `state` parameter, with a 10-minute TTL.
 - Refresh tokens are long-lived (until revoked) — enables FR-007 (automatic re-authentication on session expiry).
 - Access tokens are short-lived (~1 hour) — stored in memory or session, not persisted.
 - Refresh tokens stored encrypted in SQLite (FR-006).
@@ -50,6 +53,7 @@
 - JWT Bearer flow: designed for service-to-service (no user interaction). Would require pre-configured certificates per org — too complex for consultants.
 - Username-Password flow: deprecated by Salesforce, less secure, no MFA support.
 - Device flow: designed for devices without browser — not applicable.
+- jsforce `authorize()` for token exchange: rejected — does not support PKCE code_verifier parameter.
 
 ## Decision 4: Schema Snapshot Storage
 

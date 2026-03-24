@@ -58,7 +58,7 @@ validation before implementation.
 
 - [ ] T014 [P] [US1] Create Salesforce-specific types (SFObject, SFField, SFDescribeResponse) in src/lib/connectors/salesforce/types.ts
 - [ ] T015 [P] [US1] Implement jsforce connection wrapper (connect, getConnection, isConnected) in src/lib/connectors/salesforce/client.ts
-- [ ] T016 [US1] Implement OAuth2 flow logic (buildAuthUrl, handleCallback, storeTokens, revokeTokens) in src/lib/connectors/salesforce/auth.ts
+- [ ] T016 [US1] Implement OAuth2 flow with PKCE (buildAuthUrl with code_challenge S256, handleCallback with code_verifier via direct HTTP POST to /services/oauth2/token — jsforce does not support PKCE natively) in src/lib/connectors/salesforce/auth.ts
 - [ ] T017 [US1] Implement schema retrieval and snapshot storage (describeGlobal, describeObject, saveSnapshot) in src/lib/connectors/salesforce/schema.ts
 - [ ] T018 [US1] Implement POST /api/connectors/salesforce/connect route in src/app/api/connectors/salesforce/connect/route.ts
 - [ ] T019 [US1] Implement GET /api/connectors/salesforce/callback route in src/app/api/connectors/salesforce/callback/route.ts
