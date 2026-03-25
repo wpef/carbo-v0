@@ -1,33 +1,25 @@
 <!--
   SYNC IMPACT REPORT
   ==================
-  Version change: 1.0.0 → 1.1.0 (MINOR: tous les principes réécrits de génériques à
-  spécifiques au projet ; stack défini ; 7 principes au lieu de 5)
-
-  Principes modifiés:
-    I.   Spec-First Development           → I.   Spec-First (reformulé, allégé)
-    II.  User-Story-Driven Design         → II.  Lisibilité avant l'ingéniosité (nouveau)
-    III. Simplicity & YAGNI               → III. Fidélité de la donnée (nouveau)
-    IV.  Incremental Delivery             → IV.  Tests fonctionnels sur données réelles (nouveau)
-    V.   Quality Gates at Every Phase     → V.   Idempotence des opérations (nouveau)
+  Version change: 1.1.0 → 1.2.0 (MINOR: nouveau principe VIII, stack résolu)
 
   Principes ajoutés:
-    VI.  Traçabilité par défaut (nouveau)
-    VII. Observabilité développeur (nouveau)
+    VIII. Modularité et isolation (nouveau) — features isolées, freezable, US atomiques
 
   Sections modifiées:
-    - Technology Standards : stack Next.js + TypeScript défini (backend TBD)
-    - Development Workflow : adapté au contexte SaaS de migration de données
+    - Technology Standards : stack complet défini (Tailwind, Prisma/SQLite, Vitest, jsforce, etc.)
+      Résolution de tous les TODOs (BACKEND_STACK, DATABASE, Testing)
+    - Principe VIII : inter-module isolation via interfaces abstraites, Open/Closed, US atomiques
 
   Templates requis:
-    ✅ .specify/templates/plan-template.md  — Constitution Check à mettre à jour lors du
-                                              premier /speckit.plan (pas de changement structurel)
-    ✅ .specify/templates/spec-template.md  — Aligné avec Principe I ; aucune modification requise
-    ✅ .specify/templates/tasks-template.md — Aligné avec Principes I et IV ; aucune modification requise
-    ✅ .specify/templates/agent-file-template.md — Pas de référence à la constitution ; aucune modification
+    ✅ .specify/templates/plan-template.md  — Constitution Check doit inclure Principe VIII
+    ✅ .specify/templates/spec-template.md  — US stories doivent être atomiques (Principe VIII)
+    ✅ .specify/templates/tasks-template.md — Pas de changement structurel
+    ✅ .specify/templates/agent-file-template.md — Pas de changement
 
-  TODOs différés:
-    - TODO(BACKEND_STACK): Framework backend et base de données à définir lors du premier /speckit.plan
+  TODOs résolus:
+    - ✅ TODO(BACKEND_STACK): Next.js Route Handlers
+    - ✅ TODO(DATABASE): SQLite via Prisma ORM
 -->
 
 # Carbo-v0 Constitution
@@ -106,23 +98,46 @@ distance.
 **Rationale** : la complexité des pipelines de migration rend le suivi d'exécution non-trivial.
 Un logging explicite réduit drastiquement le temps de débogage.
 
+### VIII. Modularité et isolation
+
+Chaque feature DOIT être un module isolé avec une interface publique explicite (types + fonctions
+exportées). Aucun module NE DOIT dépendre des internals d'un autre module — toute communication
+inter-modules passe par des interfaces abstraites (types partagés dans `src/types/`).
+
+Un module validé ("DONE") NE DOIT PLUS être modifié dans son implémentation interne. Si un besoin
+émerge, on DOIT étendre l'interface publique sans modifier le code interne existant (Open/Closed).
+
+Les user stories DOIVENT être découpées en unités atomiques indépendamment testables et
+validables. Une US qui mélange plusieurs responsabilités (ex: auth + browsing + preview) DOIT
+être décomposée en sous-US. Chaque sous-US DOIT pouvoir être marquée "DONE" indépendamment.
+
+**Rationale** : l'itération sur une feature ne doit jamais casser les autres. Un consultant qui
+valide le connecteur Salesforce ne veut pas que le travail sur le mapping plan régresse cette
+validation. La granularité atomique des US permet une validation incrémentale et une priorisation
+fine.
+
 ## Technology Standards
 
-**Frontend** : Next.js (App Router) + TypeScript — standard non-négociable.
+**Frontend** : Next.js 14+ (App Router) + TypeScript + Tailwind CSS + shadcn/ui.
 
-**Style** : à définir lors du premier `/speckit.plan` (ex: Tailwind CSS, shadcn/ui).
+**Backend** : Next.js Route Handlers (unified single project — no separate backend).
 
-**Backend** : TODO(BACKEND_STACK) — framework et runtime Node.js à définir lors du premier
-`/speckit.plan`.
+**Base de données** : SQLite via Prisma ORM (local-first pour v0 ; migratable vers PostgreSQL).
 
-**Base de données** : TODO(DATABASE) — à définir lors du premier `/speckit.plan`.
+**Testing** : Vitest (unit + integration) + Playwright (E2E).
 
-**Testing** : à définir lors du premier `/speckit.plan`, en cohérence avec le Principe IV
-(tests fonctionnels sur données réelles).
+**Salesforce SDK** : jsforce v3.x (note : ne supporte pas PKCE nativement — token exchange
+via HTTP POST direct).
 
-**Règle d'évolution** : une fois le stack défini, il devient contraignant. Toute déviation
-requiert une justification dans le plan (Complexity Tracking) et, si structurelle, un amendement
-de constitution.
+**HubSpot SDK** : @hubspot/api-client.
+
+**LLM** : @anthropic-ai/sdk (Claude API) pour la description des règles en langage naturel.
+
+**PDF** : Puppeteer (HTML → PDF).
+
+**Règle d'évolution** : ce stack est désormais contraignant. Toute déviation requiert une
+justification dans le plan (Complexity Tracking) et, si structurelle, un amendement de
+constitution.
 
 ## Development Workflow
 
@@ -164,4 +179,4 @@ conflit entre ce document et toute autre directive, cette constitution a la prio
 le `plan.md` de la feature. Toute violation DOIT être justifiée dans le Complexity Tracking du
 plan, faute de quoi la PR est bloquée.
 
-**Version**: 1.1.0 | **Ratified**: 2026-03-17 | **Last Amended**: 2026-03-17
+**Version**: 1.2.0 | **Ratified**: 2026-03-17 | **Last Amended**: 2026-03-25
