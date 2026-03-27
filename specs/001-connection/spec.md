@@ -60,3 +60,11 @@ As a consultant, I can connect to a system by providing credentials, see the con
 - The actual authentication mechanism (OAuth2, API key, etc.) is implemented by the connector adapter, not by this feature. This feature orchestrates the flow.
 - A project has at most one source connection and one destination connection.
 - The database is SQLite (local-first for v0), migratable to PostgreSQL.
+
+## Workflow Navigation
+
+After a successful connection, the UI MUST display a call-to-action guiding the consultant
+to the next step:
+- If this is a source connection: "Source connected. Next: [Retrieve Schema →]"
+- If this is a destination connection: "Destination connected. Next: [Retrieve Schema →]"
+- If both source and destination are connected: "Both systems connected. Next: [Create Mapping Plan →]"

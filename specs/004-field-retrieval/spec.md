@@ -56,3 +56,10 @@ As a consultant, I can see all fields for my selected objects with their types a
 - Field metadata is retrieved per-object, not in bulk for the entire schema.
 - Field metadata is static within a schema snapshot; it changes only when the schema is refreshed.
 - The field data type is a string representation provided by the connector adapter (not a predefined enum), preserving system-specific types.
+
+## Workflow Navigation
+
+After field retrieval completes, the UI MUST display:
+- If this is a source system and destination is not yet connected: "Source schema ready. Next: [Connect Destination →]"
+- If this is a source system and destination is already connected: "Source schema ready. Next: [Create Mapping Plan →]"
+- If this is a destination system: "Destination schema ready. Next: [Create Mapping Plan →]"

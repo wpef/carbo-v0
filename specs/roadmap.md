@@ -74,9 +74,25 @@ The application is split into two layers:
 | New Adapters | Airtable, Dynamics, etc. via Connector Interface |
 | Auto-mapping Suggestions | Field mapping suggestions based on name/type similarity |
 
+## Cross-cutting: Workflow Navigation
+
+The app MUST guide the consultant through the full workflow at every step. After completing
+a feature step (e.g., connecting source, selecting objects), the UI shows:
+- What was just completed (green checkmark)
+- What the next step is (call-to-action link)
+- The overall progress in the workflow
+
+The main workflow steps are:
+1. Connect Source → 2. Select Source Objects → 3. Connect Destination → 4. Select Destination
+Objects → 5. Create Mapping Plan → 6. Map Objects & Fields → 7. Generate Documents
+
+Each page that completes a step MUST display a "Next step" call-to-action. The home page
+dashboard MUST show global workflow progress across all features.
+
 ## Key principles
 
 - **Each feature is independently freezable** — once validated, its internal code is not modified (Principle VIII)
 - **Core features are connector-agnostic** — they work via abstract interfaces
 - **Adapters are plugins** — adding a new connector requires zero changes to the core
 - **User stories are atomic** — each feature has exactly one responsibility
+- **Workflow guidance** — the consultant is never left wondering "what's next?"
