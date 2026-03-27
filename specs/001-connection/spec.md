@@ -61,6 +61,18 @@ As a consultant, I can connect to a system by providing credentials, see the con
 - A project has at most one source connection and one destination connection.
 - The database is SQLite (local-first for v0), migratable to PostgreSQL.
 
+## Demo Mode
+
+Each connector page MAY offer a "Use Demo Data" option that replaces the real connection
+with mock data. The demo mode:
+- Is scoped to the connector page only — it creates a mock connection in DB
+- Does NOT affect other features (mapping, documents, workflow progress)
+- Does NOT appear on the home page or any non-connector page
+- Behaves exactly like a real connection from the rest of the app's perspective
+- Is clearly labeled as demo data in the UI (badge, color)
+
+The home page and workflow progress MUST only reflect real user actions, not demo seeding.
+
 ## Workflow Navigation
 
 After a successful connection, the UI MUST display a call-to-action guiding the consultant

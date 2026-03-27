@@ -96,3 +96,4 @@ dashboard MUST show global workflow progress across all features.
 - **Adapters are plugins** — adding a new connector requires zero changes to the core
 - **User stories are atomic** — each feature has exactly one responsibility
 - **Workflow guidance** — the consultant is never left wondering "what's next?"
+- **Demo mode is connector-scoped** — "Use Demo Data" appears only on connector pages, replaces the real connection with mock data, does not affect other features or workflow progress on the home page
