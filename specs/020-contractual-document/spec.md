@@ -19,8 +19,8 @@ As a consultant, I can generate a formal contractual document with signature blo
 4. **Given** a mapping plan with 2 or fewer object mappings, **When** the document is generated, **Then** no table of contents is included.
 5. **Given** the scope section, **When** the consultant reads it, **Then** it describes the migration perimeter: which source system, which destination system, how many objects, how many fields, and any active migration filters with their criteria.
 6. **Given** an object mapping with field mappings, **When** the correspondence table is generated, **Then** it contains one row per field mapping with columns: source field (label + API name), destination field (label + API name), source type, destination type, transformation rule description, and validation rule description.
-7. **Given** field mappings with transformation rules, **When** the transformation rules section is generated, **Then** each rule is listed with: the field it applies to (source and destination), the rule type, and the plain language description from the Rule Description Engine (feature 016).
-8. **Given** field mappings with validation rules, **When** the validation rules section is generated, **Then** each rule is listed with: the field it applies to, the rule type, and the plain language description from the Rule Description Engine (feature 016).
+7. **Given** field mappings with transformation rules, **When** the transformation rules section is generated, **Then** each rule is listed with: the field it applies to (source and destination), the rule type, and the plain language description from the Rule Description Engine (feature 018).
+8. **Given** field mappings with validation rules, **When** the validation rules section is generated, **Then** each rule is listed with: the field it applies to, the rule type, and the plain language description from the Rule Description Engine (feature 018).
 9. **Given** unmapped source fields, **When** the exclusions section is generated, **Then** it lists every unmapped field per object under the heading "Will NOT be migrated" with explicit acknowledgment that these fields are excluded from the migration scope (Constitution Principle III).
 10. **Given** migration filters defined on object mappings, **When** the filter table is generated, **Then** it lists each filter with: the object it applies to, the field, the operator, the value, and a plain language description of the filter's effect.
 11. **Given** the signature block, **When** the consultant views it, **Then** it contains fields for: client approval (checkbox or line), client name, date, and signature (line for manual signature).
@@ -45,7 +45,7 @@ As a consultant, I can generate a formal contractual document with signature blo
 - **FR-003**: The document MUST contain a table of contents when the mapping plan has 3 or more object mappings. The table of contents MUST list all sections.
 - **FR-004**: The document MUST contain a scope section describing: the migration perimeter (source system, destination system, object count, field count), and any active migration filters with their criteria.
 - **FR-005**: The document MUST contain one correspondence table per object mapping with columns: source field (label + API name), destination field (label + API name), source type, destination type, transformation description, validation description.
-- **FR-006**: The document MUST contain a dedicated transformation rules section listing all transformation rules across all object mappings, with field references and plain language descriptions from the Rule Description Engine (feature 016).
+- **FR-006**: The document MUST contain a dedicated transformation rules section listing all transformation rules across all object mappings, with field references and plain language descriptions from the Rule Description Engine (feature 018).
 - **FR-007**: The document MUST contain a dedicated validation rules section listing all validation rules across all object mappings, with field references and plain language descriptions.
 - **FR-008**: The document MUST contain an exclusions section titled "Will NOT be migrated" listing every unmapped source field per object (Constitution Principle III). If no fields are unmapped, the section MUST state "All source fields are mapped — no exclusions".
 - **FR-009**: The document MUST contain a filter table listing each migration filter with: object, field, operator, value, and plain language effect description.
@@ -71,7 +71,7 @@ As a consultant, I can generate a formal contractual document with signature blo
 
 ## Assumptions
 
-- Features 016 (rule description engine) and 014 (unmapped fields detection) are implemented before this feature.
+- Features 018 (rule description engine) and 016 (unmapped fields detection) are implemented before this feature.
 - The formal layout is defined by an internal HTML/CSS template, not customizable by the consultant in v0.
 - The signature block is designed for print-and-sign workflow. Digital signature is out of scope for v0.
 - PDF export is handled by feature 019, not by this feature. This feature produces HTML only.

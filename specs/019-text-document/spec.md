@@ -15,8 +15,8 @@ As a consultant, I can generate a readable text document that describes the enti
 
 1. **Given** a completed mapping plan with one or more object mappings, **When** the consultant triggers text document generation, **Then** an HTML document is generated containing: a summary section (plan name, source system, destination system, object count, field count, rule count), and one section per object mapping.
 2. **Given** an object mapping with field mappings, **When** the document is generated, **Then** each object section contains a field mapping table with columns: source field (label + API name), destination field (label + API name), data types (source and destination), transformation rule description (if any), and validation rule description (if any).
-3. **Given** field mappings with transformation rules, **When** the document is generated, **Then** rule descriptions are obtained from the Rule Description Engine (feature 016) and displayed in plain language — not as raw code.
-4. **Given** unmapped source fields detected by feature 014, **When** the document is generated, **Then** a dedicated "Unmapped Fields" section lists every unmapped field per object with an explicit warning that these fields will NOT be migrated (Constitution Principle III).
+3. **Given** field mappings with migration logic, **When** the document is generated, **Then** rule descriptions are obtained from the Rule Description Engine (feature 018) and displayed in plain language.
+4. **Given** unmapped source fields detected by feature 016, **When** the document is generated, **Then** a dedicated "Unmapped Fields" section lists every unmapped field per object with an explicit warning that these fields will NOT be migrated (Constitution Principle III).
 5. **Given** migration filters defined on an object mapping, **When** the document is generated, **Then** each object section includes a filter description explaining which records will be included (e.g., "Only records where CreatedDate is after 2020-01-01 will be migrated").
 6. **Given** a generated text document, **When** the consultant views it in the application, **Then** the document is rendered as HTML and displayed in a preview pane within the application.
 7. **Given** a generated text document, **When** the consultant checks the generation stats, **Then** the system displays: total field count, total rule count, unmapped field count, and LLM call count (from rule descriptions).
@@ -40,7 +40,7 @@ As a consultant, I can generate a readable text document that describes the enti
 - **FR-003**: The summary section MUST include: plan name, plan description (if set), source system name, destination system name, total object mapping count, total field mapping count, total rule count, and generation timestamp.
 - **FR-004**: Each object section MUST include: source object name, destination object name, a field mapping table, a transformation rules subsection, a validation rules subsection, a migration filters subsection, and an unmapped fields list for that object.
 - **FR-005**: The field mapping table MUST display: source field label and API name, destination field label and API name, source data type, destination data type, transformation description, and validation description.
-- **FR-006**: Rule descriptions MUST be obtained from the Rule Description Engine (feature 016) — the document generator MUST NOT generate rule descriptions itself.
+- **FR-006**: Rule descriptions MUST be obtained from the Rule Description Engine (feature 018) — the document generator MUST NOT generate rule descriptions itself.
 - **FR-007**: Unmapped source fields MUST be listed explicitly per object with a warning that they will NOT be migrated (Constitution Principle III).
 - **FR-008**: The generated document MUST be immutable once created. Modifications to the mapping plan do NOT retroactively update existing documents. The consultant MUST regenerate to get an updated version.
 - **FR-009**: The system MUST track and display generation statistics: total field count, total rule count, unmapped field count, and LLM call count (from the Rule Description Engine batch response).
@@ -62,7 +62,7 @@ As a consultant, I can generate a readable text document that describes the enti
 
 ## Assumptions
 
-- Features 011 (transformation rules), 012 (validation rules), 014 (unmapped fields detection), and 016 (rule description engine) are implemented before this feature.
+- Features 013 (migration logic), 016 (unmapped fields detection), and 018 (rule description engine) are implemented before this feature.
 - The HTML template is a server-side template (not a React component) rendered by the backend. The template is internal to this feature and not customizable by the consultant in v0.
 - The document preview uses an iframe or equivalent to render the HTML within the application shell.
 - The text document is not editable after generation in v0. Editing can be a future feature.

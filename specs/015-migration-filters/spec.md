@@ -57,3 +57,4 @@ As a consultant, I can define filters to control which source records are includ
 - Filters apply to source records only -- there is no filtering on destination records.
 - The estimated count is approximate and may not reflect real-time source data changes.
 - OR logic between filters is out of scope for this feature. All filters are ANDed.
+- The migration filter count displayed in the object detail modal (011-object-mapping, component A3) is derived from this feature's data. The UI integration is owned by feature 011.
