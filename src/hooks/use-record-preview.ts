@@ -1,14 +1,18 @@
 // 009-record-preview — Hook for paginated record preview
+// 010-field-stats — Extended with fieldStats computed from fetched records
 
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { PaginatedRecords } from '@/lib/connectors/types'
+import type { FieldStats, PaginatedRecords } from '@/lib/connectors/types'
+import { computeFieldStats } from '@/utils/compute-field-stats'
 
 interface RecordPreviewState {
   data: PaginatedRecords | null
   loading: boolean
   error: string
+  /** Per-field stats computed from the current page of records. Null when no records loaded. */
+  fieldStats: FieldStats[] | null
 }
 
 interface UseRecordPreviewReturn extends RecordPreviewState {
@@ -30,6 +34,7 @@ export function useRecordPreview(
     data: null,
     loading: true,
     error: '',
+    fieldStats: null,
   })
 
   // Use a ref to track the current fetch sequence and avoid stale updates
@@ -52,13 +57,19 @@ export function useRecordPreview(
         // Discard if a newer fetch was started in the meantime
         if (id !== fetchId.current) return
 
-        setState({ data: json as PaginatedRecords, loading: false, error: '' })
+        const paginatedRecords = json as PaginatedRecords
+        const fieldStats = paginatedRecords.records.length > 0
+          ? computeFieldStats(paginatedRecords.records)
+          : null
+
+        setState({ data: paginatedRecords, loading: false, error: '', fieldStats })
       } catch (err) {
         if (id !== fetchId.current) return
         setState((prev) => ({
           ...prev,
           loading: false,
           error: err instanceof Error ? err.message : 'Unknown error',
+          fieldStats: null,
         }))
       }
     },
