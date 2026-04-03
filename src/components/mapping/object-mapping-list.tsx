@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import type { ObjectMappingDTO, UnmappedSourceObject, AvailableDestObject } from '@/lib/types/mapping'
 
 interface ObjectMappingListProps {
+  planId: string
   mappings: ObjectMappingDTO[]
   unmappedObjects: UnmappedSourceObject[]
   destObjects: AvailableDestObject[]
@@ -21,6 +22,7 @@ interface ObjectMappingListProps {
 }
 
 export function ObjectMappingList({
+  planId,
   mappings,
   unmappedObjects,
   destObjects,
@@ -68,6 +70,7 @@ export function ObjectMappingList({
             <ObjectMappingRow
               key={mapping.id}
               mapping={mapping}
+              planId={planId}
               onDelete={handleDelete}
               deleting={deleteInProgress === mapping.id}
             />

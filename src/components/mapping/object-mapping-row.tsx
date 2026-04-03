@@ -1,18 +1,20 @@
-// 011-object-mapping — Single mapping row with delete button
+// 011-object-mapping — Single mapping row with delete button and field mapping link
 
 'use client'
 
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { ObjectMappingDTO } from '@/lib/types/mapping'
 
 interface ObjectMappingRowProps {
   mapping: ObjectMappingDTO
+  planId: string
   onDelete: (mappingId: string) => void
   deleting?: boolean
 }
 
-export function ObjectMappingRow({ mapping, onDelete, deleting }: ObjectMappingRowProps) {
+export function ObjectMappingRow({ mapping, planId, onDelete, deleting }: ObjectMappingRowProps) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
       {/* Source */}
@@ -41,6 +43,14 @@ export function ObjectMappingRow({ mapping, onDelete, deleting }: ObjectMappingR
       >
         {mapping.status}
       </Badge>
+
+      {/* Map fields link */}
+      <Link
+        href={`/plans/${planId}/mapping/${mapping.id}`}
+        className="shrink-0 text-xs text-primary hover:underline whitespace-nowrap"
+      >
+        Map fields
+      </Link>
 
       {/* Delete button */}
       <Button

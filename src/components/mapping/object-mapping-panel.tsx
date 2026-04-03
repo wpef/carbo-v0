@@ -6,6 +6,7 @@ import { ObjectMappingList } from './object-mapping-list'
 import type { ObjectMappingDTO, UnmappedSourceObject, AvailableDestObject } from '@/lib/types/mapping'
 
 interface ObjectMappingPanelProps {
+  planId: string
   mappings: ObjectMappingDTO[]
   unmappedObjects: UnmappedSourceObject[]
   destObjects: AvailableDestObject[]
@@ -19,6 +20,7 @@ interface ObjectMappingPanelProps {
 }
 
 export function ObjectMappingPanel({
+  planId,
   mappings,
   unmappedObjects,
   destObjects,
@@ -40,6 +42,7 @@ export function ObjectMappingPanel({
       )}
 
       <ObjectMappingList
+        planId={planId}
         mappings={mappings}
         unmappedObjects={unmappedObjects}
         destObjects={destObjects}

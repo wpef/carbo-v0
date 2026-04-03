@@ -35,10 +35,29 @@ model ObjectMapping {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan             MigrationPlan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  fieldMappings    FieldMapping[]
+  migrationFilters MigrationFilter[]
 
   @@unique([planId, sourceObjectApiName])
   @@index([planId])
+}
+
+model FieldMapping {
+  id                 String   @id @default(uuid())
+  objectMappingId    String
+  sourceFieldId      String
+  sourceFieldApiName String
+  destFieldId        String
+  destFieldApiName   String
+  typeCompatibility  String   @default("COMPATIBLE") // COMPATIBLE | WARNING | INCOMPATIBLE
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  objectMapping ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
+
+  @@unique([objectMappingId, sourceFieldApiName])
+  @@index([objectMappingId])
 }
 
 model SourceConnection {
@@ -136,6 +155,21 @@ model ObjectSelection {
 
   @@unique([snapshotId, objectId])
   @@index([snapshotId, isSelected])
+}
+
+model MigrationFilter {
+  id              String   @id @default(uuid())
+  objectMappingId String
+  fieldApiName    String
+  operator        String
+  value           String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  objectMapping ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
+
+  @@index([objectMappingId])
 }
 
 model AuditLog {
