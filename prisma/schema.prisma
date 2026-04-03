@@ -6,3 +6,27 @@ datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
+
+model MigrationPlan {
+  id                      String    @id @default(uuid())
+  name                    String
+  description             String?
+  status                  String    @default("DRAFT") // DRAFT | READY | BROKEN
+  currentStep             String    @default("SOURCE_CONNECTION")
+  sourceConnectionId      String?
+  destinationConnectionId String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  planId    String?
+  action    String
+  details   String? // JSON string
+  createdAt DateTime @default(now())
+
+  plan MigrationPlan? @relation(fields: [planId], references: [id], onDelete: Cascade)
+}

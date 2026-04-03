@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(powershell.exe -Command \"& '.specify/scripts/powershell/create-new-feature.ps1' -Json -ShortName 'mapping-plan' 'Mapping plan between source and destination connectors with field-by-field mapping rules transformation validation and contractual output documents'\")",
+      "Bash(powershell.exe -NoProfile -Command \"& '.specify/scripts/powershell/create-new-feature.ps1' -Json -ShortName 'mapping-plan' -FeatureDescription 'Mapping plan between source and destination connectors with field mapping transformation and validation rules'\")",
+      "Bash(start:*)",
+      "Bash(git checkout:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git branch:*)",
+      "Bash(pwsh -NoProfile -File .specify/scripts/powershell/create-new-feature.ps1 -Json -ShortName \"salesforce-connector\" \"Salesforce source connector - connect to Salesforce, read schema \\(objects, fields, types\\), read records for migration\")",
+      "Bash(pwsh -NoProfile -File .specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly)",
+      "Bash(pwsh -NoProfile -File .specify/scripts/powershell/setup-plan.ps1 -Json)",
+      "Bash(pwsh -NoProfile -File .specify/scripts/powershell/update-agent-context.ps1 -AgentType claude)",
+      "Bash(pwsh -NoProfile -File .specify/scripts/powershell/check-prerequisites.ps1 -Json)",
+      "Bash(git merge:*)",
+      "Bash(git push:*)",
+      "Bash(gh repo:*)",
+      "Bash(where gh:*)",
+      "Bash(git remote:*)",
+      "Bash(npx:*)",
+      "Bash(npm init:*)",
+      "Bash(npm pkg:*)",
+      "Bash(npm install:*)",
+      "Bash(netstat -ano)",
+      "Bash(tasklist)",
+      "Bash(wmic process:*)",
+      "Bash(tasklist /FI \"PID eq 31452\" /V)",
+      "Bash(powershell -Command \"Get-Process -Id 31452 | Select-Object Name,Id,Path\")",
+      "Bash(rm -f prisma/dev.db prisma/dev.db-journal)",
+      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma migrate dev --name reset)",
+      "Bash(git stash:*)",
+      "Bash(mkdir -p specs/_archive_v1/014-validation-rules)",
+      "Bash(mv specs/014-validation-rules/spec.md specs/_archive_v1/014-validation-rules/spec.md)",
+      "Bash(rmdir specs/014-validation-rules)"
+    ]
+  }
+}
