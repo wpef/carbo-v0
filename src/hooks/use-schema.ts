@@ -32,6 +32,16 @@ interface SchemaState {
   error: string
 }
 
+// Derive the API base path from role:
+// - source  → /api/plans/:planId/source/schema
+// - destination → /api/plans/:planId/destination-schema
+function getSchemaApiPath(planId: string, role: 'source' | 'destination'): string {
+  if (role === 'destination') {
+    return `/api/plans/${planId}/destination-schema`
+  }
+  return `/api/plans/${planId}/source/schema`
+}
+
 export function useSchema(planId: string, role: 'source' | 'destination' = 'source') {
   const [state, setState] = useState<SchemaState>({
     snapshot: null,
@@ -42,10 +52,12 @@ export function useSchema(planId: string, role: 'source' | 'destination' = 'sour
     error: '',
   })
 
+  const apiPath = getSchemaApiPath(planId, role)
+
   const fetchSnapshot = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: '' }))
     try {
-      const res = await fetch(`/api/plans/${planId}/${role}/schema`)
+      const res = await fetch(apiPath)
       if (res.status === 404) {
         // No snapshot yet — not an error
         setState((prev) => ({ ...prev, snapshot: null, objects: [], loading: false }))
@@ -64,7 +76,7 @@ export function useSchema(planId: string, role: 'source' | 'destination' = 'sour
         error: err instanceof Error ? err.message : 'Unknown error',
       }))
     }
-  }, [planId, role])
+  }, [apiPath])
 
   useEffect(() => {
     fetchSnapshot()
@@ -73,7 +85,7 @@ export function useSchema(planId: string, role: 'source' | 'destination' = 'sour
   const retrieveSchema = useCallback(async () => {
     setState((prev) => ({ ...prev, retrieving: true, error: '' }))
     try {
-      const res = await fetch(`/api/plans/${planId}/${role}/schema`, { method: 'POST' })
+      const res = await fetch(apiPath, { method: 'POST' })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.message ?? 'Failed to retrieve schema.')
@@ -93,7 +105,7 @@ export function useSchema(planId: string, role: 'source' | 'destination' = 'sour
         error: err instanceof Error ? err.message : 'Unknown error',
       }))
     }
-  }, [planId, role])
+  }, [apiPath])
 
   return {
     snapshot: state.snapshot,

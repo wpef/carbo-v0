@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/db/prisma'
 import { logAction } from './audit-service'
+import { migrateSelection } from './object-selection'
 import { DemoSourceAdapter } from '@/lib/connectors/adapters/demo-source'
 import { DemoDestinationAdapter } from '@/lib/connectors/adapters/demo-destination'
 import type { ConnectorAdapter } from '@/lib/connectors/types'
@@ -82,6 +83,12 @@ export async function retrieveSchema(connectionId: string, role: 'source' | 'des
   // Fetch schema from adapter
   const schema = await adapter.getSchema(connectionId)
 
+  // Capture current (soon to be previous) snapshot id before rotation
+  const currentSnapshot = await prisma.schemaSnapshot.findFirst({
+    where: { connectionId, role, status: 'CURRENT' },
+    select: { id: true },
+  })
+
   // Rotate snapshots: delete PREVIOUS, demote CURRENT to PREVIOUS
   await prisma.schemaSnapshot.deleteMany({
     where: { connectionId, role, status: 'PREVIOUS' },
@@ -111,6 +118,14 @@ export async function retrieveSchema(connectionId: string, role: 'source' | 'des
     },
     include: { objects: true },
   })
+
+  // Migrate selection state from old snapshot to new one (if a previous snapshot existed)
+  if (currentSnapshot) {
+    // currentSnapshot was demoted to PREVIOUS; find it by its id after rotation
+    await migrateSelection(currentSnapshot.id, snapshot.id).catch((err) =>
+      console.warn('[WARN] migrateSelection failed (non-fatal):', err),
+    )
+  }
 
   await logAction(planId, 'SCHEMA_RETRIEVED', {
     connectionId,

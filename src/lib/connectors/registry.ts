@@ -12,6 +12,8 @@ export interface AdapterMetadata {
   label: string
   role: 'source' | 'destination'
   configFields: AdapterConfigField[]
+  commonBusinessObjects?: string[]
+  systemObjectPrefixes?: string[]
 }
 
 const ADAPTERS: AdapterMetadata[] = [
@@ -23,12 +25,16 @@ const ADAPTERS: AdapterMetadata[] = [
       { name: 'instanceUrl', label: 'Instance URL', type: 'url', required: true },
       { name: 'accessToken', label: 'Access Token', type: 'password', required: true },
     ],
+    commonBusinessObjects: ['Account', 'Contact', 'Lead', 'Opportunity', 'Case', 'Campaign'],
+    systemObjectPrefixes: ['__', 'Apex', 'Auth', 'Content', 'Data', 'Entity', 'Flow', 'Login', 'Setup'],
   },
   {
     type: 'demo',
     label: 'Demo Data',
     role: 'source',
     configFields: [],
+    commonBusinessObjects: ['Contact', 'Account', 'Deal'],
+    systemObjectPrefixes: [],
   },
   {
     type: 'hubspot',
@@ -37,12 +43,16 @@ const ADAPTERS: AdapterMetadata[] = [
     configFields: [
       { name: 'accessToken', label: 'Access Token', type: 'password', required: true },
     ],
+    commonBusinessObjects: ['contacts', 'companies', 'deals', 'tickets'],
+    systemObjectPrefixes: [],
   },
   {
     type: 'demo-destination',
     label: 'Demo Destination',
     role: 'destination',
     configFields: [],
+    commonBusinessObjects: ['contacts', 'companies', 'deals', 'tickets'],
+    systemObjectPrefixes: [],
   },
 ]
 

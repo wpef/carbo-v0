@@ -58,7 +58,8 @@ model SchemaSnapshot {
   retrievedAt  DateTime @default(now())
   createdAt    DateTime @default(now())
 
-  objects SchemaObject[]
+  objects    SchemaObject[]
+  selections ObjectSelection[]
 
   @@index([connectionId, role, status])
 }
@@ -71,9 +72,27 @@ model SchemaObject {
   description String?
   isCustom    Boolean @default(false)
 
-  snapshot SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  snapshot   SchemaSnapshot    @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  selections ObjectSelection[]
 
   @@unique([snapshotId, apiName])
+}
+
+model ObjectSelection {
+  id            String    @id @default(uuid())
+  snapshotId    String
+  objectId      String
+  objectApiName String
+  isSelected    Boolean   @default(false)
+  selectedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  snapshot SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  object   SchemaObject   @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, objectId])
+  @@index([snapshotId, isSelected])
 }
 
 model AuditLog {
