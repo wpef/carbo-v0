@@ -3,9 +3,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { logAction } from './audit-service'
 import { migrateSelection } from './object-selection'
-import { DemoSourceAdapter } from '@/lib/connectors/adapters/demo-source'
-import { DemoDestinationAdapter } from '@/lib/connectors/adapters/demo-destination'
-import type { ConnectorAdapter } from '@/lib/connectors/types'
+import { getAdapterInstance, UnknownAdapterError } from '@/lib/connectors/adapter-factory'
 import type { SchemaDiff } from '@/lib/types/schema'
 
 // --- Errors ---
@@ -24,25 +22,7 @@ export class SchemaConnectionNotConnectedError extends Error {
   }
 }
 
-export class UnknownAdapterError extends Error {
-  constructor(adapterType: string) {
-    super(`Unknown adapter: ${adapterType}`)
-    this.name = 'UnknownAdapterError'
-  }
-}
-
-// --- Adapter factory ---
-
-function getAdapterInstance(adapterType: string): ConnectorAdapter {
-  switch (adapterType) {
-    case 'demo':
-      return new DemoSourceAdapter()
-    case 'demo-destination':
-      return new DemoDestinationAdapter()
-    default:
-      throw new UnknownAdapterError(adapterType)
-  }
-}
+export { UnknownAdapterError }
 
 // --- Helpers ---
 
