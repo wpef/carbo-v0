@@ -1,4 +1,5 @@
 // 012-field-mapping — Two-column field mapping view with SVG overlay for links
+// 013-migration-logic — Extended with migration logic modal integration
 
 'use client'
 
@@ -6,14 +7,17 @@ import { useState, useRef, useCallback, useLayoutEffect } from 'react'
 import { FieldCard } from './FieldCard'
 import { FieldLink } from './FieldLink'
 import { FieldSearchFilter } from './FieldSearchFilter'
+import { MigrationLogicModal } from './MigrationLogicModal'
 import { Button } from '@/components/ui/button'
 import { FieldLinkState } from '@/lib/types/field-mapping'
+import { useMigrationLogic } from '@/hooks/use-migration-logic'
 import type {
   FieldMappingDTO,
   UnmappedSourceField,
   AvailableDestField,
   CreateFieldMappingInput,
 } from '@/lib/types/field-mapping'
+import type { SectionType, SaveMigrationLogicInput } from '@/lib/types/mapping'
 
 interface FieldMappingViewProps {
   planId: string
@@ -38,6 +42,8 @@ interface CardPosition {
 }
 
 export function FieldMappingView({
+  planId,
+  objectMappingId,
   sourceObjectLabel,
   destObjectLabel,
   fieldMappings,
@@ -55,6 +61,18 @@ export function FieldMappingView({
   const [destSearch, setDestSearch] = useState('')
   const [actionError, setActionError] = useState('')
   const [autoMatching, setAutoMatching] = useState(false)
+
+  // Migration logic modal state
+  const migrationLogic = useMigrationLogic()
+  const [activeMappingMeta, setActiveMappingMeta] = useState<{
+    sourceFieldLabel: string
+    sourceFieldType: string
+    destFieldLabel: string
+    destFieldType: string
+    sourcePicklistValues: string[]
+    destPicklistValues: string[]
+    sampleSourceValues: string[]
+  } | null>(null)
 
   const sourceColRef = useRef<HTMLDivElement>(null)
   const destColRef = useRef<HTMLDivElement>(null)
@@ -187,6 +205,48 @@ export function FieldMappingView({
     setAutoMatching(false)
   }, [onAutoMatch])
 
+  // Open the migration logic modal for a field mapping
+  const handleOpenMigrationLogic = useCallback(
+    async (fieldMappingId: string) => {
+      const mapping = fieldMappings.find((m) => m.id === fieldMappingId)
+      if (!mapping) return
+
+      setActiveMappingMeta({
+        sourceFieldLabel: mapping.sourceFieldLabel,
+        sourceFieldType: mapping.sourceFieldType,
+        destFieldLabel: mapping.destFieldLabel,
+        destFieldType: mapping.destFieldType,
+        // Picklist values are not available without connector call at this stage —
+        // pass empty arrays; the modal will show placeholder text
+        sourcePicklistValues: [],
+        destPicklistValues: [],
+        sampleSourceValues: [],
+      })
+
+      await migrationLogic.openModal({
+        fieldMappingId,
+        planId,
+        objectMappingId,
+        mappingId: objectMappingId,
+      })
+    },
+    [fieldMappings, planId, objectMappingId, migrationLogic],
+  )
+
+  const handleMigrationLogicSave = useCallback(
+    async (input: { sectionType: SectionType; valueEquivalences?: Array<{ sourceValue: string; destinationValue: string }>; promptText?: string }) => {
+      return migrationLogic.saveMigrationLogic(input as SaveMigrationLogicInput, 'DEFINED')
+    },
+    [migrationLogic],
+  )
+
+  const handleMigrationLogicValidate = useCallback(
+    async (input: { sectionType: SectionType; valueEquivalences?: Array<{ sourceValue: string; destinationValue: string }>; promptText?: string }) => {
+      return migrationLogic.saveMigrationLogic(input as SaveMigrationLogicInput, 'VALIDATED')
+    },
+    [migrationLogic],
+  )
+
   // Build SVG links data
   const svgLinks = fieldMappings
     .map((m) => {
@@ -308,6 +368,7 @@ export function FieldMappingView({
                   fieldMappingId={link.fieldMappingId}
                   linkStatus={link.linkStatus}
                   onDelete={handleDeleteLink}
+                  onOpenMigrationLogic={handleOpenMigrationLogic}
                 />
               ))}
             </svg>
@@ -344,6 +405,30 @@ export function FieldMappingView({
           </div>
         </div>
       </div>
+
+      {/* Migration Logic Modal */}
+      {activeMappingMeta && migrationLogic.suggestedSection && (
+        <MigrationLogicModal
+          open={migrationLogic.open}
+          onClose={migrationLogic.closeModal}
+          sourceFieldLabel={activeMappingMeta.sourceFieldLabel}
+          sourceFieldType={activeMappingMeta.sourceFieldType}
+          destFieldLabel={activeMappingMeta.destFieldLabel}
+          destFieldType={activeMappingMeta.destFieldType}
+          sectionType={migrationLogic.suggestedSection}
+          informationalMessage={migrationLogic.informationalMessage}
+          migrationLogic={migrationLogic.migrationLogic}
+          sourcePicklistValues={activeMappingMeta.sourcePicklistValues}
+          destPicklistValues={activeMappingMeta.destPicklistValues}
+          sampleSourceValues={activeMappingMeta.sampleSourceValues}
+          loading={migrationLogic.loading}
+          saving={migrationLogic.saving}
+          error={migrationLogic.error}
+          onSave={handleMigrationLogicSave}
+          onValidate={handleMigrationLogicValidate}
+          onClassify={migrationLogic.classifySamples}
+        />
+      )}
     </div>
   )
 }
