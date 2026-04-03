@@ -60,6 +60,7 @@ model SchemaSnapshot {
 
   objects    SchemaObject[]
   selections ObjectSelection[]
+  fields     ObjectField[]
 
   @@index([connectionId, role, status])
 }
@@ -74,8 +75,32 @@ model SchemaObject {
 
   snapshot   SchemaSnapshot    @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   selections ObjectSelection[]
+  fields     ObjectField[]
 
   @@unique([snapshotId, apiName])
+}
+
+model ObjectField {
+  id               String   @id @default(uuid())
+  objectId         String
+  snapshotId       String
+  apiName          String
+  label            String
+  dataType         String
+  isRequired       Boolean  @default(false)
+  isReadOnly       Boolean  @default(false)
+  isUnique         Boolean  @default(false)
+  isAccessible     Boolean  @default(true)
+  referenceTo      String?
+  relationshipType String?
+  createdAt        DateTime @default(now())
+
+  object   SchemaObject   @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  snapshot SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([objectId, apiName])
+  @@index([objectId])
+  @@index([snapshotId])
 }
 
 model ObjectSelection {
