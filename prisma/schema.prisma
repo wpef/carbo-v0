@@ -49,6 +49,33 @@ model DestinationConnection {
   plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 }
 
+model SchemaSnapshot {
+  id           String   @id @default(uuid())
+  connectionId String
+  role         String   // "source" | "destination"
+  status       String   @default("CURRENT") // CURRENT | PREVIOUS
+  objectCount  Int      @default(0)
+  retrievedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  objects SchemaObject[]
+
+  @@index([connectionId, role, status])
+}
+
+model SchemaObject {
+  id          String  @id @default(uuid())
+  snapshotId  String
+  apiName     String
+  label       String
+  description String?
+  isCustom    Boolean @default(false)
+
+  snapshot SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, apiName])
+}
+
 model AuditLog {
   id        String   @id @default(uuid())
   planId    String?
