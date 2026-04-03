@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useContractualDocument } from '@/hooks/use-contractual-document'
 import { ContractualDocumentView } from '@/components/documents/contractual-document-view'
+import { PdfDownloadButton } from '@/components/documents/pdf-download-button'
 
 export default function ContractualDocumentDetailPage() {
   const params = useParams<{ planId: string; documentId: string }>()
@@ -30,11 +31,14 @@ export default function ContractualDocumentDetailPage() {
         </Link>
       </div>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-1 font-serif">Contractual Document Preview</h1>
-        <p className="text-muted-foreground text-sm">
-          Formal migration specification for client sign-off. This document is immutable.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold mb-1 font-serif">Contractual Document Preview</h1>
+          <p className="text-muted-foreground text-sm">
+            Formal migration specification for client sign-off. This document is immutable.
+          </p>
+        </div>
+        <PdfDownloadButton planId={planId} documentId={documentId} documentType="contractual" />
       </div>
 
       {loading && (

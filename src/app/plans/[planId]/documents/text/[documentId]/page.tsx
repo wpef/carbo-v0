@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTextDocument } from '@/hooks/use-text-document'
 import { TextDocumentPreview } from '@/components/documents/text-document-preview'
+import { PdfDownloadButton } from '@/components/documents/pdf-download-button'
 
 export default function TextDocumentPage() {
   const params = useParams<{ planId: string; documentId: string }>()
@@ -27,11 +28,14 @@ export default function TextDocumentPage() {
         </Link>
       </div>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-1">Text Document Preview</h1>
-        <p className="text-muted-foreground text-sm">
-          Human-readable migration plan document for client review.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Text Document Preview</h1>
+          <p className="text-muted-foreground text-sm">
+            Human-readable migration plan document for client review.
+          </p>
+        </div>
+        <PdfDownloadButton planId={planId} documentId={documentId} documentType="text" />
       </div>
 
       {loading && (
