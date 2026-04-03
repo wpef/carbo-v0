@@ -1,4 +1,5 @@
 // 005-source-field-retrieval — Hook for field retrieval API calls
+// 008-destination-field-retrieval — Extended to support role-aware API paths
 
 'use client'
 
@@ -13,7 +14,14 @@ interface FieldsState {
   error: string
 }
 
-export function useFields(planId: string) {
+function getApiBasePath(planId: string, role: 'source' | 'destination'): string {
+  if (role === 'destination') {
+    return `/api/plans/${planId}/destination-fields`
+  }
+  return `/api/plans/${planId}/source/fields`
+}
+
+export function useFields(planId: string, role: 'source' | 'destination' = 'source') {
   const [state, setState] = useState<FieldsState>({
     data: null,
     loading: false,
@@ -22,13 +30,15 @@ export function useFields(planId: string) {
     error: '',
   })
 
+  const apiBasePath = getApiBasePath(planId, role)
+
   /**
    * Trigger field retrieval via POST (fetches from adapter and persists).
    */
   const retrieveFields = useCallback(async (): Promise<FieldRetrievalResult | null> => {
     setState((prev) => ({ ...prev, retrieving: true, error: '' }))
     try {
-      const res = await fetch(`/api/plans/${planId}/source/fields`, { method: 'POST' })
+      const res = await fetch(apiBasePath, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) {
         throw new Error(data.message ?? 'Failed to retrieve fields.')
@@ -44,7 +54,7 @@ export function useFields(planId: string) {
       }))
       return null
     }
-  }, [planId])
+  }, [apiBasePath])
 
   /**
    * Fetch persisted fields grouped by object (GET).
@@ -52,7 +62,7 @@ export function useFields(planId: string) {
   const fetchFields = useCallback(async (): Promise<void> => {
     setState((prev) => ({ ...prev, loading: true, error: '' }))
     try {
-      const res = await fetch(`/api/plans/${planId}/source/fields`)
+      const res = await fetch(apiBasePath)
       if (res.status === 404) {
         setState((prev) => ({ ...prev, loading: false, data: null }))
         return
@@ -69,15 +79,20 @@ export function useFields(planId: string) {
         error: err instanceof Error ? err.message : 'Unknown error',
       }))
     }
-  }, [planId])
+  }, [apiBasePath])
 
   /**
    * Fetch fields for a single object (GET).
+   * Only supported for source role (destination uses the base path with ?object= filter).
    */
   const fetchFieldsForObject = useCallback(
     async (objectId: string): Promise<ObjectFieldResult[] | null> => {
       try {
-        const res = await fetch(`/api/plans/${planId}/source/fields/${objectId}`)
+        const url =
+          role === 'source'
+            ? `/api/plans/${planId}/source/fields/${objectId}`
+            : `${apiBasePath}?object=${encodeURIComponent(objectId)}`
+        const res = await fetch(url)
         const data = await res.json()
         if (!res.ok) {
           throw new Error(data.message ?? 'Failed to load fields for object.')
@@ -88,7 +103,7 @@ export function useFields(planId: string) {
         return null
       }
     },
-    [planId],
+    [planId, role, apiBasePath],
   )
 
   /**
