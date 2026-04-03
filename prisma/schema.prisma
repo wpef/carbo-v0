@@ -18,7 +18,35 @@ model MigrationPlan {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  auditLogs AuditLog[]
+  auditLogs             AuditLog[]
+  sourceConnection      SourceConnection?
+  destinationConnection DestinationConnection?
+}
+
+model SourceConnection {
+  id          String    @id @default(uuid())
+  planId      String    @unique
+  adapterType String
+  status      String    @default("PENDING") // PENDING | CONNECTED | EXPIRED | ERROR
+  config      String    @default("{}") // JSON blob: adapter-specific config
+  connectedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+model DestinationConnection {
+  id          String    @id @default(uuid())
+  planId      String    @unique
+  adapterType String
+  status      String    @default("PENDING")
+  config      String    @default("{}")
+  connectedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 }
 
 model AuditLog {

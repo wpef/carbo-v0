@@ -1,0 +1,152 @@
+// 006-destination-connection — Destination Connection Service
+
+import { prisma } from '@/lib/db/prisma'
+import { logAction } from './audit-service'
+import { getPlan, PlanNotFoundError } from './plan-service'
+import { DemoDestinationAdapter } from '@/lib/connectors/adapters/demo-destination'
+import type { ConnectorAdapter } from '@/lib/connectors/types'
+
+// ---------------------------------------------------------------------------
+// Custom errors
+// ---------------------------------------------------------------------------
+
+export class DestinationAlreadyConnectedError extends Error {
+  constructor() {
+    super('Plan already has a destination connection. Disconnect first.')
+    this.name = 'DestinationAlreadyConnectedError'
+  }
+}
+
+export class DestinationNotConnectedError extends Error {
+  constructor() {
+    super('No destination connection exists for this plan.')
+    this.name = 'DestinationNotConnectedError'
+  }
+}
+
+export class DestinationConnectionFailedError extends Error {
+  constructor(message: string) {
+    super(`Connection failed: ${message}`)
+    this.name = 'DestinationConnectionFailedError'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Adapter registry (destination-capable adapters)
+// ---------------------------------------------------------------------------
+
+const DESTINATION_ADAPTERS: Record<string, () => ConnectorAdapter> = {
+  'demo-destination': () => new DemoDestinationAdapter(),
+}
+
+function getAdapter(adapterType: string): ConnectorAdapter {
+  const factory = DESTINATION_ADAPTERS[adapterType]
+  if (!factory) {
+    throw new DestinationConnectionFailedError(
+      `Unknown adapter type: ${adapterType}. Available: ${Object.keys(DESTINATION_ADAPTERS).join(', ')}`
+    )
+  }
+  return factory()
+}
+
+// ---------------------------------------------------------------------------
+// Service operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Connect a destination system to a migration plan.
+ * Validates the plan exists, checks no existing connection, instantiates the
+ * adapter, tests the connection, persists to DB, and logs to audit trail.
+ */
+export async function connectDestination(
+  planId: string,
+  adapterType: string,
+  config: Record<string, unknown>
+) {
+  // 1. Validate plan exists
+  await getPlan(planId) // throws PlanNotFoundError if not found
+
+  // 2. Check for existing destination connection
+  const existing = await prisma.destinationConnection.findUnique({
+    where: { planId },
+  })
+  if (existing) {
+    throw new DestinationAlreadyConnectedError()
+  }
+
+  // 3. Instantiate adapter and test connection
+  const adapter = getAdapter(adapterType)
+  let connectorConnection
+  try {
+    connectorConnection = await adapter.connect(config)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await logAction(planId, 'destination.connection_failed', { planId, adapterType, error: message })
+    throw new DestinationConnectionFailedError(message)
+  }
+
+  // 4. Persist destination connection
+  const connection = await prisma.destinationConnection.create({
+    data: {
+      planId,
+      adapterType,
+      status: connectorConnection.status,
+      config: JSON.stringify(config),
+      connectedAt: new Date(),
+    },
+  })
+
+  // 5. Log audit event
+  await logAction(planId, 'destination.connected', {
+    planId,
+    adapterType,
+    connectionId: connection.id,
+  })
+
+  console.log(`[destination-connection] Connected: plan=${planId} adapter=${adapterType} id=${connection.id}`)
+
+  return connection
+}
+
+/**
+ * Disconnect the destination from a migration plan.
+ * Deletes the connection record (and any schema data if models exist),
+ * then logs to audit trail.
+ */
+export async function disconnectDestination(planId: string) {
+  // 1. Validate plan exists
+  await getPlan(planId) // throws PlanNotFoundError if not found
+
+  // 2. Find existing connection
+  const connection = await prisma.destinationConnection.findUnique({
+    where: { planId },
+  })
+  if (!connection) {
+    throw new DestinationNotConnectedError()
+  }
+
+  // 3. Delete the connection record (cascade cleanup will be added in later features)
+  await prisma.destinationConnection.delete({
+    where: { planId },
+  })
+
+  // 4. Log audit event
+  await logAction(planId, 'destination.disconnected', {
+    planId,
+    connectionId: connection.id,
+  })
+
+  console.log(`[destination-connection] Disconnected: plan=${planId} id=${connection.id}`)
+
+  return { success: true }
+}
+
+/**
+ * Get the current destination connection for a plan, or null if not connected.
+ */
+export async function getDestinationConnection(planId: string) {
+  const connection = await prisma.destinationConnection.findUnique({
+    where: { planId },
+  })
+  return connection ?? null
+}

@@ -64,9 +64,23 @@ export default function PlanDetailPage() {
         </aside>
         <section>
           <h2 className="text-sm font-medium mb-4">Current Step</h2>
-          <p className="text-muted-foreground">
-            {plan.currentStep.replace(/_/g, ' ').toLowerCase()} — configure this step to proceed.
-          </p>
+          {plan.currentStep === 'SOURCE_CONNECTION' ? (
+            <div>
+              <p className="text-muted-foreground text-sm mb-4">
+                Connect to your source system to begin the migration workflow.
+              </p>
+              <Link
+                href={`/plans/${plan.id}/source`}
+                className="inline-flex items-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80 transition-colors"
+              >
+                Configure Source Connection &rarr;
+              </Link>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              {plan.currentStep.replace(/_/g, ' ').toLowerCase()} — configure this step to proceed.
+            </p>
+          )}
         </section>
       </div>
     </main>
