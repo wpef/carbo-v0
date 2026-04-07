@@ -24,6 +24,11 @@ interface MigrationLogicState {
   destinationFieldType: string | null
   /** Type-specific message for D4 sections */
   informationalMessage: string | null
+  /** Picklist values from source and destination fields */
+  sourcePicklistValues: string[]
+  destPicklistValues: string[]
+  /** Sample source values for D2 prompt */
+  sampleSourceValues: string[]
   loading: boolean
   saving: boolean
   error: string
@@ -47,6 +52,9 @@ export function useMigrationLogic() {
     sourceFieldType: null,
     destinationFieldType: null,
     informationalMessage: null,
+    sourcePicklistValues: [],
+    destPicklistValues: [],
+    sampleSourceValues: [],
     loading: false,
     saving: false,
     error: '',
@@ -90,6 +98,9 @@ export function useMigrationLogic() {
         sourceFieldType: data.sourceFieldType ?? null,
         destinationFieldType: data.destinationFieldType ?? null,
         informationalMessage: data.informationalMessage ?? null,
+        sourcePicklistValues: data.sourcePicklistValues ?? [],
+        destPicklistValues: data.destPicklistValues ?? [],
+        sampleSourceValues: data.sampleSourceValues ?? [],
         loading: false,
       }))
     } catch (err) {
@@ -115,6 +126,9 @@ export function useMigrationLogic() {
       sourceFieldType: null,
       destinationFieldType: null,
       informationalMessage: null,
+      sourcePicklistValues: [],
+      destPicklistValues: [],
+      sampleSourceValues: [],
       loading: false,
       saving: false,
       error: '',
@@ -221,6 +235,9 @@ export function useMigrationLogic() {
     sourceFieldType: state.sourceFieldType,
     destinationFieldType: state.destinationFieldType,
     informationalMessage: state.informationalMessage,
+    sourcePicklistValues: state.sourcePicklistValues,
+    destPicklistValues: state.destPicklistValues,
+    sampleSourceValues: state.sampleSourceValues,
     loading: state.loading,
     saving: state.saving,
     error: state.error,

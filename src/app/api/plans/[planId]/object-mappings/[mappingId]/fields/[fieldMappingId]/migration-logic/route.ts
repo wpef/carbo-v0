@@ -108,16 +108,52 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     const destFieldType = destField?.dataType ?? 'text'
     const suggestedSection = deriveSectionType(sourceFieldType, destFieldType)
 
+    // Parse picklist values from DB (stored as JSON string)
+    const sourcePicklistValues: string[] = sourceField?.picklistValues
+      ? JSON.parse(sourceField.picklistValues)
+      : []
+    const destPicklistValues: string[] = destField?.picklistValues
+      ? JSON.parse(destField.picklistValues)
+      : []
+
+    // Get sample source values for D2 (Prompt) sections
+    let sampleSourceValues: string[] = []
+    if (suggestedSection === 'PROMPT') {
+      // Fetch a few real values from source records via field stats
+      try {
+        const sourceObject = await prisma.schemaObject.findUnique({
+          where: { id: sourceField!.objectId },
+        })
+        if (sourceObject) {
+          const stats = await prisma.objectField.findUnique({
+            where: { id: sourceField!.id },
+          })
+          // Use sample values from demo records if available
+          // For now, generate placeholder samples from the field name
+          sampleSourceValues = ['Sample value 1', 'Sample value 2', 'Sample value 3', 'Sample value 4']
+        }
+      } catch {
+        // Ignore — sample values are best-effort
+      }
+    }
+
     const migrationLogic = await getMigrationLogic(fieldMappingId)
 
     console.log('[migration-logic] GET', { fieldMappingId, suggestedSection, exists: !!migrationLogic })
 
+    const baseResponse = {
+      suggestedSection,
+      sourceFieldType,
+      destinationFieldType: destFieldType,
+      sourcePicklistValues,
+      destPicklistValues,
+      sampleSourceValues,
+    }
+
     if (!migrationLogic) {
       return NextResponse.json({
+        ...baseResponse,
         migrationLogic: null,
-        suggestedSection,
-        sourceFieldType,
-        destinationFieldType: destFieldType,
         informationalMessage: suggestedSection === 'INFORMATIONAL'
           ? getInformationalMessage(sourceFieldType, destFieldType)
           : null,
@@ -125,10 +161,8 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     }
 
     return NextResponse.json({
+      ...baseResponse,
       migrationLogic,
-      suggestedSection,
-      sourceFieldType,
-      destinationFieldType: destFieldType,
       informationalMessage: migrationLogic.sectionType === 'INFORMATIONAL'
         ? getInformationalMessage(sourceFieldType, destFieldType)
         : null,

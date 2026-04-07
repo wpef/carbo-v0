@@ -167,6 +167,7 @@ model ObjectField {
   isAccessible     Boolean  @default(true)
   referenceTo      String?
   relationshipType String?
+  picklistValues   String?  // JSON array of picklist values, e.g. '["a","b","c"]'
   createdAt        DateTime @default(now())
 
   object   SchemaObject   @relation(fields: [objectId], references: [id], onDelete: Cascade)

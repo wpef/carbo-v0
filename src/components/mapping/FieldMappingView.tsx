@@ -89,9 +89,6 @@ export function FieldMappingView({
     sourceFieldType: string
     destFieldLabel: string
     destFieldType: string
-    sourcePicklistValues: string[]
-    destPicklistValues: string[]
-    sampleSourceValues: string[]
   } | null>(null)
 
   const mappedDestIds = new Set(fieldMappings.map((m) => m.destFieldId))
@@ -163,9 +160,6 @@ export function FieldMappingView({
         sourceFieldType: mapping.sourceFieldType,
         destFieldLabel: mapping.destFieldLabel,
         destFieldType: mapping.destFieldType,
-        sourcePicklistValues: [],
-        destPicklistValues: [],
-        sampleSourceValues: [],
       })
 
       await migrationLogic.openModal({
@@ -361,9 +355,9 @@ export function FieldMappingView({
           sectionType={migrationLogic.suggestedSection}
           informationalMessage={migrationLogic.informationalMessage}
           migrationLogic={migrationLogic.migrationLogic}
-          sourcePicklistValues={activeMappingMeta.sourcePicklistValues}
-          destPicklistValues={activeMappingMeta.destPicklistValues}
-          sampleSourceValues={activeMappingMeta.sampleSourceValues}
+          sourcePicklistValues={migrationLogic.sourcePicklistValues}
+          destPicklistValues={migrationLogic.destPicklistValues}
+          sampleSourceValues={migrationLogic.sampleSourceValues}
           loading={migrationLogic.loading}
           saving={migrationLogic.saving}
           error={migrationLogic.error}

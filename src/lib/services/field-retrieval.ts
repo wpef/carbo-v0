@@ -127,6 +127,7 @@ export async function retrieveFields(
             isAccessible: true, // ConnectorField always accessible when returned
             referenceTo: field.referenceTo ?? null,
             relationshipType: field.relationshipType ?? null,
+            picklistValues: field.picklistValues ? JSON.stringify(field.picklistValues) : null,
           },
           update: {
             label: field.label,
@@ -137,6 +138,7 @@ export async function retrieveFields(
             isAccessible: true,
             referenceTo: field.referenceTo ?? null,
             relationshipType: field.relationshipType ?? null,
+            picklistValues: field.picklistValues ? JSON.stringify(field.picklistValues) : null,
           },
         })
       }
