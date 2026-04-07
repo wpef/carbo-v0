@@ -37,6 +37,33 @@ export class ObjectMappingNotFoundError extends Error {
   }
 }
 
+// --- Type normalization (shared with migration-logic route) ---
+
+function normaliseType(dataType: string): string {
+  const t = dataType.toLowerCase().trim()
+  if (['string', 'text', 'email', 'url', 'phone', 'textarea', 'richtext', 'id'].includes(t)) return 'text'
+  if (['number', 'integer', 'int', 'float', 'double', 'decimal', 'currency', 'percent'].includes(t)) return 'number'
+  if (['date', 'datetime', 'time'].includes(t)) return 'date'
+  if (['picklist', 'multipicklist', 'enum', 'enumeration', 'select'].includes(t)) return 'picklist'
+  if (['boolean', 'bool', 'checkbox'].includes(t)) return 'boolean'
+  return 'text'
+}
+
+/** Derive the section type from source/dest field types (same as migration-logic route) */
+function deriveSectionFromTypes(sourceType: string, destType: string): string {
+  const src = normaliseType(sourceType)
+  const dst = normaliseType(destType)
+  if (src === 'picklist' && (dst === 'picklist' || dst === 'boolean')) return 'VALUE_EQUIVALENCE'
+  if (src === 'boolean' && dst === 'picklist') return 'VALUE_EQUIVALENCE'
+  if (dst === 'picklist') return 'PROMPT'
+  if (src === dst) return 'INFORMATIONAL'
+  if (src === 'picklist' && dst === 'text') return 'INFORMATIONAL'
+  if (src === 'boolean' && (dst === 'text' || dst === 'number' || dst === 'boolean')) return 'INFORMATIONAL'
+  if (src === 'number' && dst === 'text') return 'INFORMATIONAL'
+  if (src === 'date' && dst === 'text') return 'INFORMATIONAL'
+  return 'ERROR'
+}
+
 // --- Helpers ---
 
 /**
@@ -49,8 +76,13 @@ export class ObjectMappingNotFoundError extends Error {
 export function getLinkStatus(
   typeCompatibility: TypeCompatibility,
   migrationLogicStatus?: string | null,
+  sectionType?: string | null,
 ): LinkStatus {
-  if (typeCompatibility === 'INCOMPATIBLE') return 'RED_DASHED'
+  // D3 (ERROR) / INCOMPATIBLE → always red dashed
+  if (typeCompatibility === 'INCOMPATIBLE' || sectionType === 'ERROR') return 'RED_DASHED'
+  // D4 (INFORMATIONAL) → auto-validated, no user action needed
+  if (sectionType === 'INFORMATIONAL') return 'GREEN'
+  // D1/D2: check migration logic status
   if (!migrationLogicStatus || migrationLogicStatus === 'DRAFT') return 'RED_SOLID'
   if (migrationLogicStatus === 'DEFINED') return 'ORANGE'
   if (migrationLogicStatus === 'VALIDATED') return 'GREEN'
@@ -72,6 +104,7 @@ function toDTO(
   sourceField: { label: string; dataType: string } | null,
   destField: { label: string; dataType: string } | null,
   migrationLogicStatus?: string | null,
+  sectionType?: string | null,
 ): FieldMappingDTO {
   const compatibility = mapping.typeCompatibility as TypeCompatibility
   return {
@@ -86,7 +119,7 @@ function toDTO(
     destFieldLabel: destField?.label ?? mapping.destFieldApiName,
     destFieldType: destField?.dataType ?? 'unknown',
     typeCompatibility: compatibility,
-    linkStatus: getLinkStatus(compatibility, migrationLogicStatus),
+    linkStatus: getLinkStatus(compatibility, migrationLogicStatus, sectionType),
     createdAt: mapping.createdAt.toISOString(),
     updatedAt: mapping.updatedAt.toISOString(),
   }
@@ -100,7 +133,7 @@ function toDTO(
 export async function listFieldMappings(objectMappingId: string): Promise<FieldMappingDTO[]> {
   const mappings = await prisma.fieldMapping.findMany({
     where: { objectMappingId },
-    include: { migrationLogic: { select: { status: true } } },
+    include: { migrationLogic: { select: { status: true, sectionType: true } } },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -117,14 +150,22 @@ export async function listFieldMappings(objectMappingId: string): Promise<FieldM
   const sourceById = new Map(sourceFields.map((f) => [f.id, f]))
   const destById = new Map(destFields.map((f) => [f.id, f]))
 
-  return mappings.map((m) =>
-    toDTO(
+  return mappings.map((m) => {
+    const sourceField = sourceById.get(m.sourceFieldId) ?? null
+    const destField = destById.get(m.destFieldId) ?? null
+    // Derive sectionType from migration logic or from type compatibility
+    const sectionType = m.migrationLogic?.sectionType ?? deriveSectionFromTypes(
+      sourceField?.dataType ?? 'text',
+      destField?.dataType ?? 'text',
+    )
+    return toDTO(
       m,
-      sourceById.get(m.sourceFieldId) ?? null,
-      destById.get(m.destFieldId) ?? null,
+      sourceField,
+      destField,
       m.migrationLogic?.status ?? null,
-    ),
-  )
+      sectionType,
+    )
+  })
 }
 
 /**
@@ -176,7 +217,11 @@ export async function createFieldMapping(
     typeCompatibility: compatibility,
   })
 
-  return toDTO(mapping, sourceField, destField)
+  const sectionType = deriveSectionFromTypes(
+    sourceField?.dataType ?? 'text',
+    destField?.dataType ?? 'text',
+  )
+  return toDTO(mapping, sourceField, destField, null, sectionType)
 }
 
 /**

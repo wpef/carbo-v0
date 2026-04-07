@@ -85,6 +85,7 @@ function FieldMappingPanel({ planId, mapping, onChanged }: { planId: string; map
     deleteLink,
     triggerAutoMatch,
     selectSourceField,
+    refresh,
   } = useFieldMapping(planId, mapping.id)
 
   const mappedCount = fieldMappings.length
@@ -139,6 +140,7 @@ function FieldMappingPanel({ planId, mapping, onChanged }: { planId: string; map
             onCreateLink={async (input) => { const r = await createLink(input); onChanged(); return r }}
             onDeleteLink={async (id) => { const r = await deleteLink(id); onChanged(); return r }}
             onAutoMatch={async () => { const r = await triggerAutoMatch(); onChanged(); return r }}
+            onMigrationLogicChanged={() => { refresh(); onChanged() }}
             error={error}
           />
         </>

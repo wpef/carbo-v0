@@ -30,6 +30,7 @@ interface FieldMappingViewProps {
   onCreateLink: (input: CreateFieldMappingInput) => Promise<{ error?: string }>
   onDeleteLink: (fieldMappingId: string) => Promise<{ error?: string }>
   onAutoMatch: () => Promise<unknown>
+  onMigrationLogicChanged?: () => void
   error?: string
 }
 
@@ -84,6 +85,7 @@ export function FieldMappingView({
   onCreateLink,
   onDeleteLink,
   onAutoMatch,
+  onMigrationLogicChanged,
   error,
 }: FieldMappingViewProps) {
   const [actionError, setActionError] = useState('')
@@ -183,16 +185,20 @@ export function FieldMappingView({
 
   const handleMigrationLogicSave = useCallback(
     async (input: { sectionType: SectionType; valueEquivalences?: Array<{ sourceValue: string; destinationValue: string }>; promptText?: string }) => {
-      return migrationLogic.saveMigrationLogic(input as SaveMigrationLogicInput, 'DEFINED')
+      const result = await migrationLogic.saveMigrationLogic(input as SaveMigrationLogicInput, 'DEFINED')
+      if (!result.error) onMigrationLogicChanged?.()
+      return result
     },
-    [migrationLogic],
+    [migrationLogic, onMigrationLogicChanged],
   )
 
   const handleMigrationLogicValidate = useCallback(
     async (input: { sectionType: SectionType; valueEquivalences?: Array<{ sourceValue: string; destinationValue: string }>; promptText?: string }) => {
-      return migrationLogic.saveMigrationLogic(input as SaveMigrationLogicInput, 'VALIDATED')
+      const result = await migrationLogic.saveMigrationLogic(input as SaveMigrationLogicInput, 'VALIDATED')
+      if (!result.error) onMigrationLogicChanged?.()
+      return result
     },
-    [migrationLogic],
+    [migrationLogic, onMigrationLogicChanged],
   )
 
   return (
