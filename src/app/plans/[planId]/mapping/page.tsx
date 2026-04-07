@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useObjectMapping } from '@/hooks/use-object-mapping'
 import { ObjectMappingView } from '@/components/mapping/ObjectMappingView'
 import { Button } from '@/components/ui/button'
+import { StepNavigation } from '@/components/plans/step-navigation'
 
 export default function MappingPage() {
   const params = useParams<{ planId: string }>()
@@ -81,6 +82,7 @@ export default function MappingPage() {
           )}
         </div>
       )}
+      <StepNavigation planId={params.planId} currentStep="MAPPING" />
     </main>
   )
 }

@@ -7,6 +7,7 @@ import { AdapterSelector } from '@/components/destination/adapter-selector'
 import { SetupProgress } from '@/components/connection/SetupProgress'
 import { Button } from '@/components/ui/button'
 import { useConnectionSetup } from '@/hooks/use-connection-setup'
+import { StepNavigation } from '@/components/plans/step-navigation'
 
 interface DestinationConnection {
   id: string
@@ -108,6 +109,7 @@ export default function DestinationConnectionPage() {
           )}
         </div>
       )}
+      <StepNavigation planId={params.planId} currentStep="DESTINATION" />
     </main>
   )
 }

@@ -110,7 +110,7 @@ export default function PlanDetailPage() {
       <div className="grid gap-8 md:grid-cols-[240px_1fr]">
         <aside>
           <h2 className="text-sm font-medium mb-4">Workflow</h2>
-          <StepWorkflow currentStep={plan.currentStep} />
+          <StepWorkflow planId={plan.id} currentStep={plan.currentStep} />
         </aside>
         <section>
           <h2 className="text-sm font-medium mb-4">Current Step</h2>

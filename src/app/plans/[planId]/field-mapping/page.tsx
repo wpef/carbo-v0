@@ -7,6 +7,7 @@ import { useFieldMapping } from '@/hooks/use-field-mapping'
 import { FieldMappingView } from '@/components/mapping/FieldMappingView'
 import { FilterPanel } from '@/components/filters/filter-panel'
 import { Button } from '@/components/ui/button'
+import { StepNavigation } from '@/components/plans/step-navigation'
 import type { ObjectMappingDTO } from '@/lib/types/mapping'
 
 // ---------------------------------------------------------------------------
@@ -253,6 +254,7 @@ export default function FieldMappingPage() {
           </div>
         </div>
       )}
+      <StepNavigation planId={params.planId} currentStep="FIELD_MAPPING" />
     </main>
   )
 }

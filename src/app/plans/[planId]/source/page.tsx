@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useConnectionSetup } from '@/hooks/use-connection-setup'
 import { useSourceConnection } from '@/hooks/use-source-connection'
+import { StepNavigation } from '@/components/plans/step-navigation'
 import type { AdapterMetadata } from '@/lib/connectors/registry'
 
 export default function SourceConnectionPage() {
@@ -184,6 +185,7 @@ export default function SourceConnectionPage() {
           )}
         </div>
       )}
+      <StepNavigation planId={params.planId} currentStep="SOURCE" />
     </main>
   )
 }
