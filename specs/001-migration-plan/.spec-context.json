@@ -1,0 +1,15 @@
+{
+  "currentStep": "specify",
+  "stepHistory": {
+    "plan": {
+      "startedAt": "2026-04-07T12:23:07.575Z",
+      "completedAt": "2026-04-07T12:23:08.143Z"
+    },
+    "specify": {
+      "startedAt": "2026-04-07T12:23:08.143Z",
+      "completedAt": null
+    }
+  },
+  "status": "active",
+  "specName": "Migration Plan"
+}
