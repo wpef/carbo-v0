@@ -6,9 +6,10 @@
 import type { LinkStatus } from '@/lib/types/field-mapping'
 
 interface FieldLinkProps {
-  sourceY: number
-  destY: number
-  containerWidth: number
+  x1: number
+  y1: number
+  x2: number
+  y2: number
   fieldMappingId: string
   linkStatus: LinkStatus
   onDelete?: (fieldMappingId: string) => void
@@ -24,26 +25,25 @@ const STATUS_COLORS: Record<LinkStatus, string> = {
 }
 
 export function FieldLink({
-  sourceY,
-  destY,
-  containerWidth,
+  x1,
+  y1,
+  x2,
+  y2,
   fieldMappingId,
   linkStatus,
   onDelete,
   onOpenMigrationLogic,
 }: FieldLinkProps) {
-  const x1 = 0
-  const x2 = containerWidth
-  const midX = containerWidth / 2
+  const dx = x2 - x1
+  const cpOffset = Math.abs(dx) * 0.4
 
-  const path = `M ${x1} ${sourceY} C ${x1 + midX * 0.6} ${sourceY}, ${x2 - midX * 0.6} ${destY}, ${x2} ${destY}`
-  const midY = (sourceY + destY) / 2
+  const path = `M ${x1} ${y1} C ${x1 + cpOffset} ${y1}, ${x2 - cpOffset} ${y2}, ${x2} ${y2}`
+  const midX = (x1 + x2) / 2
+  const midY = (y1 + y2) / 2
 
   const stroke = STATUS_COLORS[linkStatus]
   const strokeDasharray = linkStatus === 'RED_DASHED' ? '5 3' : undefined
 
-  // Show migration-logic click zone on the path itself
-  // and delete button near the midpoint but offset
   const hasActions = onDelete || onOpenMigrationLogic
 
   return (
@@ -81,7 +81,7 @@ export function FieldLink({
               role="button"
               aria-label="Open migration logic"
             >
-              <circle r={7} fill="hsl(var(--background))" stroke={stroke} strokeWidth={1.5} />
+              <circle r={7} fill="var(--background)" stroke={stroke} strokeWidth={1.5} />
               <text
                 textAnchor="middle"
                 dominantBaseline="central"
@@ -102,12 +102,12 @@ export function FieldLink({
               role="button"
               aria-label="Remove field mapping"
             >
-              <circle r={7} fill="hsl(var(--background))" stroke="hsl(var(--border))" strokeWidth={1} />
+              <circle r={7} fill="var(--background)" stroke="var(--border)" strokeWidth={1} />
               <text
                 textAnchor="middle"
                 dominantBaseline="central"
                 fontSize={10}
-                fill="hsl(var(--muted-foreground))"
+                fill="var(--muted-foreground)"
                 className="select-none"
               >
                 ×

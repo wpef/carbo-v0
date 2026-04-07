@@ -263,17 +263,6 @@ export async function autoMatchFields(objectMappingId: string): Promise<FieldAut
     return { created: 0, skipped: 0, pairs: [] }
   }
 
-  const pairs = getFieldAutoMatchPairs(
-    sourceConn.adapterType,
-    destConn.adapterType,
-    objectMapping.sourceObjectApiName,
-    objectMapping.destObjectApiName,
-  )
-
-  if (pairs.length === 0) {
-    return { created: 0, skipped: 0, pairs: [] }
-  }
-
   // Load source and dest fields by apiName
   const [sourceFields, destFields] = await Promise.all([
     prisma.objectField.findMany({ where: { objectId: objectMapping.sourceObjectId } }),
@@ -281,7 +270,30 @@ export async function autoMatchFields(objectMappingId: string): Promise<FieldAut
   ])
 
   const sourceByApiName = new Map(sourceFields.map((f) => [f.apiName, f]))
+  const sourceByLowerApiName = new Map(sourceFields.map((f) => [f.apiName.toLowerCase(), f]))
   const destByApiName = new Map(destFields.map((f) => [f.apiName, f]))
+  const destByLowerApiName = new Map(destFields.map((f) => [f.apiName.toLowerCase(), f]))
+
+  // Registry-based pairs
+  const registryPairs = getFieldAutoMatchPairs(
+    sourceConn.adapterType,
+    destConn.adapterType,
+    objectMapping.sourceObjectApiName,
+    objectMapping.destObjectApiName,
+  )
+
+  // Name-based matching (case-insensitive) for fields not covered by registry
+  const registrySourceNames = new Set(registryPairs.map((p) => p.sourceFieldApiName.toLowerCase()))
+  const destByLowerName = new Map(destFields.map((f) => [f.apiName.toLowerCase(), f.apiName]))
+  const namePairs = sourceFields
+    .filter((sf) => !registrySourceNames.has(sf.apiName.toLowerCase()) && destByLowerName.has(sf.apiName.toLowerCase()))
+    .map((sf) => ({
+      sourceFieldApiName: sf.apiName,
+      destFieldApiName: destByLowerName.get(sf.apiName.toLowerCase())!,
+    }))
+
+  // Combine: registry first, then name-based for the rest
+  const pairs = [...registryPairs, ...namePairs]
 
   // Get already-mapped source field API names
   const existingMappings = await prisma.fieldMapping.findMany({
@@ -293,12 +305,13 @@ export async function autoMatchFields(objectMappingId: string): Promise<FieldAut
   const result: FieldAutoMatchResult = { created: 0, skipped: 0, pairs: [] }
 
   for (const pair of pairs) {
-    const sourceField = sourceByApiName.get(pair.sourceFieldApiName)
-    const destField = destByApiName.get(pair.destFieldApiName)
+    // Case-insensitive lookup with exact-match fallback
+    const sourceField = sourceByApiName.get(pair.sourceFieldApiName) ?? sourceByLowerApiName.get(pair.sourceFieldApiName.toLowerCase())
+    const destField = destByApiName.get(pair.destFieldApiName) ?? destByLowerApiName.get(pair.destFieldApiName.toLowerCase())
 
     if (!sourceField || !destField) continue
 
-    if (alreadyMapped.has(pair.sourceFieldApiName)) {
+    if (alreadyMapped.has(sourceField.apiName)) {
       result.skipped++
       result.pairs.push({
         sourceFieldApiName: pair.sourceFieldApiName,

@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useFieldMapping } from '@/hooks/use-field-mapping'
 import { FieldMappingView } from '@/components/mapping/FieldMappingView'
+import { FilterPanel } from '@/components/filters/filter-panel'
 
 export default function FieldMappingPage() {
   const params = useParams<{ planId: string; mappingId: string }>()
@@ -54,22 +55,33 @@ export default function FieldMappingPage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading field mapping data...</p>
       ) : (
-        <FieldMappingView
-          planId={planId}
-          objectMappingId={mappingId}
-          sourceObjectLabel={sourceObjectLabel}
-          destObjectLabel={destObjectLabel}
-          fieldMappings={fieldMappings}
-          unmappedSourceFields={unmappedSourceFields}
-          availableDestFields={availableDestFields}
-          linkState={linkState}
-          selectedSourceFieldId={selectedSourceFieldId}
-          onSelectSource={selectSourceField}
-          onCreateLink={createLink}
-          onDeleteLink={deleteLink}
-          onAutoMatch={triggerAutoMatch}
-          error={error}
-        />
+        <div className="space-y-10">
+          <FieldMappingView
+            planId={planId}
+            objectMappingId={mappingId}
+            sourceObjectLabel={sourceObjectLabel}
+            destObjectLabel={destObjectLabel}
+            fieldMappings={fieldMappings}
+            unmappedSourceFields={unmappedSourceFields}
+            availableDestFields={availableDestFields}
+            linkState={linkState}
+            selectedSourceFieldId={selectedSourceFieldId}
+            onSelectSource={selectSourceField}
+            onCreateLink={createLink}
+            onDeleteLink={deleteLink}
+            onAutoMatch={triggerAutoMatch}
+            error={error}
+          />
+
+          {/* Source filters for this object mapping */}
+          <section className="border-t pt-8">
+            <FilterPanel
+              planId={planId}
+              mappingId={mappingId}
+              sourceObjectLabel={sourceObjectLabel}
+            />
+          </section>
+        </div>
       )}
     </main>
   )

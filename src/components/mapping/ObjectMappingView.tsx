@@ -32,7 +32,15 @@ interface ObjectMappingViewProps {
 // Tracks the rendered card positions for drawing SVG links
 interface CardPosition {
   objectId: string
+  x: number    // rightX for source, leftX for destination
   centerY: number
+}
+
+interface SvgLayout {
+  sourcePositions: CardPosition[]
+  destPositions: CardPosition[]
+  width: number
+  height: number
 }
 
 export function ObjectMappingView({
@@ -56,10 +64,12 @@ export function ObjectMappingView({
   const destColRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
 
-  const [sourcePositions, setSourcePositions] = useState<CardPosition[]>([])
-  const [destPositions, setDestPositions] = useState<CardPosition[]>([])
-  const [svgWidth, setSvgWidth] = useState(0)
-  const [svgHeight, setSvgHeight] = useState(0)
+  const [svgLayout, setSvgLayout] = useState<SvgLayout>({
+    sourcePositions: [],
+    destPositions: [],
+    width: 0,
+    height: 0,
+  })
 
   // Build full source and dest object lists
   const mappedSourceIds = new Set(mappings.map((m) => m.sourceObjectId))
@@ -94,14 +104,11 @@ export function ObjectMappingView({
       o.apiName.toLowerCase().includes(destSearch.toLowerCase()),
   )
 
-  // Update card positions for SVG links
+  // Update card positions for SVG links — single setState to avoid loops
   const updatePositions = useCallback(() => {
     if (!sourceColRef.current || !destColRef.current || !svgContainerRef.current) return
 
-    const svgRect = svgContainerRef.current.getBoundingClientRect()
-    setSvgWidth(svgRect.width)
-    setSvgHeight(Math.max(svgRect.height, 200))
-
+    const containerRect = svgContainerRef.current.getBoundingClientRect()
     const sourceCards = sourceColRef.current.querySelectorAll('[data-object-id]')
     const destCards = destColRef.current.querySelectorAll('[data-object-id]')
 
@@ -111,22 +118,34 @@ export function ObjectMappingView({
     sourceCards.forEach((card) => {
       const rect = card.getBoundingClientRect()
       const objectId = card.getAttribute('data-object-id') ?? ''
-      newSourcePositions.push({ objectId, centerY: rect.top + rect.height / 2 - svgRect.top })
+      newSourcePositions.push({
+        objectId,
+        x: rect.right - containerRect.left,
+        centerY: rect.top + rect.height / 2 - containerRect.top,
+      })
     })
 
     destCards.forEach((card) => {
       const rect = card.getBoundingClientRect()
       const objectId = card.getAttribute('data-object-id') ?? ''
-      newDestPositions.push({ objectId, centerY: rect.top + rect.height / 2 - svgRect.top })
+      newDestPositions.push({
+        objectId,
+        x: rect.left - containerRect.left,
+        centerY: rect.top + rect.height / 2 - containerRect.top,
+      })
     })
 
-    setSourcePositions(newSourcePositions)
-    setDestPositions(newDestPositions)
+    setSvgLayout({
+      sourcePositions: newSourcePositions,
+      destPositions: newDestPositions,
+      width: containerRect.width,
+      height: containerRect.height,
+    })
   }, [])
 
   useLayoutEffect(() => {
     updatePositions()
-  }, [mappings, unmappedObjects, destObjects, filteredSourceObjects, filteredDestObjects, updatePositions])
+  }, [mappings, unmappedObjects, destObjects, sourceSearch, destSearch, updatePositions])
 
   const handleSourceCircleClick = useCallback(
     (objectId: string) => {
@@ -182,10 +201,16 @@ export function ObjectMappingView({
 
   // Build SVG links data
   const svgLinks = mappings.map((m) => {
-    const sourcePos = sourcePositions.find((p) => p.objectId === m.sourceObjectId)
-    const destPos = destPositions.find((p) => p.objectId === m.destObjectId)
+    const sourcePos = svgLayout.sourcePositions.find((p) => p.objectId === m.sourceObjectId)
+    const destPos = svgLayout.destPositions.find((p) => p.objectId === m.destObjectId)
     if (!sourcePos || !destPos) return null
-    return { mappingId: m.id, sourceY: sourcePos.centerY, destY: destPos.centerY }
+    return {
+      mappingId: m.id,
+      x1: sourcePos.x,
+      y1: sourcePos.centerY,
+      x2: destPos.x,
+      y2: destPos.centerY,
+    }
   }).filter((l): l is NonNullable<typeof l> => l !== null)
 
   const hasUnmapped = unmappedObjects.length > 0
@@ -233,6 +258,24 @@ export function ObjectMappingView({
 
       {/* Two-column layout with SVG overlay */}
       <div className="relative" ref={svgContainerRef}>
+        {/* SVG overlay spanning the full container */}
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          style={{ width: svgLayout.width || '100%', height: svgLayout.height || '100%' }}
+        >
+          {svgLinks.map((link) => (
+            <ObjectLink
+              key={link.mappingId}
+              x1={link.x1}
+              y1={link.y1}
+              x2={link.x2}
+              y2={link.y2}
+              mappingId={link.mappingId}
+              onDelete={handleDeleteLink}
+            />
+          ))}
+        </svg>
+
         <div className="grid grid-cols-[1fr_80px_1fr] gap-0">
           {/* Source column */}
           <div className="space-y-2">
@@ -265,24 +308,8 @@ export function ObjectMappingView({
             </div>
           </div>
 
-          {/* SVG bridge column */}
-          <div className="relative">
-            <svg
-              className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
-              style={{ width: svgWidth || 80, height: svgHeight }}
-            >
-              {svgLinks.map((link) => (
-                <ObjectLink
-                  key={link.mappingId}
-                  sourceY={link.sourceY}
-                  destY={link.destY}
-                  containerWidth={svgWidth || 80}
-                  mappingId={link.mappingId}
-                  onDelete={handleDeleteLink}
-                />
-              ))}
-            </svg>
-          </div>
+          {/* Spacer column for the bridge area */}
+          <div />
 
           {/* Destination column */}
           <div className="space-y-2">

@@ -67,6 +67,7 @@ export default function SourceSchemaPage() {
               <SchemaDiffView diff={diff} />
             </section>
           )}
+
         </div>
       ) : (
         <div className="border rounded-lg p-8 text-center">

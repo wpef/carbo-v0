@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { StepWorkflow } from '@/components/plans/step-workflow'
 import { DeletePlanDialog } from '@/components/plans/delete-plan-dialog'
 import { Badge } from '@/components/ui/badge'
+import { normalizeStep } from '@/lib/types/plan'
 
 interface Plan {
   id: string
@@ -17,6 +18,55 @@ interface Plan {
   destinationConnectionId: string | null
   createdAt: string
   updatedAt: string
+}
+
+const STEP_CONFIG: Record<string, { description: string; href: (planId: string) => string; label: string }> = {
+  SOURCE: {
+    description: 'Connect to your source system. Schema, objects, and fields are retrieved automatically.',
+    href: (id) => `/plans/${id}/source`,
+    label: 'Configure Source',
+  },
+  DESTINATION: {
+    description: 'Connect to the destination system. Schema and fields are retrieved automatically.',
+    href: (id) => `/plans/${id}/destination`,
+    label: 'Configure Destination',
+  },
+  MAPPING: {
+    description: 'Link source objects to destination objects.',
+    href: (id) => `/plans/${id}/mapping`,
+    label: 'Object Mapping',
+  },
+  FIELD_MAPPING: {
+    description: 'Map fields, configure filters and transformation rules for each object pair.',
+    href: (id) => `/plans/${id}/field-mapping`,
+    label: 'Field Mapping',
+  },
+  DOCUMENTS: {
+    description: 'Generate client validation documents.',
+    href: (id) => `/plans/${id}/documents`,
+    label: 'Generate Documents',
+  },
+}
+
+function StepAction({ planId, currentStep }: { planId: string; currentStep: string }) {
+  const normalized = normalizeStep(currentStep)
+  const config = STEP_CONFIG[normalized]
+
+  if (!config) {
+    return <p className="text-muted-foreground text-sm">{currentStep.replace(/_/g, ' ').toLowerCase()}</p>
+  }
+
+  return (
+    <div>
+      <p className="text-muted-foreground text-sm mb-4">{config.description}</p>
+      <Link
+        href={config.href(planId)}
+        className="inline-flex items-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80 transition-colors"
+      >
+        {config.label} &rarr;
+      </Link>
+    </div>
+  )
 }
 
 export default function PlanDetailPage() {
@@ -64,23 +114,7 @@ export default function PlanDetailPage() {
         </aside>
         <section>
           <h2 className="text-sm font-medium mb-4">Current Step</h2>
-          {plan.currentStep === 'SOURCE_CONNECTION' ? (
-            <div>
-              <p className="text-muted-foreground text-sm mb-4">
-                Connect to your source system to begin the migration workflow.
-              </p>
-              <Link
-                href={`/plans/${plan.id}/source`}
-                className="inline-flex items-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80 transition-colors"
-              >
-                Configure Source Connection &rarr;
-              </Link>
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">
-              {plan.currentStep.replace(/_/g, ' ').toLowerCase()} — configure this step to proceed.
-            </p>
-          )}
+          <StepAction planId={plan.id} currentStep={plan.currentStep} />
         </section>
       </div>
     </main>

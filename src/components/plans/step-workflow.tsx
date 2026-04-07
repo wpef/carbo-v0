@@ -1,19 +1,20 @@
 'use client'
 
-import { PLAN_STEPS } from '@/lib/types/plan'
+import { PLAN_STEPS, normalizeStep } from '@/lib/types/plan'
 
 interface StepWorkflowProps {
   currentStep: string
 }
 
 export function StepWorkflow({ currentStep }: StepWorkflowProps) {
-  const currentIndex = PLAN_STEPS.findIndex((s) => s.id === currentStep)
+  const normalized = normalizeStep(currentStep)
+  const currentIndex = PLAN_STEPS.findIndex((s) => s.id === normalized)
 
   return (
     <nav className="space-y-2">
       {PLAN_STEPS.map((step, index) => {
         const isCompleted = index < currentIndex
-        const isCurrent = step.id === currentStep
+        const isCurrent = step.id === normalized
 
         return (
           <div key={step.id} className="flex items-center gap-3">

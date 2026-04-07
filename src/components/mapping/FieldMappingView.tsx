@@ -1,12 +1,9 @@
-// 012-field-mapping — Two-column field mapping view with SVG overlay for links
-// 013-migration-logic — Extended with migration logic modal integration
+// 012-field-mapping — Table-based field mapping view (replaces SVG approach)
+// 013-migration-logic — Integrated migration logic modal
 
 'use client'
 
-import { useState, useRef, useCallback, useLayoutEffect } from 'react'
-import { FieldCard } from './FieldCard'
-import { FieldLink } from './FieldLink'
-import { FieldSearchFilter } from './FieldSearchFilter'
+import { useState, useCallback } from 'react'
 import { MigrationLogicModal } from './MigrationLogicModal'
 import { Button } from '@/components/ui/button'
 import { FieldLinkState } from '@/lib/types/field-mapping'
@@ -36,10 +33,33 @@ interface FieldMappingViewProps {
   error?: string
 }
 
-interface CardPosition {
-  fieldId: string
-  centerY: number
+// ---------------------------------------------------------------------------
+// Compatibility badge
+// ---------------------------------------------------------------------------
+
+const COMPAT_STYLES = {
+  COMPATIBLE: 'bg-green-100 text-green-700 border-green-200',
+  WARNING: 'bg-amber-100 text-amber-700 border-amber-200',
+  INCOMPATIBLE: 'bg-red-100 text-red-700 border-red-200',
+} as const
+
+const COMPAT_LABELS = {
+  COMPATIBLE: 'OK',
+  WARNING: 'Warning',
+  INCOMPATIBLE: 'Incompatible',
+} as const
+
+function TypeBadge({ type }: { type: string }) {
+  return (
+    <span className="text-xs text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+      {type}
+    </span>
+  )
 }
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export function FieldMappingView({
   planId,
@@ -57,10 +77,9 @@ export function FieldMappingView({
   onAutoMatch,
   error,
 }: FieldMappingViewProps) {
-  const [sourceSearch, setSourceSearch] = useState('')
-  const [destSearch, setDestSearch] = useState('')
   const [actionError, setActionError] = useState('')
   const [autoMatching, setAutoMatching] = useState(false)
+  const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
 
   // Migration logic modal state
   const migrationLogic = useMigrationLogic()
@@ -74,120 +93,36 @@ export function FieldMappingView({
     sampleSourceValues: string[]
   } | null>(null)
 
-  const sourceColRef = useRef<HTMLDivElement>(null)
-  const destColRef = useRef<HTMLDivElement>(null)
-  const svgContainerRef = useRef<HTMLDivElement>(null)
-
-  const [sourcePositions, setSourcePositions] = useState<CardPosition[]>([])
-  const [destPositions, setDestPositions] = useState<CardPosition[]>([])
-  const [svgWidth, setSvgWidth] = useState(0)
-  const [svgHeight, setSvgHeight] = useState(0)
-
-  // Build full source and dest field lists
-  const mappedSourceIds = new Set(fieldMappings.map((m) => m.sourceFieldId))
   const mappedDestIds = new Set(fieldMappings.map((m) => m.destFieldId))
 
-  const allSourceFields = [
-    ...fieldMappings.map((m) => ({
-      id: m.sourceFieldId,
-      apiName: m.sourceFieldApiName,
-      label: m.sourceFieldLabel,
-      dataType: m.sourceFieldType,
-      isRequired: false,
-      isMapped: true,
-    })),
-    ...unmappedSourceFields.map((f) => ({
-      id: f.id,
-      apiName: f.apiName,
-      label: f.label,
-      dataType: f.dataType,
-      isRequired: f.isRequired,
-      isMapped: false,
-    })),
-  ]
+  // Available dest fields not yet mapped
+  const unmappedDestFields = availableDestFields.filter((f) => !mappedDestIds.has(f.id))
 
-  const filteredSourceFields = allSourceFields.filter(
-    (f) =>
-      f.label.toLowerCase().includes(sourceSearch.toLowerCase()) ||
-      f.apiName.toLowerCase().includes(sourceSearch.toLowerCase()) ||
-      f.dataType.toLowerCase().includes(sourceSearch.toLowerCase()),
-  )
+  const handleAutoMatch = useCallback(async () => {
+    setAutoMatching(true)
+    setActionError('')
+    await onAutoMatch()
+    setAutoMatching(false)
+  }, [onAutoMatch])
 
-  const filteredDestFields = availableDestFields.filter(
-    (f) =>
-      f.label.toLowerCase().includes(destSearch.toLowerCase()) ||
-      f.apiName.toLowerCase().includes(destSearch.toLowerCase()) ||
-      f.dataType.toLowerCase().includes(destSearch.toLowerCase()),
-  )
-
-  // Update card positions for SVG links
-  const updatePositions = useCallback(() => {
-    if (!sourceColRef.current || !destColRef.current || !svgContainerRef.current) return
-
-    const svgRect = svgContainerRef.current.getBoundingClientRect()
-    setSvgWidth(svgRect.width)
-    setSvgHeight(Math.max(svgRect.height, 200))
-
-    const sourceCards = sourceColRef.current.querySelectorAll('[data-field-id]')
-    const destCards = destColRef.current.querySelectorAll('[data-field-id]')
-
-    const newSourcePositions: CardPosition[] = []
-    const newDestPositions: CardPosition[] = []
-
-    sourceCards.forEach((card) => {
-      const rect = card.getBoundingClientRect()
-      const fieldId = card.getAttribute('data-field-id') ?? ''
-      newSourcePositions.push({ fieldId, centerY: rect.top + rect.height / 2 - svgRect.top })
-    })
-
-    destCards.forEach((card) => {
-      const rect = card.getBoundingClientRect()
-      const fieldId = card.getAttribute('data-field-id') ?? ''
-      newDestPositions.push({ fieldId, centerY: rect.top + rect.height / 2 - svgRect.top })
-    })
-
-    setSourcePositions(newSourcePositions)
-    setDestPositions(newDestPositions)
-  }, [])
-
-  useLayoutEffect(() => {
-    updatePositions()
-  }, [fieldMappings, unmappedSourceFields, availableDestFields, filteredSourceFields, filteredDestFields, updatePositions])
-
-  const handleSourceCircleClick = useCallback(
-    (fieldId: string) => {
-      if (linkState === FieldLinkState.SOURCE_SELECTED && selectedSourceFieldId === fieldId) {
-        onSelectSource(null)
-      } else {
-        onSelectSource(fieldId)
-      }
-    },
-    [linkState, selectedSourceFieldId, onSelectSource],
-  )
-
-  const handleDestCircleClick = useCallback(
-    async (destFieldId: string) => {
-      if (linkState !== FieldLinkState.SOURCE_SELECTED || !selectedSourceFieldId) return
-
-      const sourceField = allSourceFields.find((f) => f.id === selectedSourceFieldId)
-      const destField = availableDestFields.find((f) => f.id === destFieldId)
-      if (!sourceField || !destField) return
-
+  const handleConnect = useCallback(
+    async (sourceFieldId: string, sourceApiName: string, destFieldId: string, destApiName: string) => {
       setActionError('')
       const result = await onCreateLink({
-        sourceFieldId: selectedSourceFieldId,
-        sourceFieldApiName: sourceField.apiName,
+        sourceFieldId,
+        sourceFieldApiName: sourceApiName,
         destFieldId,
-        destFieldApiName: destField.apiName,
+        destFieldApiName: destApiName,
       })
       if (result.error) {
         setActionError(result.error)
       }
+      setConnectingFieldId(null)
     },
-    [linkState, selectedSourceFieldId, allSourceFields, availableDestFields, onCreateLink],
+    [onCreateLink],
   )
 
-  const handleDeleteLink = useCallback(
+  const handleDelete = useCallback(
     async (fieldMappingId: string) => {
       setActionError('')
       const result = await onDeleteLink(fieldMappingId)
@@ -198,14 +133,6 @@ export function FieldMappingView({
     [onDeleteLink],
   )
 
-  const handleAutoMatch = useCallback(async () => {
-    setAutoMatching(true)
-    setActionError('')
-    await onAutoMatch()
-    setAutoMatching(false)
-  }, [onAutoMatch])
-
-  // Open the migration logic modal for a field mapping
   const handleOpenMigrationLogic = useCallback(
     async (fieldMappingId: string) => {
       const mapping = fieldMappings.find((m) => m.id === fieldMappingId)
@@ -216,8 +143,6 @@ export function FieldMappingView({
         sourceFieldType: mapping.sourceFieldType,
         destFieldLabel: mapping.destFieldLabel,
         destFieldType: mapping.destFieldType,
-        // Picklist values are not available without connector call at this stage —
-        // pass empty arrays; the modal will show placeholder text
         sourcePicklistValues: [],
         destPicklistValues: [],
         sampleSourceValues: [],
@@ -247,34 +172,17 @@ export function FieldMappingView({
     [migrationLogic],
   )
 
-  // Build SVG links data
-  const svgLinks = fieldMappings
-    .map((m) => {
-      const sourcePos = sourcePositions.find((p) => p.fieldId === m.sourceFieldId)
-      const destPos = destPositions.find((p) => p.fieldId === m.destFieldId)
-      if (!sourcePos || !destPos) return null
-      return {
-        fieldMappingId: m.id,
-        sourceY: sourcePos.centerY,
-        destY: destPos.centerY,
-        linkStatus: m.linkStatus,
-      }
-    })
-    .filter((l): l is NonNullable<typeof l> => l !== null)
-
-  const hasUnmapped = unmappedSourceFields.length > 0
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
-            {fieldMappings.length} field mapping{fieldMappings.length !== 1 ? 's' : ''}
+            {fieldMappings.length} mapped
           </span>
-          {hasUnmapped && (
+          {unmappedSourceFields.length > 0 && (
             <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
-              {unmappedSourceFields.length} unmapped source field{unmappedSourceFields.length !== 1 ? 's' : ''}
+              {unmappedSourceFields.length} unmapped
             </span>
           )}
         </div>
@@ -285,126 +193,134 @@ export function FieldMappingView({
 
       {(error || actionError) && <p className="text-sm text-destructive">{error || actionError}</p>}
 
-      {linkState === FieldLinkState.SOURCE_SELECTED && (
-        <p className="text-sm text-primary bg-primary/5 border border-primary/20 rounded px-3 py-2">
-          Source field selected. Click a destination field circle to create a link.{' '}
-          <button type="button" onClick={() => onSelectSource(null)} className="underline hover:no-underline">
-            Cancel
-          </button>
-        </p>
+      {/* Mapped fields table */}
+      {fieldMappings.length > 0 && (
+        <div className="border rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
+                <th className="text-left px-3 py-2 font-medium">{sourceObjectLabel}</th>
+                <th className="text-center px-2 py-2 font-medium w-8"></th>
+                <th className="text-left px-3 py-2 font-medium">{destObjectLabel}</th>
+                <th className="text-center px-3 py-2 font-medium">Status</th>
+                <th className="text-right px-3 py-2 font-medium w-24">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fieldMappings.map((m) => (
+                <tr key={m.id} className="border-t border-border hover:bg-muted/20">
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{m.sourceFieldLabel}</span>
+                      <TypeBadge type={m.sourceFieldType} />
+                    </div>
+                    <span className="text-xs text-muted-foreground font-mono">{m.sourceFieldApiName}</span>
+                  </td>
+                  <td className="text-center text-muted-foreground">&rarr;</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{m.destFieldLabel}</span>
+                      <TypeBadge type={m.destFieldType} />
+                    </div>
+                    <span className="text-xs text-muted-foreground font-mono">{m.destFieldApiName}</span>
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`text-xs px-2 py-0.5 rounded border ${COMPAT_STYLES[m.typeCompatibility]}`}>
+                      {COMPAT_LABELS[m.typeCompatibility]}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMigrationLogic(m.id)}
+                        className="text-xs text-primary hover:underline px-1"
+                        title="Configure transformation"
+                      >
+                        Configure
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(m.id)}
+                        className="text-xs text-muted-foreground hover:text-destructive px-1"
+                        title="Remove mapping"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-0.5 bg-green-500 rounded" />
-          Compatible
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-0.5 bg-orange-500 rounded" />
-          Warning
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-0.5 bg-red-500 rounded" />
-          Incompatible
-        </span>
-      </div>
-
-      {/* Column headers */}
-      <div className="grid grid-cols-[1fr_80px_1fr] gap-0">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          {sourceObjectLabel} (Source)
-        </h3>
-        <div />
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          {destObjectLabel} (Destination)
-        </h3>
-      </div>
-
-      {/* Two-column layout with SVG overlay */}
-      <div className="relative" ref={svgContainerRef}>
-        <div className="grid grid-cols-[1fr_80px_1fr] gap-0">
-          {/* Source column */}
-          <div className="space-y-2">
-            <FieldSearchFilter
-              value={sourceSearch}
-              onChange={setSourceSearch}
-              placeholder="Filter source fields..."
-            />
-            <div className="space-y-1 mt-2" ref={sourceColRef}>
-              {filteredSourceFields.map((field) => (
-                <div key={field.id} data-field-id={field.id}>
-                  <FieldCard
-                    id={field.id}
-                    apiName={field.apiName}
-                    label={field.label}
-                    dataType={field.dataType}
-                    isRequired={field.isRequired}
-                    role="source"
-                    isHighlighted={selectedSourceFieldId === field.id}
-                    isMapped={mappedSourceIds.has(field.id)}
-                    onCircleClick={handleSourceCircleClick}
-                  />
-                </div>
-              ))}
-              {filteredSourceFields.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">No fields match your search.</p>
-              )}
-            </div>
-          </div>
-
-          {/* SVG bridge column */}
-          <div className="relative">
-            <svg
-              className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
-              style={{ width: svgWidth || 80, height: svgHeight }}
-            >
-              {svgLinks.map((link) => (
-                <FieldLink
-                  key={link.fieldMappingId}
-                  sourceY={link.sourceY}
-                  destY={link.destY}
-                  containerWidth={svgWidth || 80}
-                  fieldMappingId={link.fieldMappingId}
-                  linkStatus={link.linkStatus}
-                  onDelete={handleDeleteLink}
-                  onOpenMigrationLogic={handleOpenMigrationLogic}
-                />
-              ))}
-            </svg>
-          </div>
-
-          {/* Destination column */}
-          <div className="space-y-2">
-            <FieldSearchFilter
-              value={destSearch}
-              onChange={setDestSearch}
-              placeholder="Filter destination fields..."
-            />
-            <div className="space-y-1 mt-2" ref={destColRef}>
-              {filteredDestFields.map((field) => (
-                <div key={field.id} data-field-id={field.id}>
-                  <FieldCard
-                    id={field.id}
-                    apiName={field.apiName}
-                    label={field.label}
-                    dataType={field.dataType}
-                    isRequired={field.isRequired}
-                    role="destination"
-                    isMapped={mappedDestIds.has(field.id)}
-                    onCircleClick={
-                      linkState === FieldLinkState.SOURCE_SELECTED ? handleDestCircleClick : undefined
-                    }
-                  />
-                </div>
-              ))}
-              {filteredDestFields.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">No fields match your search.</p>
-              )}
-            </div>
+      {/* Unmapped source fields */}
+      {unmappedSourceFields.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            Unmapped Source Fields
+          </h4>
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody>
+                {unmappedSourceFields.map((sf) => (
+                  <tr key={sf.id} className="border-t first:border-t-0 border-border hover:bg-muted/20">
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{sf.label}</span>
+                        <TypeBadge type={sf.dataType} />
+                        {sf.isRequired && (
+                          <span className="text-xs text-destructive">required</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground font-mono">{sf.apiName}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right w-48">
+                      {connectingFieldId === sf.id ? (
+                        <select
+                          className="text-xs border rounded px-2 py-1 w-full bg-background"
+                          defaultValue=""
+                          onChange={(e) => {
+                            const destField = unmappedDestFields.find((d) => d.id === e.target.value)
+                            if (destField) {
+                              handleConnect(sf.id, sf.apiName, destField.id, destField.apiName)
+                            }
+                          }}
+                          onBlur={() => setConnectingFieldId(null)}
+                          autoFocus
+                        >
+                          <option value="" disabled>Select destination...</option>
+                          {unmappedDestFields.map((df) => (
+                            <option key={df.id} value={df.id}>
+                              {df.label} ({df.dataType})
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConnectingFieldId(sf.id)}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          Map to...
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
+      )}
+
+      {fieldMappings.length === 0 && unmappedSourceFields.length === 0 && (
+        <div className="border rounded-lg p-8 text-center text-muted-foreground">
+          No fields available. Check that source and destination schemas are retrieved.
+        </div>
+      )}
 
       {/* Migration Logic Modal */}
       {activeMappingMeta && migrationLogic.suggestedSection && (

@@ -1,23 +1,26 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AdapterPicker } from '@/components/source/AdapterPicker'
-import { ConnectionStatus } from '@/components/source/ConnectionStatus'
 import { DemoModeToggle } from '@/components/source/DemoModeToggle'
+import { SetupProgress } from '@/components/connection/SetupProgress'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useConnectionSetup } from '@/hooks/use-connection-setup'
 import { useSourceConnection } from '@/hooks/use-source-connection'
 import type { AdapterMetadata } from '@/lib/connectors/registry'
 
 export default function SourceConnectionPage() {
   const params = useParams<{ planId: string }>()
+  const router = useRouter()
   const planId = params.planId
 
-  const { connection, loading, error, connecting, disconnecting, connect, disconnect } = useSourceConnection(planId)
+  const { connection, loading: connLoading } = useSourceConnection(planId)
+  const setup = useConnectionSetup(planId, 'source')
 
-  const [selectedAdapter, setSelectedAdapter] = useState<string>('')
+  const [selectedAdapter, setSelectedAdapter] = useState('')
   const [adapterMeta, setAdapterMeta] = useState<AdapterMetadata | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState('')
@@ -29,7 +32,6 @@ export default function SourceConnectionPage() {
       setConfigValues({})
       return
     }
-
     fetch('/api/connectors/registry')
       .then((res) => res.json())
       .then((data: { adapters: AdapterMetadata[] }) => {
@@ -49,32 +51,27 @@ export default function SourceConnectionPage() {
       return
     }
 
-    // Validate required fields
     const missing = adapterMeta?.configFields.filter((f) => f.required && !configValues[f.name])
     if (missing && missing.length > 0) {
       setFormError(`Missing required fields: ${missing.map((f) => f.label).join(', ')}`)
       return
     }
 
-    const config: Record<string, unknown> = {}
-    for (const key of Object.keys(configValues)) {
-      config[key] = configValues[key]
-    }
-
-    const success = await connect(selectedAdapter, config)
-    if (success) {
-      setSelectedAdapter('')
-      setAdapterMeta(null)
-      setConfigValues({})
-    }
+    const config: Record<string, unknown> = { ...configValues }
+    await setup.startSetup(selectedAdapter, config)
   }
 
-  async function handleDisconnect() {
-    await disconnect()
-    setSelectedAdapter('')
+  async function handleNext() {
+    await fetch(`/api/plans/${planId}/step`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: 'DESTINATION' }),
+    })
+    router.push(`/plans/${planId}/destination`)
   }
 
-  const isConnected = connection?.status === 'CONNECTED'
+  const isAlreadyConnected = connection?.status === 'CONNECTED' && setup.phase === 'IDLE'
+  const showForm = !connLoading && !isAlreadyConnected && setup.phase === 'IDLE'
 
   return (
     <main className="max-w-2xl mx-auto p-8">
@@ -85,31 +82,34 @@ export default function SourceConnectionPage() {
       </div>
 
       <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-1">Source Connection</h1>
+        <h1 className="text-2xl font-bold mb-1">Source</h1>
         <p className="text-muted-foreground text-sm">
-          Connect to the system you want to migrate data from.
+          Connect to your source system. Schema, objects, and fields will be retrieved automatically.
         </p>
       </div>
 
-      {/* Current status */}
-      {loading ? (
-        <p className="text-sm text-muted-foreground mb-6">Loading connection status...</p>
-      ) : (
-        <div className="mb-8">
-          <ConnectionStatus
-            status={(connection?.status ?? 'NONE') as 'NONE' | 'PENDING' | 'CONNECTED' | 'EXPIRED' | 'ERROR'}
-            adapterType={connection?.adapterType}
-            connectedAt={connection?.connectedAt}
-            onDisconnect={handleDisconnect}
-            disconnecting={disconnecting}
-          />
+      {/* Already connected state */}
+      {isAlreadyConnected && (
+        <div className="space-y-6">
+          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
+            Source connected ({connection.adapterType}). Setup already completed.
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={handleNext}>
+              Next: Configure Destination &rarr;
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* Show connect form only when not connected */}
-      {!loading && !isConnected && (
+      {/* Loading */}
+      {connLoading && (
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      )}
+
+      {/* Connection form */}
+      {showForm && (
         <form onSubmit={handleConnect} className="space-y-6">
-          {/* Demo shortcut */}
           <section>
             <DemoModeToggle
               onSelect={(type) => setSelectedAdapter(type)}
@@ -123,7 +123,6 @@ export default function SourceConnectionPage() {
             <div className="flex-1 border-t border-border" />
           </div>
 
-          {/* Adapter picker */}
           <section>
             <AdapterPicker
               role="source"
@@ -132,7 +131,6 @@ export default function SourceConnectionPage() {
             />
           </section>
 
-          {/* Dynamic config fields */}
           {adapterMeta && adapterMeta.configFields.length > 0 && (
             <section className="space-y-4">
               <h2 className="text-sm font-medium">Connector Configuration</h2>
@@ -157,23 +155,34 @@ export default function SourceConnectionPage() {
             </section>
           )}
 
-          {/* Errors */}
-          {(formError || error) && (
-            <p className="text-sm text-destructive">{formError || error}</p>
-          )}
+          {formError && <p className="text-sm text-destructive">{formError}</p>}
 
-          {/* Submit */}
           {selectedAdapter && (
-            <Button type="submit" disabled={connecting}>
-              {connecting ? 'Connecting…' : 'Connect'}
+            <Button type="submit" disabled={setup.phase !== 'IDLE'}>
+              Connect &amp; Setup
             </Button>
           )}
         </form>
       )}
 
-      {/* Error from hook when connected */}
-      {!loading && isConnected && error && (
-        <p className="text-sm text-destructive mt-4">{error}</p>
+      {/* Setup progress */}
+      {setup.phase !== 'IDLE' && (
+        <div className="mt-6 space-y-6">
+          <SetupProgress
+            phase={setup.phase}
+            error={setup.error}
+            role="source"
+            results={setup.results}
+          />
+
+          {setup.isComplete && (
+            <div className="flex justify-end">
+              <Button onClick={handleNext}>
+                Next: Configure Destination &rarr;
+              </Button>
+            </div>
+          )}
+        </div>
       )}
     </main>
   )

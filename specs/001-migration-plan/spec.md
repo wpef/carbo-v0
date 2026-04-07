@@ -24,8 +24,8 @@ then deletes it.
 3. **Given** existing plans, **When** the consultant views the home page, **Then** all plans are
    listed with their name, status, and current step indicator.
 4. **Given** a plan, **When** the consultant opens it, **Then** a vertical step workflow is
-   displayed: Source Connection → Object Selection → Destination Connection → Object/Field
-   Mapping → Documents → Run.
+   displayed: Source → Destination → Object Mapping → Field Mapping → Documents.
+   <!-- Updated: 2026-04-07 — Workflow simplified from 6 steps to 5. Source/Destination steps auto-retrieve schema+objects+fields. Field Mapping is a dedicated step, separate from Object Mapping. RUN step removed (Phase 2). -->
 5. **Given** a plan with no dependencies, **When** the consultant deletes it, **Then** the plan
    and all associated data (connections, schemas, mappings, documents) are cascade-deleted.
 
@@ -66,3 +66,18 @@ then deletes it.
 - The home page is a plan list — there is no content outside of a plan context.
 - A plan has at most one source connection and one destination connection.
 - All features (connection, schema, mapping, documents) are scoped to a plan.
+
+## Session Learnings
+
+### Bugs résolus
+
+1. **No navigation after source connection** — After connecting a source, there was no button to proceed. Fixed by adding "Next" buttons on every step page and an API endpoint (`PATCH /api/plans/[planId]/step`) for forward-only step advancement.
+2. **Plan step not advancing** — `currentStep` was hardcoded to advance inside `connectSource()`/`connectDestination()` services, creating coupling. Step advancement is now client-driven via the step API.
+3. **Legacy step values in DB** — Existing plans with old step names (`SOURCE_CONNECTION`, `OBJECT_SELECTION`, etc.) would break. Added `normalizeStep()` function that maps legacy values to new step names.
+
+### Clarifications
+
+1. **Workflow steps reduced from 6 to 5**: `SOURCE → DESTINATION → MAPPING → FIELD_MAPPING → DOCUMENTS`. The `OBJECT_SELECTION` step is absorbed into `SOURCE` (auto-selected after connection). The `RUN` step is deferred to Phase 2.
+2. **Auto-setup after connection**: When the user connects a source or destination, schema retrieval, object selection (defaults), and field retrieval happen automatically in sequence. The user only clicks "Connect" — no manual "Retrieve Schema" or "Retrieve Fields" steps.
+3. **Field Mapping is a dedicated step**: Field mapping is NOT a sub-feature of object mapping. It has its own page (`/field-mapping`) and step in the workflow. The user validates object correspondences first, then maps fields.
+4. **Step advancement is forward-only**: The `PATCH /step` API validates that the target step index is strictly greater than the current step. No backward navigation via API.

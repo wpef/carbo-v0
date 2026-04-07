@@ -12,7 +12,7 @@ model MigrationPlan {
   name                    String
   description             String?
   status                  String    @default("DRAFT") // DRAFT | READY | BROKEN
-  currentStep             String    @default("SOURCE_CONNECTION")
+  currentStep             String    @default("SOURCE")
   sourceConnectionId      String?
   destinationConnectionId String?
   createdAt               DateTime  @default(now())

@@ -179,7 +179,32 @@ A consultant can remove a field mapping. Removing a field link deletes the mappi
 
 - Source field types and destination field types are provided by the Connector Interface in a normalized format. The field mapping does not query external systems directly.
 - Fill rates are pre-computed by the source connector or computed on-demand from a sample of records.
-- Native field correspondences are defined per connector pair (e.g., Salesforce-to-HubSpot has a known mapping table). This table is maintained at the application level.
-- The compatibility status is determined by a type compatibility matrix that maps source type + destination type pairs to COMPATIBLE, NEEDS_LOGIC, or INCOMPATIBLE.
+- Native field correspondences are defined per connector pair (e.g., Salesforce-to-HubSpot has a known mapping table). This table is maintained at the application level. **A name-based fallback (case-insensitive apiName match) complements the registry for fields not covered by explicit pairs.**
+- The compatibility status is determined by a type compatibility matrix that maps source type + destination type pairs to COMPATIBLE, WARNING, or INCOMPATIBLE (5×5 matrix: text, number, date, picklist, boolean).
+  <!-- Updated: 2026-04-07 — NEEDS_LOGIC renamed to WARNING in implementation. -->
 - One-to-one mapping is enforced within a single object mapping. The same source field can appear in different object mappings (e.g., if Contact is mapped to both Contacts and Leads).
 - Link color status is derived from: (1) type compatibility, (2) whether migration logic exists, and (3) whether that logic is validated. This is a computed state, not stored separately.
+
+## Session Learnings
+
+### Bugs résolus
+
+1. **SVG links traversing the screen** — The two-column SVG approach for visual field links was fundamentally broken: wrong coordinate system, infinite render loops (`useLayoutEffect` with array deps recreated each render), `hsl()` wrapping `oklch()` CSS values producing invisible colors. **Decision: replaced SVG-based FieldMappingView with a table-based UI.** Mapped fields shown in a table (source → dest, type badges, compatibility status, configure/delete actions). Unmapped fields shown separately with a "Map to..." dropdown.
+2. **Auto-match not working** — The auto-match registry used case-sensitive `Map.get()` lookups, but registry keys (e.g., `phone`) didn't match actual field apiNames (e.g., `Phone`). Fixed by adding case-insensitive fallback lookups (`sourceByLowerApiName`, `destByLowerApiName`).
+3. **Auto-match too narrow** — The registry only had hardcoded pairs per adapter combo. Fields with identical names but not in the registry were never matched. Fixed by combining registry pairs with a name-based fallback that matches `sourceApiName.toLowerCase() === destApiName.toLowerCase()` for fields not already covered by the registry.
+4. **Tab badge showing NaN** — The unmapped fields API returns `{ fields: [...] }` but the frontend expected `{ unmappedFields: [...] }`. Fixed key lookup.
+5. **Tab badge not updating** — Stats were fetched once on mount. Added a `version` counter incremented after every create/delete/auto-match operation to trigger re-fetch.
+
+### Edge cases ajoutés
+
+6. **Given** auto-match registry has partial coverage for an adapter combo (e.g., 4 of 12 fields), **When** auto-match runs, **Then** it creates links for both registry pairs AND name-matched pairs not covered by the registry (union, not fallback).
+7. **Given** a source field apiName is "Phone" and the destination field apiName is "phone" (case difference only), **When** auto-match runs, **Then** the fields are matched (case-insensitive comparison).
+8. **Given** the user maps a source field of type "reference" to a destination field of type "text", **When** the link is created, **Then** a confirmation dialog warns about the type mismatch before proceeding.
+
+### Clarifications
+
+1. **Table-based UI replaces SVG two-column view**: The field mapping view is now a table with columns: Source Field (name + type badge) → Dest Field (name + type badge) | Status (OK/Warning/Incompatible) | Actions (Configure, Delete). This is more reliable, accessible, and maintainable than SVG bezier curves.
+2. **Filters are displayed BEFORE field mapping**: In the field mapping page, the FilterPanel for source record filtering appears above the field mapping table, not below it. This reflects the logical order: filter source records first, then map fields.
+3. **Data preview link**: Each object pair tab in the field mapping page includes a "Preview source data →" link that opens the record preview page for the source object.
+4. **Field mapping is a dedicated plan step**: The field mapping page (`/plans/[planId]/field-mapping`) is its own step in the plan workflow (`FIELD_MAPPING`), accessed after object mapping is complete. It shows tabs for each object pair with dynamic progress badges (e.g., "6/12" mapped fields, colored green/orange/red).
+5. **Type compatibility matrix**: The 5×5 matrix maps normalized type categories (text, number, date, picklist, boolean) to COMPATIBLE, WARNING, or INCOMPATIBLE. Unknown types default to "text" (most permissive). Type normalization maps 30+ raw type names to 5 canonical categories.

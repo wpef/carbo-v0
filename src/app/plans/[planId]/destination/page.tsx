@@ -1,16 +1,12 @@
 'use client'
 
-// 006-destination-connection — Destination Connection Page
-
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AdapterSelector } from '@/components/destination/adapter-selector'
-import { ConnectionStatus } from '@/components/destination/connection-status'
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { SetupProgress } from '@/components/connection/SetupProgress'
+import { Button } from '@/components/ui/button'
+import { useConnectionSetup } from '@/hooks/use-connection-setup'
 
 interface DestinationConnection {
   id: string
@@ -18,169 +14,98 @@ interface DestinationConnection {
   adapterType: string
   status: string
   connectedAt: string | null
-  createdAt: string
 }
-
-// ---------------------------------------------------------------------------
-// Page Component
-// ---------------------------------------------------------------------------
 
 export default function DestinationConnectionPage() {
   const params = useParams<{ planId: string }>()
+  const router = useRouter()
   const planId = params.planId
 
-  const [connection, setConnection] = useState<DestinationConnection | null>(null)
-  const [loadingStatus, setLoadingStatus] = useState(true)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const setup = useConnectionSetup(planId, 'destination')
 
-  // -------------------------------------------------------------------------
-  // Fetch current connection status on mount
-  // -------------------------------------------------------------------------
+  const [existingConnection, setExistingConnection] = useState<DestinationConnection | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Check existing connection
   useEffect(() => {
-    fetchConnectionStatus()
+    fetch(`/api/plans/${planId}/destination-connection`)
+      .then((res) => res.json())
+      .then((data) => setExistingConnection(data.connection ?? null))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [planId])
 
-  async function fetchConnectionStatus() {
-    setLoadingStatus(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/plans/${planId}/destination-connection`)
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.error ?? `HTTP ${res.status}`)
-      }
-      const data = await res.json()
-      setConnection(data.connection)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load connection status')
-    } finally {
-      setLoadingStatus(false)
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Connect handler
-  // -------------------------------------------------------------------------
   async function handleConnect(adapterType: string, config: Record<string, string>) {
-    setActionLoading(true)
-    setError(null)
-    setSuccessMessage(null)
-    try {
-      const res = await fetch(`/api/plans/${planId}/destination-connection`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adapterType, config }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error ?? `HTTP ${res.status}`)
-      }
-      setConnection(data.connection)
-      setSuccessMessage(
-        `Destination connected successfully. Next step: retrieve the destination schema.`
-      )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connection failed')
-    } finally {
-      setActionLoading(false)
-    }
+    await setup.startSetup(adapterType, config as Record<string, unknown>)
   }
 
-  // -------------------------------------------------------------------------
-  // Disconnect handler
-  // -------------------------------------------------------------------------
-  async function handleDisconnect() {
-    setActionLoading(true)
-    setError(null)
-    setSuccessMessage(null)
-    try {
-      const res = await fetch(`/api/plans/${planId}/destination-connection`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? `HTTP ${res.status}`)
-      }
-      setConnection(null)
-      setSuccessMessage(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Disconnect failed')
-    } finally {
-      setActionLoading(false)
-    }
+  async function handleNext() {
+    await fetch(`/api/plans/${planId}/step`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: 'MAPPING' }),
+    })
+    router.push(`/plans/${planId}/mapping`)
   }
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
-
-  if (loadingStatus) {
-    return (
-      <main className="max-w-2xl mx-auto p-8">
-        <p className="text-muted-foreground text-sm">Loading...</p>
-      </main>
-    )
-  }
+  const isAlreadyConnected = existingConnection?.status === 'CONNECTED' && setup.phase === 'IDLE'
+  const showForm = !loading && !isAlreadyConnected && setup.phase === 'IDLE'
 
   return (
     <main className="max-w-2xl mx-auto p-8">
       <div className="mb-6">
-        <Link
-          href={`/plans/${planId}`}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
+        <Link href={`/plans/${planId}`} className="text-sm text-muted-foreground hover:text-foreground">
           &larr; Back to plan
         </Link>
       </div>
 
       <div className="mb-8">
-        <h1 className="text-2xl font-bold">Destination Connection</h1>
-        <p className="text-muted-foreground mt-1">
-          Connect the system where migrated data will be written.
+        <h1 className="text-2xl font-bold mb-1">Destination</h1>
+        <p className="text-muted-foreground text-sm">
+          Connect to the destination system. Schema and fields will be retrieved automatically.
         </p>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
+      {loading && <p className="text-sm text-muted-foreground">Loading...</p>}
+
+      {isAlreadyConnected && (
+        <div className="space-y-6">
+          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
+            Destination connected ({existingConnection.adapterType}). Setup already completed.
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={handleNext}>
+              Next: Object Mapping &rarr;
+            </Button>
+          </div>
         </div>
       )}
 
-      {successMessage && !error && (
-        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
-          {successMessage}
-        </div>
-      )}
-
-      {connection ? (
-        <div className="space-y-4">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-            Current Connection
-          </h2>
-          <ConnectionStatus
-            connection={connection}
-            onDisconnect={handleDisconnect}
-            isLoading={actionLoading}
-          />
-          {successMessage && (
-            <div className="flex justify-end">
-              <Link
-                href={`/plans/${planId}`}
-                className="text-sm text-primary hover:underline"
-              >
-                Back to plan overview &rarr;
-              </Link>
-            </div>
-          )}
-        </div>
-      ) : (
+      {showForm && (
         <div className="space-y-4">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
             Choose Adapter
           </h2>
-          <AdapterSelector onConnect={handleConnect} isLoading={actionLoading} />
+          <AdapterSelector onConnect={handleConnect} isLoading={setup.phase !== 'IDLE'} />
+        </div>
+      )}
+
+      {setup.phase !== 'IDLE' && (
+        <div className="mt-6 space-y-6">
+          <SetupProgress
+            phase={setup.phase}
+            error={setup.error}
+            role="destination"
+            results={setup.results}
+          />
+
+          {setup.isComplete && (
+            <div className="flex justify-end">
+              <Button onClick={handleNext}>
+                Next: Object Mapping &rarr;
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </main>

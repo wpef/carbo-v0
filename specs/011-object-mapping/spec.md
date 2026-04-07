@@ -147,3 +147,16 @@ A consultant can remove an existing link between a source object and a destinati
 - Fields remaining to validate is computed from the total source fields minus mapped fields minus intentionally excluded fields.
 - Migration filter count is read from the existing MigrationFilter entities linked to the object mapping.
 - Object mappings are independent of each other within a plan -- they do not share field mappings.
+
+## Session Learnings
+
+### Bugs résolus
+
+1. **SVG links invisible** — ObjectLink used `hsl(var(--primary))` but CSS variables contain `oklch()` values, producing `hsl(oklch(...))` which is an invalid color. Fixed by using `var(--primary)` directly.
+2. **SVG infinite render loop** — `useLayoutEffect` depended on `filteredSourceObjects`/`filteredDestObjects` (arrays recreated every render), causing infinite `setState` loops. Fixed by depending on `sourceSearch`/`destSearch` (primitive values) and using a single `setSvgLayout()` call instead of 4 separate `setState` calls.
+3. **SVG coordinates wrong** — The SVG was positioned inside the 80px bridge column but sized to the full container width. Links were drawn off-screen. Fixed by moving SVG to overlay the full container and using actual x/y coordinates from card bounding rects.
+
+### Clarifications
+
+1. **Object mapping is its own step**: The mapping page (`/plans/[planId]/mapping`) only handles object-to-object linking. Field mapping is a separate step on its own page.
+2. **Navigation after mapping**: After creating object mappings, the user clicks "Next: Field Mapping →" to advance to the dedicated field mapping step.
