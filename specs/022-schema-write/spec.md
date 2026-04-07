@@ -22,7 +22,7 @@ As a consultant, I can add a new field to the destination directly from the fiel
 2. **Given** "Copy from source field" is selected, **When** the consultant picks a source field, **Then** the form pre-fills: name, type, picklist values (if picklist), and description.
 3. **Given** "New field" is selected, **When** the form opens, **Then** all fields are empty and must be filled manually.
 4. **Given** the creation form, **Then** the following fields are available: name (required), type (required), picklist values (required if type is picklist), and description (optional).
-5. **Given** the description field, **When** the consultant clicks a "Generate description" button, **Then** the system calls an LLM to generate a description based on: company/market context (metaprompt), the object type, the field name and type, and sample values (if GDPR-compliant).
+5. **Given** the description field, **When** the consultant clicks a "Generate description" button, **Then** the system calls an LLM to generate a description based on: a metaprompt about the company and its market, information about the object type in question, the field name and type, and a few sample values (if GDPR permits).
 6. **Given** valid field details, **When** the consultant submits the form, **Then** the field is created in the destination system and appears in the destination field list.
 7. **Given** a field name that already exists, **When** the consultant submits, **Then** the system displays an error before or after the API call.
 
@@ -38,8 +38,8 @@ As a consultant, I click on a destination field card to open a detail modal. Fro
 
 **Acceptance Scenarios**:
 
-1. **Given** the field mapping view, **When** the consultant clicks on a destination field card, **Then** a detail modal opens showing editable field properties.
-2. **Given** the detail modal, **Then** the following properties are editable: name, type, picklist values (if picklist), description, and group.
+1. **Given** the field mapping view, **When** the consultant clicks on a destination field card, **Then** a detail popup opens showing editable field properties.
+2. **Given** the detail popup, **Then** the following properties are editable: name, type, picklist values (if the field is a picklist), description, and group (property group on HubSpot, field group on Salesforce).
 3. **Given** the consultant modifies field properties, **When** they click Save, **Then** the changes are applied to the destination system and the local schema snapshot is updated.
 4. **Given** the destination system rejects the modification (e.g., type change not allowed), **When** the save fails, **Then** a clear error message is displayed.
 

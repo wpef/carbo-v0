@@ -120,9 +120,14 @@ A consultant can remove an existing link between a source object and a destinati
 
 ### UI Components
 
-- **A1 — Object List**: Two-column view showing all source and destination objects with visual links between paired objects.
-- **A2 — Object Card (list)**: Card showing object name with a connection circle for link creation. Source cards have the circle on the right, destination cards on the left.
-- **A3 — Object Card (detail)**: Modal showing object name, source/destination label, record count, fields-to-validate count (clickable, navigates to field mapping), and migration filter count.
+- **A1 — Object List**: Two-column view showing all source objects (left) and destination objects (right). Each object is displayed as an A2 card. Visual links connect paired objects (e.g., Account SF ↔ Company HS). Clicking an object card opens a modal showing the A3 detail card.
+- **A2 — Object Card (list)**: Card displaying the object name. Source cards have a connection circle on the right side to initiate a link to a destination object. Destination cards have a connection circle on the left side to receive a link from a source object. Clicking the circle starts the link creation flow.
+- **A3 — Object Card (detail)**: Modal showing:
+  - Object name as title
+  - "Source" or "Destination" as subtitle
+  - Number of records of this type
+  - A section indicating the number of fields remaining to validate for this object (clickable — navigates to the field mapping view for this object)
+  - A section indicating the number of existing migration filters for this object
 
 ### Key Entities
 

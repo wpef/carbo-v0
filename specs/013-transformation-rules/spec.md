@@ -72,7 +72,7 @@ When the source and destination field types are incompatible (e.g., text to numb
 **Acceptance Scenarios**:
 
 1. **Given** source and destination types are incompatible, **When** the modal opens, **Then** a D3 section displays a red-bordered error message explaining the incompatibility.
-2. **Given** the D3 section is displayed, **Then** the message includes: "Unfortunately, we cannot currently link these two field types. We will send you a CSV by email containing the destination IDs and source values for this field so you can update it after migration."
+2. **Given** the D3 section is displayed, **Then** the message includes: "Malheureusement nous ne pouvons pas lier ces deux types de champs actuellement. Nous vous enverrons par email un CSV contenant les IDs de la destination et les valeurs de la source pour ce champ pour que vous puissiez le mettre à jour après la migration selon les modifications souhaitées."
 3. **Given** the D3 section is displayed, **When** the consultant views the action buttons, **Then** only Cancel is active (Save and Validate are disabled or hidden).
 
 ---
@@ -88,9 +88,9 @@ When source and destination types are directly compatible (e.g., text to text, n
 **Acceptance Scenarios**:
 
 1. **Given** source and destination types are directly compatible, **When** the modal opens, **Then** a D4 section displays a grey-bordered informational message.
-2. **Given** text to text mapping, **Then** the message reads: "The value will be copied as-is."
-3. **Given** checkbox to text mapping, **Then** the message reads: "True or False."
-4. **Given** checkbox to number mapping, **Then** the message reads: "True=>1, False=>0."
+2. **Given** text to text mapping, **Then** the message reads: "La valeur sera copiée."
+3. **Given** checkbox to text mapping, **Then** the message reads: "Vrai ou Faux."
+4. **Given** checkbox to number mapping, **Then** the message reads: "Vrai=>1, Faux=>0."
 5. **Given** the D4 section, **When** the consultant clicks Validate, **Then** the migration logic is marked as validated and the link status changes to green.
 
 ---
@@ -115,29 +115,29 @@ The section displayed in the migration logic modal is determined by the followin
 |-------------|-----------------|---------|
 | Picklist | Checkbox | D1. Value Equivalence |
 | Picklist | Picklist | D1. Value Equivalence |
-| Picklist | Text | D4. "The value will be copied as-is" |
+| Picklist | Text | D4. "La valeur sera copiée" |
 | Picklist | Number | D3. Error |
 | Picklist | Date | D3. Error |
 | Text | Number | D3. Error |
 | Text | Picklist | D2. Prompt |
 | Text | Date | D3. Error |
 | Text | Checkbox | D3. Error |
-| Text | Text | D4. "The value will be copied as-is" |
+| Text | Text | D4. "La valeur sera copiée" |
 | Checkbox | Picklist | D1. Value Equivalence |
-| Checkbox | Text | D4. "True or False" |
-| Checkbox | Number | D4. "True=>1, False=>0" |
+| Checkbox | Text | D4. "Vrai ou Faux" |
+| Checkbox | Number | D4. "Vrai=>1, Faux=>0" |
 | Checkbox | Date | D3. Error |
-| Checkbox | Checkbox | D4. "The value will be copied as-is" |
-| Number | Text | D4. "The value will be copied as-is" |
+| Checkbox | Checkbox | D4. "La valeur sera copiée" |
+| Number | Text | D4. "La valeur sera copiée" |
 | Number | Picklist | D2. Prompt |
 | Number | Date | D3. Error |
 | Number | Checkbox | D3. Error |
-| Number | Number | D4. "The value will be copied as-is" |
-| Date | Text | D4. "The value will be copied as-is" |
+| Number | Number | D4. "La valeur sera copiée" |
+| Date | Text | D4. "La valeur sera copiée" |
 | Date | Picklist | D2. Prompt |
 | Date | Number | D3. Error |
 | Date | Checkbox | D3. Error |
-| Date | Date | D4. "The value will be copied as-is" |
+| Date | Date | D4. "La valeur sera copiée" |
 
 ## Requirements
 
@@ -149,7 +149,7 @@ The section displayed in the migration logic modal is determined by the followin
 - **FR-004**: **D1 (Value Equivalence)**: The system MUST display source picklist values on the left and destination picklist values on the right, allowing the consultant to draw lines between them.
 - **FR-005**: **D1**: When the modal opens, values with identical or equivalent names MUST be automatically linked.
 - **FR-006**: **D1**: A source value MUST map to at most one destination value. Multiple source values MAY map to the same destination value (many-to-one).
-- **FR-007**: **D2 (Prompt)**: The system MUST display a text area for the classification prompt with a default placeholder.
+- **FR-007**: **D2 (Prompt)**: The system MUST display a text area for the classification prompt with placeholder: "Classifie ce texte dans une des catégories suivantes".
 - **FR-008**: **D2**: The system MUST display 4-5 example rows, each showing a real source record value and the LLM-generated classification.
 - **FR-009**: **D2**: When the consultant modifies the prompt, the example classifications MUST refresh.
 - **FR-010**: **D3 (Error)**: The system MUST display a red-bordered message explaining the incompatibility and the CSV fallback procedure.
@@ -160,11 +160,24 @@ The section displayed in the migration logic modal is determined by the followin
 
 ### UI Components
 
-- **C2 — Link Detail Modal**: Two-column header (source field left, destination field right) with a type-specific section (D1-D4) in the center and action buttons (Cancel, Save, Validate) at the bottom.
-- **D1 — Value Equivalence**: Two-column value list with drag-to-link interaction. Auto-links equivalent values on load.
-- **D2 — Prompt**: Text area for classification prompt + 4-5 example rows with real source values and LLM classifications.
-- **D3 — Error**: Red-bordered message explaining incompatibility and CSV fallback.
-- **D4 — Informational**: Grey-bordered message with type-specific text (no action needed).
+- **C2 — Link Detail Modal**: Two-column layout:
+  - Left column header: source field name (bold) with type below
+  - Right column header: destination field name (bold) with type below
+  - Center: a type-specific section (D1, D2, D3, or D4) determined by the combination of source and destination field types (see Type Compatibility Matrix)
+  - Bottom: three buttons — Cancel, Save, Validate
+- **D1 — Value Equivalence**: Two-column value list:
+  - Left column: values of the source picklist/checkbox field
+  - Right column: values of the destination picklist/checkbox field
+  - The consultant draws lines from source values to destination values to indicate transformation during migration
+  - When the modal opens, values with equivalent names between source and destination are automatically linked
+  - The section allows saving the lines as migration logic
+- **D2 — Prompt**: Classification prompt interface:
+  - A text area labeled "Prompt" with placeholder: "Classifie ce texte dans une des catégories suivantes"
+  - Below: 4-5 example rows, each showing a real source record value for this field and the LLM-generated classification
+  - The section allows saving the prompt as migration logic
+- **D3 — Error**: Red-bordered message:
+  - "Malheureusement nous ne pouvons pas lier ces deux types de champs actuellement. Nous vous enverrons par email un CSV contenant les IDs de la destination et les valeurs de la source pour ce champ pour que vous puissiez le mettre à jour après la migration selon les modifications souhaitées."
+- **D4 — Informational**: Grey-bordered message displaying a type-specific text (parametric, see Type Compatibility Matrix for the exact text per combination). No action needed from the consultant.
 
 ### Key Entities
 

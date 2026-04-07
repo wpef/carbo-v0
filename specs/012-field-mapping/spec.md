@@ -154,10 +154,28 @@ A consultant can remove a field mapping. Removing a field link deletes the mappi
 
 ### UI Components
 
-- **B1 — Field List**: Two-column view showing all source and destination fields for an object mapping, with visual links (C1) between paired fields.
-- **B2 — Field Card (list)**: Card showing field name, type, fill rate (source only), and connection circle. Source cards have the circle on the right, destination cards on the left.
-- **B3 — Field Card (detail)**: Modal showing field name (title), type (subtitle), description (editable for destination), fill rate (source), and type-specific sections (picklist values, classification prompt).
-- **C1 — Link (list)**: Visual connector between paired source and destination fields. Color-coded by status: green (validated), orange (pending validation), red solid (no logic), red dashed (incompatible types).
+- **B1 — Field List**: Two-column view showing all fields for a source object (left) and its linked destination object (right). Each field is displayed as a B2 card. If a link exists between two fields, it is represented by a C1 element. Clicking a field card opens a modal showing the B3 detail card. Clicking a link opens a modal showing the C2 link detail (see 013-migration-logic).
+- **B2 — Field Card (list)**: Card displaying:
+  - Field name
+  - Field type
+  - If source: fill rate (percentage of records with a value)
+  - If source: a connection circle on the right side to initiate a link to a destination field
+  - If destination: a connection circle on the left side to receive a link from a source field
+  - Clicking the card opens the B3 detail modal
+- **B3 — Field Card (detail)**: Modal showing:
+  - Field name as title
+  - Field type as subtitle
+  - Description section (editable if destination field)
+  - If source: fill rate (percentage)
+  - **Source details:**
+    - If picklist: list of values with count of missing equivalences and equivalences to validate
+    - If text mapped to a destination picklist: classification prompt to validate with example results
+  - **Destination details:** [to be specified]
+- **C1 — Link (list)**: Visual connector between paired source (right side of source card) and destination (left side of destination card) fields. Color-coded by migration status:
+  - **Red solid**: fields are linked but no migration logic is defined
+  - **Orange**: fields are linked, migration logic is defined but not yet validated
+  - **Green**: fields are linked, migration logic exists and is validated
+  - **Red dashed**: fields are linked but types are incompatible (e.g., text → number, picklist → date)
 
 ### Key Entities
 
