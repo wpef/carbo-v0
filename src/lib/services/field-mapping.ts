@@ -66,27 +66,66 @@ function deriveSectionFromTypes(sourceType: string, destType: string): string {
 
 // --- Helpers ---
 
+interface LinkStatusResult {
+  linkStatus: LinkStatus
+  statusDetail?: string
+}
+
 /**
- * Derives LinkStatus from TypeCompatibility + migration logic status.
- * - INCOMPATIBLE type → RED_DASHED (types can't be linked)
- * - No migration logic → RED_SOLID (needs configuration)
- * - Logic DEFINED → ORANGE (needs validation)
- * - Logic VALIDATED → GREEN (ready)
+ * Derives LinkStatus from section type + migration logic completeness.
+ *
+ * New paradigm:
+ * - No config needed (D4 INFORMATIONAL) → GREEN
+ * - Incompatible (D3 ERROR) → RED_DASHED
+ * - Config needed, not done → RED_SOLID ("À configurer")
+ * - Config done, fully complete → GREEN ("Validé")
+ * - Config done, partially complete → GREEN_PARTIAL (with detail)
  */
-export function getLinkStatus(
-  typeCompatibility: TypeCompatibility,
+export function computeLinkStatus(
+  sectionType: string,
   migrationLogicStatus?: string | null,
-  sectionType?: string | null,
-): LinkStatus {
-  // D3 (ERROR) / INCOMPATIBLE → always red dashed
-  if (typeCompatibility === 'INCOMPATIBLE' || sectionType === 'ERROR') return 'RED_DASHED'
-  // D4 (INFORMATIONAL) → auto-validated, no user action needed
-  if (sectionType === 'INFORMATIONAL') return 'GREEN'
-  // D1/D2: check migration logic status
-  if (!migrationLogicStatus || migrationLogicStatus === 'DRAFT') return 'RED_SOLID'
-  if (migrationLogicStatus === 'DEFINED') return 'ORANGE'
-  if (migrationLogicStatus === 'VALIDATED') return 'GREEN'
-  return 'RED_SOLID'
+  sourceValueCount?: number,
+  mappedSourceValueCount?: number,
+  destValueCount?: number,
+  mappedDestValueCount?: number,
+): LinkStatusResult {
+  // D3 (ERROR) → always incompatible
+  if (sectionType === 'ERROR') return { linkStatus: 'RED_DASHED' }
+
+  // D4 (INFORMATIONAL) → auto-validated
+  if (sectionType === 'INFORMATIONAL') return { linkStatus: 'GREEN' }
+
+  // D1/D2: need configuration
+  if (!migrationLogicStatus || migrationLogicStatus === 'DRAFT') {
+    return { linkStatus: 'RED_SOLID' }
+  }
+
+  // Logic exists — check completeness for D1 (VALUE_EQUIVALENCE)
+  if (sectionType === 'VALUE_EQUIVALENCE' && sourceValueCount != null && mappedSourceValueCount != null) {
+    const unmappedSource = sourceValueCount - mappedSourceValueCount
+    const unmappedDest = (destValueCount ?? 0) - (mappedDestValueCount ?? 0)
+
+    if (unmappedSource === 0) {
+      return { linkStatus: 'GREEN' }
+    }
+
+    // Partial — config done but not all values mapped
+    const details: string[] = []
+    if (unmappedSource > 0) details.push(`${unmappedSource} valeur${unmappedSource > 1 ? 's' : ''} source non liée${unmappedSource > 1 ? 's' : ''}`)
+    if (unmappedDest > 0) details.push(`${unmappedDest} valeur${unmappedDest > 1 ? 's' : ''} dest. non utilisée${unmappedDest > 1 ? 's' : ''}`)
+
+    return {
+      linkStatus: 'GREEN_PARTIAL',
+      statusDetail: details.join(', '),
+    }
+  }
+
+  // D2 (PROMPT) — if logic defined/validated, it's good
+  if (migrationLogicStatus === 'DEFINED' || migrationLogicStatus === 'VALIDATED') {
+    return { linkStatus: 'GREEN' }
+  }
+
+  return { linkStatus: 'RED_SOLID' }
 }
 
 function toDTO(
@@ -101,12 +140,46 @@ function toDTO(
     createdAt: Date
     updatedAt: Date
   },
-  sourceField: { label: string; dataType: string } | null,
-  destField: { label: string; dataType: string } | null,
-  migrationLogicStatus?: string | null,
-  sectionType?: string | null,
+  sourceField: { label: string; dataType: string; picklistValues?: string | null } | null,
+  destField: { label: string; dataType: string; picklistValues?: string | null } | null,
+  migrationLogic?: { status: string; sectionType: string; valueEquivalences?: Array<{ sourceValue: string; destinationValue: string }> } | null,
 ): FieldMappingDTO {
   const compatibility = mapping.typeCompatibility as TypeCompatibility
+  const sectionType = migrationLogic?.sectionType ?? deriveSectionFromTypes(
+    sourceField?.dataType ?? 'text',
+    destField?.dataType ?? 'text',
+  )
+
+  // Compute value counts for D1 completeness check
+  let sourceValueCount: number | undefined
+  let mappedSourceValueCount: number | undefined
+  let destValueCount: number | undefined
+  let mappedDestValueCount: number | undefined
+
+  if (sectionType === 'VALUE_EQUIVALENCE' && migrationLogic?.valueEquivalences) {
+    const srcNorm = normaliseType(sourceField?.dataType ?? 'text')
+    const dstNorm = normaliseType(destField?.dataType ?? 'text')
+    const srcPicklist: string[] = sourceField?.picklistValues ? JSON.parse(sourceField.picklistValues) : (srcNorm === 'boolean' ? ['True', 'False'] : [])
+    const dstPicklist: string[] = destField?.picklistValues ? JSON.parse(destField.picklistValues) : (dstNorm === 'boolean' ? ['True', 'False'] : [])
+
+    sourceValueCount = srcPicklist.length
+    destValueCount = dstPicklist.length
+    const equivs = migrationLogic.valueEquivalences
+    const mappedSrcValues = new Set(equivs.map((e) => e.sourceValue))
+    const mappedDstValues = new Set(equivs.map((e) => e.destinationValue))
+    mappedSourceValueCount = srcPicklist.filter((v) => mappedSrcValues.has(v)).length
+    mappedDestValueCount = dstPicklist.filter((v) => mappedDstValues.has(v)).length
+  }
+
+  const { linkStatus, statusDetail } = computeLinkStatus(
+    sectionType,
+    migrationLogic?.status ?? null,
+    sourceValueCount,
+    mappedSourceValueCount,
+    destValueCount,
+    mappedDestValueCount,
+  )
+
   return {
     id: mapping.id,
     objectMappingId: mapping.objectMappingId,
@@ -119,7 +192,8 @@ function toDTO(
     destFieldLabel: destField?.label ?? mapping.destFieldApiName,
     destFieldType: destField?.dataType ?? 'unknown',
     typeCompatibility: compatibility,
-    linkStatus: getLinkStatus(compatibility, migrationLogicStatus, sectionType),
+    linkStatus,
+    statusDetail,
     createdAt: mapping.createdAt.toISOString(),
     updatedAt: mapping.updatedAt.toISOString(),
   }
@@ -133,7 +207,11 @@ function toDTO(
 export async function listFieldMappings(objectMappingId: string): Promise<FieldMappingDTO[]> {
   const mappings = await prisma.fieldMapping.findMany({
     where: { objectMappingId },
-    include: { migrationLogic: { select: { status: true, sectionType: true } } },
+    include: {
+      migrationLogic: {
+        include: { valueEquivalences: true },
+      },
+    },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -153,17 +231,19 @@ export async function listFieldMappings(objectMappingId: string): Promise<FieldM
   return mappings.map((m) => {
     const sourceField = sourceById.get(m.sourceFieldId) ?? null
     const destField = destById.get(m.destFieldId) ?? null
-    // Derive sectionType from migration logic or from type compatibility
-    const sectionType = m.migrationLogic?.sectionType ?? deriveSectionFromTypes(
-      sourceField?.dataType ?? 'text',
-      destField?.dataType ?? 'text',
-    )
+    const logic = m.migrationLogic
     return toDTO(
       m,
       sourceField,
       destField,
-      m.migrationLogic?.status ?? null,
-      sectionType,
+      logic ? {
+        status: logic.status,
+        sectionType: logic.sectionType,
+        valueEquivalences: logic.valueEquivalences.map((ve) => ({
+          sourceValue: ve.sourceValue,
+          destinationValue: ve.destinationValue,
+        })),
+      } : null,
     )
   })
 }
@@ -217,11 +297,7 @@ export async function createFieldMapping(
     typeCompatibility: compatibility,
   })
 
-  const sectionType = deriveSectionFromTypes(
-    sourceField?.dataType ?? 'text',
-    destField?.dataType ?? 'text',
-  )
-  return toDTO(mapping, sourceField, destField, null, sectionType)
+  return toDTO(mapping, sourceField, destField, null)
 }
 
 /**

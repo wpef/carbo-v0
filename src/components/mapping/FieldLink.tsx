@@ -19,7 +19,7 @@ interface FieldLinkProps {
 // Colour mapping for each link status
 const STATUS_COLORS: Record<LinkStatus, string> = {
   GREEN: '#22c55e',
-  ORANGE: '#f97316',
+  GREEN_PARTIAL: '#f59e0b',
   RED_SOLID: '#ef4444',
   RED_DASHED: '#ef4444',
 }

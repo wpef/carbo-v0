@@ -2,7 +2,7 @@
 
 export type TypeCompatibility = 'COMPATIBLE' | 'WARNING' | 'INCOMPATIBLE'
 
-export type LinkStatus = 'GREEN' | 'ORANGE' | 'RED_SOLID' | 'RED_DASHED'
+export type LinkStatus = 'GREEN' | 'GREEN_PARTIAL' | 'RED_SOLID' | 'RED_DASHED'
 
 export interface FieldMappingDTO {
   id: string
@@ -17,6 +17,8 @@ export interface FieldMappingDTO {
   destFieldType: string
   typeCompatibility: TypeCompatibility
   linkStatus: LinkStatus
+  /** Human-readable detail for partial status (e.g. "2 valeurs source non liées") */
+  statusDetail?: string
   createdAt: string
   updatedAt: string
 }
