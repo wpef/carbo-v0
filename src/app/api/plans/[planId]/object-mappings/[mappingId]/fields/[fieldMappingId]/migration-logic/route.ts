@@ -109,12 +109,15 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     const suggestedSection = deriveSectionType(sourceFieldType, destFieldType)
 
     // Parse picklist values from DB (stored as JSON string)
+    // For boolean fields, synthesize ['True', 'False'] if no explicit values
+    const srcNorm = normalise(sourceFieldType)
+    const dstNorm = normalise(destFieldType)
     const sourcePicklistValues: string[] = sourceField?.picklistValues
       ? JSON.parse(sourceField.picklistValues)
-      : []
+      : srcNorm === 'boolean' ? ['True', 'False'] : []
     const destPicklistValues: string[] = destField?.picklistValues
       ? JSON.parse(destField.picklistValues)
-      : []
+      : dstNorm === 'boolean' ? ['True', 'False'] : []
 
     // Get sample source values for D2 (Prompt) sections
     let sampleSourceValues: string[] = []
