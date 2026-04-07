@@ -55,9 +55,9 @@ export function getInformationalMessage(sourceType: string, destType: string): s
   const src = normalise(sourceType)
   const dst = normalise(destType)
 
-  if (src === 'boolean' && dst === 'text') return 'True or False'
-  if (src === 'boolean' && dst === 'number') return 'True=>1, False=>0'
-  return 'The value will be copied as-is.'
+  if (src === 'boolean' && dst === 'text') return 'Vrai ou Faux'
+  if (src === 'boolean' && dst === 'number') return 'Vrai=>1, Faux=>0'
+  return 'La valeur sera copiée.'
 }
 
 // --- Validation helpers ---

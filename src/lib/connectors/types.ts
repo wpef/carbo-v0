@@ -41,6 +41,9 @@ export interface ConnectorField {
   isUnique: boolean
   referenceTo?: string
   relationshipType?: string
+  description?: string
+  picklistValues?: string[]
+  group?: string
 }
 
 export type ConnectorRecord = Record<string, unknown>

@@ -25,7 +25,7 @@ interface ClassificationPromptSectionProps {
 }
 
 const DEFAULT_PLACEHOLDER =
-  'Classify this text into one of the following categories based on its main topic.'
+  'Classifie ce texte dans une des catégories suivantes'
 
 export function ClassificationPromptSection({
   destinationValues,
@@ -91,7 +91,7 @@ export function ClassificationPromptSection({
       {/* Prompt editor */}
       <div>
         <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-          Classification prompt
+          Prompt de classification
         </label>
         <textarea
           value={promptText}
@@ -105,13 +105,13 @@ export function ClassificationPromptSection({
       {/* Example classifications */}
       <div>
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-          Example classifications
-          {classifying && <span className="ml-2 font-normal text-primary animate-pulse">Classifying...</span>}
+          Exemples de classification
+          {classifying && <span className="ml-2 font-normal text-primary animate-pulse">Classification en cours...</span>}
         </p>
 
         {sampleSourceValues.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground text-center">
-            Connect to source system to see example classifications.
+            Connectez-vous au système source pour voir les exemples de classification.
           </div>
         ) : classifyError ? (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
@@ -123,7 +123,7 @@ export function ClassificationPromptSection({
               <thead>
                 <tr className="bg-muted/30 border-b border-border">
                   <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Source value
+                    Valeur source
                   </th>
                   <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Classification
@@ -161,7 +161,7 @@ export function ClassificationPromptSection({
 
       {/* Destination values hint */}
       <p className="text-xs text-muted-foreground">
-        Categories: {destinationValues.map((v) => `"${v}"`).join(', ')}
+        Catégories : {destinationValues.map((v) => `"${v}"`).join(', ')}
       </p>
     </div>
   )

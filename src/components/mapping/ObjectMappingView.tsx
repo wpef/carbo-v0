@@ -3,7 +3,9 @@
 'use client'
 
 import { useState, useRef, useCallback, useLayoutEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { ObjectCard } from './ObjectCard'
+import { ObjectDetailModal } from './ObjectDetailModal'
 import { ObjectLink } from './ObjectLink'
 import { ObjectSearchFilter } from './ObjectSearchFilter'
 import { Button } from '@/components/ui/button'
@@ -43,7 +45,14 @@ interface SvgLayout {
   height: number
 }
 
+interface DetailObjectState {
+  objectId: string
+  objectName: string
+  role: 'source' | 'destination'
+}
+
 export function ObjectMappingView({
+  planId,
   mappings,
   unmappedObjects,
   destObjects,
@@ -55,10 +64,12 @@ export function ObjectMappingView({
   onAutoLink,
   error,
 }: ObjectMappingViewProps) {
+  const router = useRouter()
   const [sourceSearch, setSourceSearch] = useState('')
   const [destSearch, setDestSearch] = useState('')
   const [actionError, setActionError] = useState('')
   const [autoLinking, setAutoLinking] = useState(false)
+  const [detailObject, setDetailObject] = useState<DetailObjectState | null>(null)
 
   const sourceColRef = useRef<HTMLDivElement>(null)
   const destColRef = useRef<HTMLDivElement>(null)
@@ -199,6 +210,23 @@ export function ObjectMappingView({
     setAutoLinking(false)
   }, [onAutoLink])
 
+  const handleSourceCardClick = useCallback((objectId: string) => {
+    const obj = allSourceObjects.find((o) => o.id === objectId)
+    if (!obj) return
+    setDetailObject({ objectId, objectName: obj.label, role: 'source' })
+  }, [allSourceObjects])
+
+  const handleDestCardClick = useCallback((objectId: string) => {
+    const obj = destObjects.find((o) => o.id === objectId)
+    if (!obj) return
+    setDetailObject({ objectId, objectName: obj.label, role: 'destination' })
+  }, [destObjects])
+
+  const handleNavigateToFieldMapping = useCallback(() => {
+    setDetailObject(null)
+    router.push(`/plans/${planId}/field-mapping`)
+  }, [router, planId])
+
   // Build SVG links data
   const svgLinks = mappings.map((m) => {
     const sourcePos = svgLayout.sourcePositions.find((p) => p.objectId === m.sourceObjectId)
@@ -299,6 +327,7 @@ export function ObjectMappingView({
                     isHighlighted={selectedSourceObjectId === obj.id}
                     isMapped={mappedSourceIds.has(obj.id)}
                     onCircleClick={handleSourceCircleClick}
+                    onClick={handleSourceCardClick}
                   />
                 </div>
               ))}
@@ -334,6 +363,7 @@ export function ObjectMappingView({
                     onCircleClick={
                       linkState === LinkState.SOURCE_SELECTED ? handleDestCircleClick : undefined
                     }
+                    onClick={handleDestCardClick}
                   />
                 </div>
               ))}
@@ -344,6 +374,21 @@ export function ObjectMappingView({
           </div>
         </div>
       </div>
+
+      {/* Object detail modal */}
+      {detailObject && (
+        <ObjectDetailModal
+          open={true}
+          onClose={() => setDetailObject(null)}
+          objectName={detailObject.objectName}
+          role={detailObject.role}
+          recordCount={null}
+          fieldsToValidate={0}
+          totalFields={0}
+          migrationFilterCount={0}
+          onNavigateToFieldMapping={handleNavigateToFieldMapping}
+        />
+      )}
     </div>
   )
 }

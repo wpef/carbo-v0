@@ -80,6 +80,7 @@ export function FieldMappingView({
   const [actionError, setActionError] = useState('')
   const [autoMatching, setAutoMatching] = useState(false)
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
+  const [fieldSearch, setFieldSearch] = useState('')
 
   // Migration logic modal state
   const migrationLogic = useMigrationLogic()
@@ -97,6 +98,25 @@ export function FieldMappingView({
 
   // Available dest fields not yet mapped
   const unmappedDestFields = availableDestFields.filter((f) => !mappedDestIds.has(f.id))
+
+  const lowerSearch = fieldSearch.toLowerCase()
+  const filteredMappings = fieldSearch
+    ? fieldMappings.filter(
+        (m) =>
+          m.sourceFieldLabel.toLowerCase().includes(lowerSearch) ||
+          m.sourceFieldApiName.toLowerCase().includes(lowerSearch) ||
+          m.destFieldLabel.toLowerCase().includes(lowerSearch) ||
+          m.destFieldApiName.toLowerCase().includes(lowerSearch),
+      )
+    : fieldMappings
+
+  const filteredUnmappedSourceFields = fieldSearch
+    ? unmappedSourceFields.filter(
+        (sf) =>
+          sf.label.toLowerCase().includes(lowerSearch) ||
+          sf.apiName.toLowerCase().includes(lowerSearch),
+      )
+    : unmappedSourceFields
 
   const handleAutoMatch = useCallback(async () => {
     setAutoMatching(true)
@@ -185,6 +205,13 @@ export function FieldMappingView({
               {unmappedSourceFields.length} unmapped
             </span>
           )}
+          <input
+            type="text"
+            value={fieldSearch}
+            onChange={(e) => setFieldSearch(e.target.value)}
+            placeholder="Filtrer les champs..."
+            className="text-sm border rounded px-2 py-1 bg-background flex-1 max-w-xs"
+          />
         </div>
         <Button variant="outline" size="sm" onClick={handleAutoMatch} disabled={autoMatching}>
           {autoMatching ? 'Matching...' : 'Auto-match'}
@@ -194,7 +221,7 @@ export function FieldMappingView({
       {(error || actionError) && <p className="text-sm text-destructive">{error || actionError}</p>}
 
       {/* Mapped fields table */}
-      {fieldMappings.length > 0 && (
+      {filteredMappings.length > 0 && (
         <div className="border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -207,7 +234,7 @@ export function FieldMappingView({
               </tr>
             </thead>
             <tbody>
-              {fieldMappings.map((m) => (
+              {filteredMappings.map((m) => (
                 <tr key={m.id} className="border-t border-border hover:bg-muted/20">
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
@@ -257,7 +284,7 @@ export function FieldMappingView({
       )}
 
       {/* Unmapped source fields */}
-      {unmappedSourceFields.length > 0 && (
+      {filteredUnmappedSourceFields.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
             Unmapped Source Fields
@@ -265,7 +292,7 @@ export function FieldMappingView({
           <div className="border rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <tbody>
-                {unmappedSourceFields.map((sf) => (
+                {filteredUnmappedSourceFields.map((sf) => (
                   <tr key={sf.id} className="border-t first:border-t-0 border-border hover:bg-muted/20">
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
