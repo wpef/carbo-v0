@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type {
   MigrationLogicDTO,
   SectionType,
@@ -135,6 +135,10 @@ export function useMigrationLogic() {
     })
   }, [])
 
+  // Ref to always have current state in callbacks without stale closures
+  const stateRef = useRef(state)
+  stateRef.current = state
+
   /**
    * Save migration logic (status = DEFINED) or validate (status = VALIDATED).
    * Returns { error? } for the caller to handle UI state.
@@ -144,14 +148,15 @@ export function useMigrationLogic() {
       input: SaveMigrationLogicInput,
       targetStatus: MigrationLogicStatus,
     ): Promise<{ error?: string }> => {
-      if (!state.fieldMappingId || !state.planId || !state.objectMappingId) {
+      const current = stateRef.current
+      if (!current.fieldMappingId || !current.planId || !current.objectMappingId) {
         return { error: 'Modal is not open.' }
       }
 
       setState((prev) => ({ ...prev, saving: true, error: '' }))
 
       try {
-        const { fieldMappingId, planId, objectMappingId } = state
+        const { fieldMappingId, planId, objectMappingId } = current
 
         // We need mappingId — store it separately via a ref approach
         // Get it from the URL by reconstructing. We stored objectMappingId = mappingId.
@@ -184,7 +189,7 @@ export function useMigrationLogic() {
         return { error: err instanceof Error ? err.message : 'Failed to save migration logic.' }
       }
     },
-    [state],
+    [], // stateRef avoids stale closure — no deps needed
   )
 
   /**
@@ -197,12 +202,13 @@ export function useMigrationLogic() {
       destinationValues: string[],
       sampleSourceValues: string[],
     ): Promise<{ classifications: ClassifyResult[]; error?: string }> => {
-      if (!state.fieldMappingId || !state.planId || !state.objectMappingId) {
+      const current = stateRef.current
+      if (!current.fieldMappingId || !current.planId || !current.objectMappingId) {
         return { classifications: [], error: 'Modal is not open.' }
       }
 
       try {
-        const { fieldMappingId, planId, objectMappingId } = state
+        const { fieldMappingId, planId, objectMappingId } = current
         const url = `/api/plans/${planId}/object-mappings/${objectMappingId}/fields/${fieldMappingId}/classify`
         const res = await fetch(url, {
           method: 'POST',
@@ -223,7 +229,7 @@ export function useMigrationLogic() {
         }
       }
     },
-    [state],
+    [], // stateRef avoids stale closure — no deps needed
   )
 
   return {
