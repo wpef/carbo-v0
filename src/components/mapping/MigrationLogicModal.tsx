@@ -112,15 +112,23 @@ export function MigrationLogicModal({
     setActionError('')
     const input = buildInput()
     const result = await onSave(input)
-    if (result.error) setActionError(result.error)
-  }, [sectionType, currentEquivalences, currentPromptText, onSave]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (result.error) {
+      setActionError(result.error)
+    } else {
+      onClose()
+    }
+  }, [sectionType, currentEquivalences, currentPromptText, onSave, onClose]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleValidate = useCallback(async () => {
     setActionError('')
     const input = buildInput()
     const result = await onValidate(input)
-    if (result.error) setActionError(result.error)
-  }, [sectionType, currentEquivalences, currentPromptText, onValidate]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (result.error) {
+      setActionError(result.error)
+    } else {
+      onClose()
+    }
+  }, [sectionType, currentEquivalences, currentPromptText, onValidate, onClose]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function buildInput() {
     return {
@@ -206,26 +214,26 @@ export function MigrationLogicModal({
         <DialogFooter>
           {/* Cancel */}
           <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancel
+            Annuler
           </Button>
 
-          {/* Save — hidden for D3 (Error) and D4 (Informational) */}
+          {/* Enregistrer — hidden for D3 (Error) and D4 (Informational) */}
           {!isError && !isInformational && (
             <Button
               variant="outline"
               onClick={handleSave}
               disabled={saving}
             >
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Enregistrement...' : 'Enregistrer'}
             </Button>
           )}
 
-          {/* Validate — disabled for D3 (Error) */}
+          {/* Valider — disabled for D3 (Error) */}
           <Button
             onClick={handleValidate}
             disabled={saving || isError}
           >
-            {saving ? 'Validating...' : 'Validate'}
+            {saving ? 'Validation...' : 'Valider'}
           </Button>
         </DialogFooter>
       </DialogContent>
