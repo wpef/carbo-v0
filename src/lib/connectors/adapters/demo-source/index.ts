@@ -42,6 +42,10 @@ const DEMO_FIELDS: Record<string, ConnectorField[]> = {
     { apiName: 'lastName', label: 'Last Name', dataType: 'string', isRequired: true, isReadOnly: false, isUnique: false },
     { apiName: 'email', label: 'Email', dataType: 'email', isRequired: false, isReadOnly: false, isUnique: true },
     { apiName: 'phone', label: 'Phone', dataType: 'phone', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'birthDate', label: 'Birth Date', dataType: 'date', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'age', label: 'Age', dataType: 'integer', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'leadSource', label: 'Lead Source', dataType: 'picklist', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'doNotCall', label: 'Do Not Call', dataType: 'boolean', isRequired: false, isReadOnly: false, isUnique: false },
     { apiName: 'accountId', label: 'Account', dataType: 'reference', isRequired: false, isReadOnly: false, isUnique: false, referenceTo: 'Account', relationshipType: 'ManyToOne' },
   ],
   Account: [
@@ -50,6 +54,10 @@ const DEMO_FIELDS: Record<string, ConnectorField[]> = {
     { apiName: 'industry', label: 'Industry', dataType: 'picklist', isRequired: false, isReadOnly: false, isUnique: false },
     { apiName: 'website', label: 'Website', dataType: 'url', isRequired: false, isReadOnly: false, isUnique: false },
     { apiName: 'employeeCount', label: 'Employee Count', dataType: 'integer', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'annualRevenue', label: 'Annual Revenue', dataType: 'currency', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'foundedDate', label: 'Founded Date', dataType: 'date', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'isPartner', label: 'Is Partner', dataType: 'boolean', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'rating', label: 'Rating', dataType: 'picklist', isRequired: false, isReadOnly: false, isUnique: false },
   ],
   Deal: [
     { apiName: 'id', label: 'ID', dataType: 'string', isRequired: true, isReadOnly: true, isUnique: true },
@@ -63,13 +71,13 @@ const DEMO_FIELDS: Record<string, ConnectorField[]> = {
 
 const DEMO_RECORDS: Record<string, Array<Record<string, unknown>>> = {
   Contact: [
-    { id: 'c001', firstName: 'Alice', lastName: 'Martin', email: 'alice.martin@example.com', phone: '+33 6 00 00 00 01', accountId: 'a001' },
-    { id: 'c002', firstName: 'Bob', lastName: 'Dupont', email: 'bob.dupont@example.com', phone: '+33 6 00 00 00 02', accountId: 'a001' },
-    { id: 'c003', firstName: 'Claire', lastName: 'Bernard', email: 'claire.bernard@example.com', phone: null, accountId: 'a002' },
+    { id: 'c001', firstName: 'Alice', lastName: 'Martin', email: 'alice.martin@example.com', phone: '+33 6 00 00 00 01', birthDate: '1990-03-15', age: 36, leadSource: 'Web', doNotCall: false, accountId: 'a001' },
+    { id: 'c002', firstName: 'Bob', lastName: 'Dupont', email: 'bob.dupont@example.com', phone: '+33 6 00 00 00 02', birthDate: '1985-07-22', age: 40, leadSource: 'Referral', doNotCall: true, accountId: 'a001' },
+    { id: 'c003', firstName: 'Claire', lastName: 'Bernard', email: 'claire.bernard@example.com', phone: null, birthDate: null, age: 28, leadSource: 'Trade Show', doNotCall: false, accountId: 'a002' },
   ],
   Account: [
-    { id: 'a001', name: 'Acme Corp', industry: 'Technology', website: 'https://acme.example.com', employeeCount: 250 },
-    { id: 'a002', name: 'Beta Industries', industry: 'Manufacturing', website: null, employeeCount: 45 },
+    { id: 'a001', name: 'Acme Corp', industry: 'Technology', website: 'https://acme.example.com', employeeCount: 250, annualRevenue: 5000000, foundedDate: '2010-01-15', isPartner: true, rating: 'Hot' },
+    { id: 'a002', name: 'Beta Industries', industry: 'Manufacturing', website: null, employeeCount: 45, annualRevenue: 800000, foundedDate: '2015-06-01', isPartner: false, rating: 'Warm' },
   ],
   Deal: [
     { id: 'd001', name: 'Acme Expansion', amount: 50000, stage: 'Negotiation', closeDate: '2026-06-30', accountId: 'a001' },

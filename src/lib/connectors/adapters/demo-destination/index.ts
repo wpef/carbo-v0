@@ -109,6 +109,8 @@ const DEMO_FIELDS: Record<string, ConnectorField[]> = {
     { apiName: 'createdate', label: 'Create Date', dataType: 'datetime', isRequired: false, isReadOnly: true, isUnique: false },
     { apiName: 'lastmodifieddate', label: 'Last Modified Date', dataType: 'datetime', isRequired: false, isReadOnly: true, isUnique: false },
     { apiName: 'hs_email_optout', label: 'Unsubscribed from all email', dataType: 'bool', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'date_of_birth', label: 'Date of Birth', dataType: 'date', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'hs_content_membership_notes', label: 'Membership Notes', dataType: 'number', isRequired: false, isReadOnly: false, isUnique: false },
     { apiName: 'country', label: 'Country/Region', dataType: 'string', isRequired: false, isReadOnly: false, isUnique: false },
     { apiName: 'city', label: 'City', dataType: 'string', isRequired: false, isReadOnly: false, isUnique: false },
     { apiName: 'zip', label: 'Postal Code', dataType: 'string', isRequired: false, isReadOnly: false, isUnique: false },
@@ -133,6 +135,8 @@ const DEMO_FIELDS: Record<string, ConnectorField[]> = {
     { apiName: 'hs_lastmodifieddate', label: 'Last Modified Date', dataType: 'datetime', isRequired: false, isReadOnly: true, isUnique: false },
     { apiName: 'type', label: 'Type', dataType: 'enumeration', isRequired: false, isReadOnly: false, isUnique: false },
     { apiName: 'description', label: 'Description', dataType: 'string', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'is_public', label: 'Is Public Company', dataType: 'bool', isRequired: false, isReadOnly: false, isUnique: false },
+    { apiName: 'founded_year', label: 'Year Founded', dataType: 'date', isRequired: false, isReadOnly: false, isUnique: false },
   ],
 
   deals: [
