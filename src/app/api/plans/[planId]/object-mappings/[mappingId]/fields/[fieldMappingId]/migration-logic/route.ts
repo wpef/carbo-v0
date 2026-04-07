@@ -17,8 +17,8 @@ function normalise(dataType: string): NormalizedType {
   if (['string', 'text', 'email', 'url', 'phone', 'textarea', 'richtext', 'id'].includes(t)) return 'text'
   if (['number', 'integer', 'int', 'float', 'double', 'decimal', 'currency', 'percent'].includes(t)) return 'number'
   if (['date', 'datetime', 'time'].includes(t)) return 'date'
-  if (['picklist', 'multipicklist', 'enum', 'select'].includes(t)) return 'picklist'
-  if (['boolean', 'checkbox'].includes(t)) return 'boolean'
+  if (['picklist', 'multipicklist', 'enum', 'enumeration', 'select'].includes(t)) return 'picklist'
+  if (['boolean', 'bool', 'checkbox'].includes(t)) return 'boolean'
   return 'text'
 }
 
