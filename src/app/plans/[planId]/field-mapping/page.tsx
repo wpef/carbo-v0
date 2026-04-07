@@ -246,11 +246,29 @@ export default function FieldMappingPage() {
             </section>
           )}
 
-          {/* Next step */}
+          {/* Navigation: next object or next step */}
           <div className="flex justify-end">
-            <Button onClick={handleNext}>
-              Next: Generate Documents &rarr;
-            </Button>
+            {(() => {
+              const currentIndex = mappings.findIndex((m) => m.id === selectedMappingId)
+              const isLast = currentIndex === mappings.length - 1
+
+              if (isLast) {
+                return (
+                  <Button onClick={handleNext}>
+                    Générer les documents &rarr;
+                  </Button>
+                )
+              }
+
+              return (
+                <Button
+                  variant="outline"
+                  onClick={() => setSelectedMappingId(mappings[currentIndex + 1].id)}
+                >
+                  Objet suivant : {mappings[currentIndex + 1].sourceObjectLabel} &rarr; {mappings[currentIndex + 1].destObjectLabel} &rarr;
+                </Button>
+              )
+            })()}
           </div>
         </div>
       )}
