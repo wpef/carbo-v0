@@ -37,16 +37,25 @@ interface FieldMappingViewProps {
 // Compatibility badge
 // ---------------------------------------------------------------------------
 
-const COMPAT_STYLES = {
-  COMPATIBLE: 'bg-green-100 text-green-700 border-green-200',
-  WARNING: 'bg-amber-100 text-amber-700 border-amber-200',
-  INCOMPATIBLE: 'bg-red-100 text-red-700 border-red-200',
+const LINK_STATUS_STYLES = {
+  GREEN: 'bg-green-100 text-green-700 border-green-200',
+  ORANGE: 'bg-amber-100 text-amber-700 border-amber-200',
+  RED_SOLID: 'bg-red-100 text-red-700 border-red-200',
+  RED_DASHED: 'bg-red-100 text-red-700 border-red-200 border-dashed',
 } as const
 
-const COMPAT_LABELS = {
-  COMPATIBLE: 'OK',
-  WARNING: 'Warning',
-  INCOMPATIBLE: 'Incompatible',
+const LINK_STATUS_LABELS = {
+  GREEN: 'Validé',
+  ORANGE: 'À valider',
+  RED_SOLID: 'À configurer',
+  RED_DASHED: 'Incompatible',
+} as const
+
+const LINK_STATUS_ICONS = {
+  GREEN: '✓',
+  ORANGE: '⚠',
+  RED_SOLID: '●',
+  RED_DASHED: '✕',
 } as const
 
 function TypeBadge({ type }: { type: string }) {
@@ -246,8 +255,9 @@ export function FieldMappingView({
                     <span className="text-xs text-muted-foreground font-mono">{m.destFieldApiName}</span>
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <span className={`text-xs px-2 py-0.5 rounded border ${COMPAT_STYLES[m.typeCompatibility]}`}>
-                      {COMPAT_LABELS[m.typeCompatibility]}
+                    <span className={`text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1 ${LINK_STATUS_STYLES[m.linkStatus]}`}>
+                      <span>{LINK_STATUS_ICONS[m.linkStatus]}</span>
+                      {LINK_STATUS_LABELS[m.linkStatus]}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right">
