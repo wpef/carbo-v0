@@ -12,6 +12,41 @@ import { Button } from '@/components/ui/button'
 import { LinkState } from '@/lib/types/mapping'
 import type { ObjectMappingDTO, UnmappedSourceObject, AvailableDestObject } from '@/lib/types/mapping'
 
+// ---------------------------------------------------------------------------
+// Object filter tabs (All / Mapped / Unmapped / Standard / Custom)
+// ---------------------------------------------------------------------------
+
+type ObjectFilter = 'all' | 'mapped' | 'unmapped' | 'standard' | 'custom'
+
+const FILTER_OPTIONS: { value: ObjectFilter; label: string }[] = [
+  { value: 'all', label: 'Tous' },
+  { value: 'mapped', label: 'Liés' },
+  { value: 'unmapped', label: 'Non liés' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'custom', label: 'Custom' },
+]
+
+function FilterTabs({ value, onChange }: { value: ObjectFilter; onChange: (v: ObjectFilter) => void }) {
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {FILTER_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+            value === opt.value
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-background text-muted-foreground border-border hover:border-foreground/30'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 interface ObjectMappingViewProps {
   planId: string
   mappings: ObjectMappingDTO[]
@@ -67,6 +102,8 @@ export function ObjectMappingView({
   const router = useRouter()
   const [sourceSearch, setSourceSearch] = useState('')
   const [destSearch, setDestSearch] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'mapped' | 'unmapped' | 'standard' | 'custom'>('all')
+  const [destFilter, setDestFilter] = useState<'all' | 'mapped' | 'unmapped' | 'standard' | 'custom'>('all')
   const [actionError, setActionError] = useState('')
   const [autoLinking, setAutoLinking] = useState(false)
   const [detailObject, setDetailObject] = useState<DetailObjectState | null>(null)
@@ -103,17 +140,29 @@ export function ObjectMappingView({
     })),
   ]
 
-  const filteredSourceObjects = allSourceObjects.filter(
-    (o) =>
+  const filteredSourceObjects = allSourceObjects.filter((o) => {
+    const matchesSearch =
       o.label.toLowerCase().includes(sourceSearch.toLowerCase()) ||
-      o.apiName.toLowerCase().includes(sourceSearch.toLowerCase()),
-  )
+      o.apiName.toLowerCase().includes(sourceSearch.toLowerCase())
+    if (!matchesSearch) return false
+    if (sourceFilter === 'mapped') return o.isMapped
+    if (sourceFilter === 'unmapped') return !o.isMapped
+    if (sourceFilter === 'standard') return !o.isCustom
+    if (sourceFilter === 'custom') return o.isCustom
+    return true
+  })
 
-  const filteredDestObjects = destObjects.filter(
-    (o) =>
+  const filteredDestObjects = destObjects.filter((o) => {
+    const matchesSearch =
       o.label.toLowerCase().includes(destSearch.toLowerCase()) ||
-      o.apiName.toLowerCase().includes(destSearch.toLowerCase()),
-  )
+      o.apiName.toLowerCase().includes(destSearch.toLowerCase())
+    if (!matchesSearch) return false
+    if (destFilter === 'mapped') return mappedDestIds.has(o.id)
+    if (destFilter === 'unmapped') return !mappedDestIds.has(o.id)
+    if (destFilter === 'standard') return !o.isCustom
+    if (destFilter === 'custom') return o.isCustom
+    return true
+  })
 
   // Update card positions for SVG links — single setState to avoid loops
   const updatePositions = useCallback(() => {
@@ -315,6 +364,7 @@ export function ObjectMappingView({
               onChange={setSourceSearch}
               placeholder="Filter source objects..."
             />
+            <FilterTabs value={sourceFilter} onChange={setSourceFilter} />
             <div className="space-y-1 mt-2" ref={sourceColRef}>
               {filteredSourceObjects.map((obj) => (
                 <div key={obj.id} data-object-id={obj.id}>
@@ -350,6 +400,7 @@ export function ObjectMappingView({
               onChange={setDestSearch}
               placeholder="Filter destination objects..."
             />
+            <FilterTabs value={destFilter} onChange={setDestFilter} />
             <div className="space-y-1 mt-2" ref={destColRef}>
               {filteredDestObjects.map((obj) => (
                 <div key={obj.id} data-object-id={obj.id}>
