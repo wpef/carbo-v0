@@ -40,21 +40,21 @@ export class ObjectMappingNotFoundError extends Error {
 // --- Helpers ---
 
 /**
- * Derives LinkStatus from TypeCompatibility.
- * GREEN = COMPATIBLE, ORANGE = WARNING, RED_SOLID = INCOMPATIBLE.
- * RED_DASHED is reserved for future use (e.g., broken migration logic).
+ * Derives LinkStatus from TypeCompatibility + migration logic status.
+ * - INCOMPATIBLE type → RED_DASHED (types can't be linked)
+ * - No migration logic → RED_SOLID (needs configuration)
+ * - Logic DEFINED → ORANGE (needs validation)
+ * - Logic VALIDATED → GREEN (ready)
  */
-export function getLinkStatus(typeCompatibility: TypeCompatibility): LinkStatus {
-  switch (typeCompatibility) {
-    case 'COMPATIBLE':
-      return 'GREEN'
-    case 'WARNING':
-      return 'ORANGE'
-    case 'INCOMPATIBLE':
-      return 'RED_SOLID'
-    default:
-      return 'GREEN'
-  }
+export function getLinkStatus(
+  typeCompatibility: TypeCompatibility,
+  migrationLogicStatus?: string | null,
+): LinkStatus {
+  if (typeCompatibility === 'INCOMPATIBLE') return 'RED_DASHED'
+  if (!migrationLogicStatus || migrationLogicStatus === 'DRAFT') return 'RED_SOLID'
+  if (migrationLogicStatus === 'DEFINED') return 'ORANGE'
+  if (migrationLogicStatus === 'VALIDATED') return 'GREEN'
+  return 'RED_SOLID'
 }
 
 function toDTO(
@@ -71,6 +71,7 @@ function toDTO(
   },
   sourceField: { label: string; dataType: string } | null,
   destField: { label: string; dataType: string } | null,
+  migrationLogicStatus?: string | null,
 ): FieldMappingDTO {
   const compatibility = mapping.typeCompatibility as TypeCompatibility
   return {
@@ -85,7 +86,7 @@ function toDTO(
     destFieldLabel: destField?.label ?? mapping.destFieldApiName,
     destFieldType: destField?.dataType ?? 'unknown',
     typeCompatibility: compatibility,
-    linkStatus: getLinkStatus(compatibility),
+    linkStatus: getLinkStatus(compatibility, migrationLogicStatus),
     createdAt: mapping.createdAt.toISOString(),
     updatedAt: mapping.updatedAt.toISOString(),
   }
@@ -99,6 +100,7 @@ function toDTO(
 export async function listFieldMappings(objectMappingId: string): Promise<FieldMappingDTO[]> {
   const mappings = await prisma.fieldMapping.findMany({
     where: { objectMappingId },
+    include: { migrationLogic: { select: { status: true } } },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -115,7 +117,14 @@ export async function listFieldMappings(objectMappingId: string): Promise<FieldM
   const sourceById = new Map(sourceFields.map((f) => [f.id, f]))
   const destById = new Map(destFields.map((f) => [f.id, f]))
 
-  return mappings.map((m) => toDTO(m, sourceById.get(m.sourceFieldId) ?? null, destById.get(m.destFieldId) ?? null))
+  return mappings.map((m) =>
+    toDTO(
+      m,
+      sourceById.get(m.sourceFieldId) ?? null,
+      destById.get(m.destFieldId) ?? null,
+      m.migrationLogic?.status ?? null,
+    ),
+  )
 }
 
 /**
