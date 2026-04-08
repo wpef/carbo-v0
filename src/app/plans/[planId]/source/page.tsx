@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useConnectionSetup } from '@/hooks/use-connection-setup'
 import { useSourceConnection } from '@/hooks/use-source-connection'
-import { StepNavigation } from '@/components/plans/step-navigation'
 import type { AdapterMetadata } from '@/lib/connectors/registry'
 
 export default function SourceConnectionPage() {
@@ -62,15 +61,6 @@ export default function SourceConnectionPage() {
     await setup.startSetup(selectedAdapter, config)
   }
 
-  async function handleNext() {
-    await fetch(`/api/plans/${planId}/step`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 'DESTINATION' }),
-    })
-    router.push(`/plans/${planId}/destination`)
-  }
-
   const isAlreadyConnected = connection?.status === 'CONNECTED' && setup.phase === 'IDLE'
   const showForm = !connLoading && !isAlreadyConnected && setup.phase === 'IDLE'
 
@@ -94,11 +84,6 @@ export default function SourceConnectionPage() {
         <div className="space-y-6">
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
             Source connected ({connection.adapterType}). Setup already completed.
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={handleNext}>
-              Next: Configure Destination &rarr;
-            </Button>
           </div>
         </div>
       )}
@@ -176,16 +161,8 @@ export default function SourceConnectionPage() {
             results={setup.results}
           />
 
-          {setup.isComplete && (
-            <div className="flex justify-end">
-              <Button onClick={handleNext}>
-                Next: Configure Destination &rarr;
-              </Button>
-            </div>
-          )}
         </div>
       )}
-      <StepNavigation planId={params.planId} currentStep="SOURCE" />
     </main>
   )
 }

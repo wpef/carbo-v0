@@ -29,7 +29,13 @@ export async function listPlans() {
 }
 
 export async function getPlan(id: string) {
-  const plan = await prisma.migrationPlan.findUnique({ where: { id } })
+  const plan = await prisma.migrationPlan.findUnique({
+    where: { id },
+    include: {
+      sourceConnection: { select: { adapterType: true, status: true } },
+      destinationConnection: { select: { adapterType: true, status: true } },
+    },
+  })
   if (!plan) throw new PlanNotFoundError(id)
   return plan
 }

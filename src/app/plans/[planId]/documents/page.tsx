@@ -7,7 +7,6 @@ import Link from 'next/link'
 import { usePlanDescription } from '@/hooks/use-plan-description'
 import { useTextDocument } from '@/hooks/use-text-document'
 import { PlanDescriptionView } from '@/components/documents/plan-description-view'
-import { StepNavigation } from '@/components/plans/step-navigation'
 
 export default function DocumentsPage() {
   const params = useParams<{ planId: string }>()
@@ -86,7 +85,6 @@ export default function DocumentsPage() {
       )}
 
       {description && <PlanDescriptionView description={description} />}
-      <StepNavigation planId={params.planId} currentStep="DOCUMENTS" />
     </main>
   )
 }

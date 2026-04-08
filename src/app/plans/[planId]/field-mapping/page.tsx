@@ -1,14 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useFieldMapping } from '@/hooks/use-field-mapping'
 import { FieldMappingView } from '@/components/mapping/FieldMappingView'
 import { FilterPanel } from '@/components/filters/filter-panel'
 import { MigrationPreviewPanel } from '@/components/mapping/MigrationPreviewPanel'
 import { Button } from '@/components/ui/button'
-import { StepNavigation } from '@/components/plans/step-navigation'
 import type { ObjectMappingDTO } from '@/lib/types/mapping'
 
 // ---------------------------------------------------------------------------
@@ -73,7 +72,7 @@ function TabBadge({ planId, mappingId, version }: { planId: string; mappingId: s
 // Inline field mapping panel for a selected object mapping
 // ---------------------------------------------------------------------------
 
-function FieldMappingPanel({ planId, mapping, onChanged }: { planId: string; mapping: ObjectMappingDTO; onChanged: () => void }) {
+function FieldMappingWithPreview({ planId, mapping, onChanged }: { planId: string; mapping: ObjectMappingDTO; onChanged: () => void }) {
   const {
     fieldMappings,
     unmappedSourceFields,
@@ -89,84 +88,73 @@ function FieldMappingPanel({ planId, mapping, onChanged }: { planId: string; map
     refresh,
   } = useFieldMapping(planId, mapping.id)
 
-  const [showPreview, setShowPreview] = useState(false)
-
   const mappedCount = fieldMappings.length
   const totalSourceFields = mappedCount + unmappedSourceFields.length
 
   return (
-    <div className="space-y-8">
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Chargement des champs...</p>
-      ) : (
-        <>
-          {/* Filters first */}
-          <section>
-            <FilterPanel
-              planId={planId}
-              mappingId={mapping.id}
-              sourceObjectLabel={mapping.sourceObjectLabel}
-            />
-          </section>
+    <div className="flex gap-6 items-start">
+      {/* Left: config section (bordered) */}
+      <section className="flex-1 min-w-0 rounded-lg border border-border p-6">
+        <div className="mb-6">
+          <h3 className="text-base font-semibold">
+            {mapping.sourceObjectLabel} &rarr; {mapping.destObjectLabel}
+          </h3>
+        </div>
+        <div className="space-y-8">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Chargement des champs...</p>
+          ) : (
+            <>
+              <section>
+                <FilterPanel
+                  planId={planId}
+                  mappingId={mapping.id}
+                  sourceObjectLabel={mapping.sourceObjectLabel}
+                />
+              </section>
 
-          {/* Stats + preview toggle */}
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              {mappedCount}/{totalSourceFields} champ{totalSourceFields !== 1 ? 's' : ''} source mappé{mappedCount !== 1 ? 's' : ''}.
-              {unmappedSourceFields.length > 0 && (
-                <span className="text-amber-600 ml-2">
-                  {unmappedSourceFields.length} non mappé{unmappedSourceFields.length !== 1 ? 's' : ''}.
-                </span>
-              )}
-            </div>
-            {fieldMappings.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowPreview((v) => !v)}
-                className={`text-xs border rounded px-3 py-1 transition-colors ${
-                  showPreview
-                    ? 'bg-muted border-foreground/30 text-foreground'
-                    : 'hover:bg-muted text-muted-foreground'
-                }`}
-              >
-                {showPreview ? 'Masquer l\'apercu' : 'Apercu de migration'}
-              </button>
-            )}
-          </div>
+              <div className="text-sm text-muted-foreground">
+                {mappedCount}/{totalSourceFields} champ{totalSourceFields !== 1 ? 's' : ''} source mappé{mappedCount !== 1 ? 's' : ''}.
+                {unmappedSourceFields.length > 0 && (
+                  <span className="text-amber-600 ml-2">
+                    {unmappedSourceFields.length} non mappé{unmappedSourceFields.length !== 1 ? 's' : ''}.
+                  </span>
+                )}
+              </div>
 
-          {/* Live preview panel */}
-          {showPreview && fieldMappings.length > 0 && (
-            <section className="rounded-lg border border-border bg-muted/20 p-4">
-              <MigrationPreviewPanel
+              <FieldMappingView
                 planId={planId}
                 objectMappingId={mapping.id}
-                sourceObjectApiName={mapping.sourceObjectApiName}
+                sourceObjectLabel={mapping.sourceObjectLabel}
                 destObjectLabel={mapping.destObjectLabel}
                 fieldMappings={fieldMappings}
+                unmappedSourceFields={unmappedSourceFields}
+                availableDestFields={availableDestFields}
+                linkState={linkState}
+                selectedSourceFieldId={selectedSourceFieldId}
+                onSelectSource={selectSourceField}
+                onCreateLink={async (input) => { const r = await createLink(input); onChanged(); return r }}
+                onDeleteLink={async (id) => { const r = await deleteLink(id); onChanged(); return r }}
+                onAutoMatch={async () => { const r = await triggerAutoMatch(); onChanged(); return r }}
+                onMigrationLogicChanged={() => { refresh(); onChanged() }}
+                error={error}
               />
-            </section>
+            </>
           )}
+        </div>
+      </section>
 
-          {/* Field mapping */}
-          <FieldMappingView
-            planId={planId}
-            objectMappingId={mapping.id}
-            sourceObjectLabel={mapping.sourceObjectLabel}
-            destObjectLabel={mapping.destObjectLabel}
-            fieldMappings={fieldMappings}
-            unmappedSourceFields={unmappedSourceFields}
-            availableDestFields={availableDestFields}
-            linkState={linkState}
-            selectedSourceFieldId={selectedSourceFieldId}
-            onSelectSource={selectSourceField}
-            onCreateLink={async (input) => { const r = await createLink(input); onChanged(); return r }}
-            onDeleteLink={async (id) => { const r = await deleteLink(id); onChanged(); return r }}
-            onAutoMatch={async () => { const r = await triggerAutoMatch(); onChanged(); return r }}
-            onMigrationLogicChanged={() => { refresh(); onChanged() }}
-            error={error}
-          />
-        </>
-      )}
+      {/* Right: preview sidebar — outside the config section */}
+      <aside className="w-96 shrink-0 sticky top-4 border border-border rounded-lg bg-background overflow-hidden max-h-[calc(100vh-8rem)]">
+        <MigrationPreviewPanel
+          planId={planId}
+          objectMappingId={mapping.id}
+          sourceObjectApiName={mapping.sourceObjectApiName}
+          sourceObjectLabel={mapping.sourceObjectLabel}
+          destObjectLabel={mapping.destObjectLabel}
+          fieldMappings={fieldMappings}
+        />
+      </aside>
     </div>
   )
 }
@@ -177,7 +165,6 @@ function FieldMappingPanel({ planId, mapping, onChanged }: { planId: string; map
 
 export default function FieldMappingPage() {
   const params = useParams<{ planId: string }>()
-  const router = useRouter()
   const planId = params.planId
 
   const [mappings, setMappings] = useState<ObjectMappingDTO[]>([])
@@ -202,17 +189,8 @@ export default function FieldMappingPage() {
 
   const selectedMapping = mappings.find((m) => m.id === selectedMappingId) ?? null
 
-  async function handleNext() {
-    await fetch(`/api/plans/${planId}/step`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 'DOCUMENTS' }),
-    })
-    router.push(`/plans/${planId}/documents`)
-  }
-
   return (
-    <main className="max-w-6xl mx-auto p-8">
+    <main className="max-w-360 mx-auto p-8">
       <div className="mb-6">
         <Link href={`/plans/${planId}/mapping`} className="text-sm text-muted-foreground hover:text-foreground">
           &larr; Back to object mapping
@@ -258,45 +236,34 @@ export default function FieldMappingPage() {
             ))}
           </div>
 
-          {/* Selected mapping field panel */}
+          {/* Selected mapping: config + preview side by side */}
           {selectedMapping && (
-            <section key={selectedMapping.id} className="rounded-lg border border-border p-6">
-              <div className="mb-6">
-                <h3 className="text-base font-semibold">
-                  {selectedMapping.sourceObjectLabel} &rarr; {selectedMapping.destObjectLabel}
-                </h3>
-              </div>
-              <FieldMappingPanel planId={planId} mapping={selectedMapping} onChanged={() => setStatsVersion((v) => v + 1)} />
-            </section>
+            <FieldMappingWithPreview
+              key={selectedMapping.id}
+              planId={planId}
+              mapping={selectedMapping}
+              onChanged={() => setStatsVersion((v) => v + 1)}
+            />
           )}
 
-          {/* Navigation: next object or next step */}
-          <div className="flex justify-end">
-            {(() => {
-              const currentIndex = mappings.findIndex((m) => m.id === selectedMappingId)
-              const isLast = currentIndex === mappings.length - 1
-
-              if (isLast) {
-                return (
-                  <Button onClick={handleNext}>
-                    Générer les documents &rarr;
-                  </Button>
-                )
-              }
-
-              return (
+          {/* Navigation between objects (only if multiple) */}
+          {mappings.length > 1 && (() => {
+            const currentIndex = mappings.findIndex((m) => m.id === selectedMappingId)
+            const isLast = currentIndex === mappings.length - 1
+            if (isLast) return null
+            return (
+              <div className="flex justify-end">
                 <Button
                   variant="outline"
                   onClick={() => setSelectedMappingId(mappings[currentIndex + 1].id)}
                 >
                   Objet suivant : {mappings[currentIndex + 1].sourceObjectLabel} &rarr; {mappings[currentIndex + 1].destObjectLabel} &rarr;
                 </Button>
-              )
-            })()}
-          </div>
+              </div>
+            )
+          })()}
         </div>
       )}
-      <StepNavigation planId={params.planId} currentStep="FIELD_MAPPING" />
     </main>
   )
 }

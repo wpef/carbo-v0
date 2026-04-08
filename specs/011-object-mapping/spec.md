@@ -164,4 +164,5 @@ A consultant can remove an existing link between a source object and a destinati
 ### Clarifications
 
 1. **Object mapping is its own step**: The mapping page (`/plans/[planId]/mapping`) only handles object-to-object linking. Field mapping is a separate step on its own page.
-2. **Navigation after mapping**: After creating object mappings, the user clicks "Next: Field Mapping →" to advance to the dedicated field mapping step.
+2. **Navigation after mapping**: Step advancement is handled by the global sidebar button, not a per-page "Next" button. The mapping page no longer has its own "Next: Field Mapping →" button.
+   <!-- Updated: 2026-04-08 — Per-page next button removed in favor of centralized sidebar navigation. -->

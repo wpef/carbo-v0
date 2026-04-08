@@ -1,6 +1,5 @@
-// Panneau de prévisualisation avant/après pour le field mapping
-// Charge un enregistrement source, applique les mappings et équivalences de valeurs,
-// et affiche le résultat côté destination.
+// Sidebar de prévisualisation avant/après pour le field mapping
+// Affiche source et destination côte à côte avec sélecteur d'enregistrement.
 
 'use client'
 
@@ -23,6 +22,7 @@ interface MigrationPreviewPanelProps {
   planId: string
   objectMappingId: string
   sourceObjectApiName: string
+  sourceObjectLabel: string
   destObjectLabel: string
   fieldMappings: FieldMappingDTO[]
 }
@@ -38,6 +38,14 @@ function formatValue(value: unknown): string {
   return String(value)
 }
 
+function recordLabel(record: ConnectorRecord, index: number): string {
+  const textValues = Object.values(record)
+    .filter((v) => typeof v === 'string' && v.length > 0 && v.length < 60)
+    .slice(0, 3)
+  if (textValues.length > 0) return textValues.join(' · ')
+  return `Ligne ${index + 1}`
+}
+
 function applyMappings(
   sourceRecord: ConnectorRecord,
   fieldMappings: FieldMappingDTO[],
@@ -51,7 +59,6 @@ function applyMappings(
 
     let transformedValue: unknown = rawValue
 
-    // Apply value equivalences (picklist mapping)
     if (logic && logic.sectionType === 'VALUE_EQUIVALENCE' && logic.valueEquivalences.length > 0) {
       const strValue = rawValue !== null && rawValue !== undefined ? String(rawValue) : null
       const match = strValue !== null
@@ -67,60 +74,6 @@ function applyMappings(
 }
 
 // ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function RecordColumn({
-  label,
-  fields,
-  record,
-  highlightChanged,
-  referenceRecord,
-}: {
-  label: string
-  fields: Array<{ apiName: string; fieldLabel: string }>
-  record: ConnectorRecord
-  highlightChanged?: boolean
-  referenceRecord?: ConnectorRecord
-}) {
-  return (
-    <div className="flex-1 min-w-0">
-      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-3">
-        {label}
-      </div>
-      <div className="border rounded-lg overflow-hidden">
-        {fields.map((field, i) => {
-          const value = record[field.apiName]
-          const refValue = referenceRecord?.[field.apiName]
-          const changed = highlightChanged && refValue !== undefined && value !== refValue
-
-          return (
-            <div
-              key={field.apiName}
-              className={`flex items-start gap-2 px-3 py-2 text-sm ${
-                i > 0 ? 'border-t border-border' : ''
-              } ${changed ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}
-            >
-              <span className="text-muted-foreground shrink-0 w-36 truncate text-xs pt-0.5">
-                {field.fieldLabel}
-              </span>
-              <span className={`font-mono text-xs break-all ${changed ? 'text-amber-700 dark:text-amber-400' : ''}`}>
-                {formatValue(value)}
-              </span>
-            </div>
-          )
-        })}
-        {fields.length === 0 && (
-          <div className="px-3 py-4 text-sm text-muted-foreground text-center">
-            Aucun champ mappé.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -128,40 +81,36 @@ export function MigrationPreviewPanel({
   planId,
   objectMappingId,
   sourceObjectApiName,
+  sourceObjectLabel,
   destObjectLabel,
   fieldMappings,
 }: MigrationPreviewPanelProps) {
-  const [sourceRecord, setSourceRecord] = useState<ConnectorRecord | null>(null)
+  const [records, setRecords] = useState<ConnectorRecord[]>([])
   const [logicMap, setLogicMap] = useState<Record<string, FieldMigrationLogic>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [recordIndex, setRecordIndex] = useState(0)
-  const [totalRecords, setTotalRecords] = useState(0)
+  const [selectedIndex, setSelectedIndex] = useState(0)
 
-  // Fetch 1 source record at current offset
-  const fetchRecord = useCallback(
-    async (index: number) => {
-      setLoading(true)
-      setError('')
-      try {
-        const url = `/api/plans/${planId}/records/${encodeURIComponent(sourceObjectApiName)}?role=source&page=${index + 1}&pageSize=1`
-        const res = await fetch(url)
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.message ?? 'Erreur lors du chargement.')
-        const records: ConnectorRecord[] = json.records ?? []
-        setTotalRecords(json.totalCount ?? 0)
-        setSourceRecord(records[0] ?? null)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erreur inconnue.')
-        setSourceRecord(null)
-      } finally {
-        setLoading(false)
-      }
-    },
-    [planId, sourceObjectApiName],
-  )
+  // Fetch a batch of source records
+  const fetchRecords = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const url = `/api/plans/${planId}/records/${encodeURIComponent(sourceObjectApiName)}?role=source&page=1&pageSize=25`
+      const res = await fetch(url)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.message ?? 'Erreur lors du chargement.')
+      setRecords(json.records ?? [])
+      setSelectedIndex(0)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue.')
+      setRecords([])
+    } finally {
+      setLoading(false)
+    }
+  }, [planId, sourceObjectApiName])
 
-  // Fetch migration logic for all field mappings that have one
+  // Fetch migration logic for all field mappings
   const fetchLogic = useCallback(async () => {
     if (fieldMappings.length === 0) return
 
@@ -185,118 +134,113 @@ export function MigrationPreviewPanel({
     setLogicMap(map)
   }, [planId, objectMappingId, fieldMappings])
 
-  useEffect(() => {
-    fetchRecord(recordIndex)
-  }, [fetchRecord, recordIndex])
+  useEffect(() => { fetchRecords() }, [fetchRecords])
+  useEffect(() => { fetchLogic() }, [fetchLogic])
 
-  useEffect(() => {
-    fetchLogic()
-  }, [fetchLogic])
+  const sourceRecord = records[selectedIndex] ?? null
+  const destRecord = sourceRecord ? applyMappings(sourceRecord, fieldMappings, logicMap) : null
 
-  const destRecord = sourceRecord
-    ? applyMappings(sourceRecord, fieldMappings, logicMap)
-    : null
-
-  // Build field lists for display
-  const sourceFields = fieldMappings.map((fm) => ({
-    apiName: fm.sourceFieldApiName,
-    fieldLabel: fm.sourceFieldLabel,
-  }))
-
-  const destFields = fieldMappings.map((fm) => ({
-    apiName: fm.destFieldApiName,
-    fieldLabel: fm.destFieldLabel,
-  }))
-
-  // Build source record restricted to mapped fields
-  const mappedSourceRecord: ConnectorRecord = {}
-  if (sourceRecord) {
-    for (const fm of fieldMappings) {
-      mappedSourceRecord[fm.sourceFieldApiName] = sourceRecord[fm.sourceFieldApiName]
-    }
+  if (fieldMappings.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center p-4">
+        <p className="text-xs text-muted-foreground text-center">
+          Mappez des champs pour voir l&apos;aperçu de migration.
+        </p>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-3">
-      {/* Header + navigation */}
-      <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold">Apercu de migration</h4>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          {totalRecords > 0 && (
-            <span className="text-xs">
-              Enregistrement {recordIndex + 1} / {totalRecords}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => setRecordIndex((i) => Math.max(0, i - 1))}
-            disabled={recordIndex === 0 || loading}
-            className="px-2 py-0.5 border rounded text-xs disabled:opacity-40 hover:bg-muted transition-colors"
-          >
-            &larr;
-          </button>
-          <button
-            type="button"
-            onClick={() => setRecordIndex((i) => Math.min(totalRecords - 1, i + 1))}
-            disabled={recordIndex >= totalRecords - 1 || loading}
-            className="px-2 py-0.5 border rounded text-xs disabled:opacity-40 hover:bg-muted transition-colors"
-          >
-            &rarr;
-          </button>
-        </div>
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="px-3 py-2 border-b border-border bg-muted/30 shrink-0">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Aperçu de migration
+        </h4>
       </div>
 
-      {loading && (
-        <div className="border rounded-lg p-6 text-center text-sm text-muted-foreground animate-pulse">
-          Chargement de l&apos;enregistrement...
-        </div>
-      )}
+      {/* Record selector */}
+      <div className="px-3 py-2 border-b border-border bg-background shrink-0">
+        <label className="text-[11px] text-muted-foreground block mb-1">
+          Enregistrement source
+        </label>
+        {loading ? (
+          <div className="text-xs text-muted-foreground animate-pulse py-1">Chargement…</div>
+        ) : error ? (
+          <div className="text-xs text-destructive py-1">{error}</div>
+        ) : records.length === 0 ? (
+          <div className="text-xs text-muted-foreground py-1">Aucun enregistrement disponible.</div>
+        ) : (
+          <select
+            value={selectedIndex}
+            onChange={(e) => setSelectedIndex(Number(e.target.value))}
+            className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {records.map((rec, i) => (
+              <option key={i} value={i}>
+                {recordLabel(rec, i)}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
 
-      {!loading && error && (
-        <div className="border border-destructive/30 rounded-lg p-4 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      {/* Side-by-side: Source | Destination */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {sourceRecord && destRecord && (
+          <div className="flex divide-x divide-border">
+            {/* Source column */}
+            <div className="flex-1 min-w-0">
+              <div className="px-2 py-1.5 bg-muted/20 border-b border-border">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {sourceObjectLabel}
+                </span>
+              </div>
+              {fieldMappings.map((fm, i) => (
+                <div
+                  key={fm.id}
+                  className={`px-2 py-1.5 ${i > 0 ? 'border-t border-border' : ''}`}
+                >
+                  <div className="text-[10px] text-muted-foreground truncate">{fm.sourceFieldLabel}</div>
+                  <div className="text-xs font-mono truncate">{formatValue(sourceRecord[fm.sourceFieldApiName])}</div>
+                </div>
+              ))}
+            </div>
 
-      {!loading && !error && !sourceRecord && (
-        <div className="border rounded-lg p-6 text-center text-sm text-muted-foreground">
-          Aucun enregistrement source disponible.
-        </div>
-      )}
-
-      {!loading && !error && sourceRecord && destRecord && (
-        <div className="flex gap-4">
-          <RecordColumn
-            label="Source"
-            fields={sourceFields}
-            record={mappedSourceRecord}
-          />
-
-          <div className="flex items-center self-center text-muted-foreground/50 shrink-0">
-            &rarr;
+            {/* Destination column */}
+            <div className="flex-1 min-w-0">
+              <div className="px-2 py-1.5 bg-muted/20 border-b border-border">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {destObjectLabel}
+                </span>
+              </div>
+              {fieldMappings.map((fm, i) => {
+                const srcVal = sourceRecord[fm.sourceFieldApiName]
+                const dstVal = destRecord[fm.destFieldApiName]
+                const changed = String(srcVal ?? '') !== String(dstVal ?? '')
+                return (
+                  <div
+                    key={fm.id}
+                    className={`px-2 py-1.5 ${i > 0 ? 'border-t border-border' : ''} ${changed ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}
+                  >
+                    <div className="text-[10px] text-muted-foreground truncate">{fm.destFieldLabel}</div>
+                    <div className={`text-xs font-mono truncate ${changed ? 'text-amber-700 dark:text-amber-400 font-semibold' : ''}`}>
+                      {formatValue(dstVal)}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
+        )}
+      </div>
 
-          <RecordColumn
-            label={destObjectLabel}
-            fields={destFields}
-            record={destRecord}
-            highlightChanged
-            referenceRecord={
-              // Compare dest values to source values at same position for highlighting
-              Object.fromEntries(
-                fieldMappings.map((fm) => [
-                  fm.destFieldApiName,
-                  sourceRecord[fm.sourceFieldApiName],
-                ])
-              )
-            }
-          />
-        </div>
-      )}
-
-      <p className="text-xs text-muted-foreground/60">
-        Apercu calculé localement — seules les équivalences de valeurs configurées sont appliquées.
-      </p>
+      {/* Footer */}
+      <div className="px-3 py-1.5 border-t border-border shrink-0">
+        <p className="text-[10px] text-muted-foreground/60">
+          Aperçu local — seules les équivalences de valeurs sont appliquées.
+        </p>
+      </div>
     </div>
   )
 }

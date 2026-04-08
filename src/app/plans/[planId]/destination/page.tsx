@@ -1,13 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { AdapterSelector } from '@/components/destination/adapter-selector'
 import { SetupProgress } from '@/components/connection/SetupProgress'
-import { Button } from '@/components/ui/button'
 import { useConnectionSetup } from '@/hooks/use-connection-setup'
-import { StepNavigation } from '@/components/plans/step-navigation'
 
 interface DestinationConnection {
   id: string
@@ -19,7 +17,6 @@ interface DestinationConnection {
 
 export default function DestinationConnectionPage() {
   const params = useParams<{ planId: string }>()
-  const router = useRouter()
   const planId = params.planId
 
   const setup = useConnectionSetup(planId, 'destination')
@@ -38,15 +35,6 @@ export default function DestinationConnectionPage() {
 
   async function handleConnect(adapterType: string, config: Record<string, string>) {
     await setup.startSetup(adapterType, config as Record<string, unknown>)
-  }
-
-  async function handleNext() {
-    await fetch(`/api/plans/${planId}/step`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 'MAPPING' }),
-    })
-    router.push(`/plans/${planId}/mapping`)
   }
 
   const isAlreadyConnected = existingConnection?.status === 'CONNECTED' && setup.phase === 'IDLE'
@@ -74,11 +62,6 @@ export default function DestinationConnectionPage() {
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
             Destination connected ({existingConnection.adapterType}). Setup already completed.
           </div>
-          <div className="flex justify-end">
-            <Button onClick={handleNext}>
-              Next: Object Mapping &rarr;
-            </Button>
-          </div>
         </div>
       )}
 
@@ -100,16 +83,8 @@ export default function DestinationConnectionPage() {
             results={setup.results}
           />
 
-          {setup.isComplete && (
-            <div className="flex justify-end">
-              <Button onClick={handleNext}>
-                Next: Object Mapping &rarr;
-              </Button>
-            </div>
-          )}
         </div>
       )}
-      <StepNavigation planId={params.planId} currentStep="DESTINATION" />
     </main>
   )
 }

@@ -1,15 +1,12 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useObjectMapping } from '@/hooks/use-object-mapping'
 import { ObjectMappingView } from '@/components/mapping/ObjectMappingView'
-import { Button } from '@/components/ui/button'
-import { StepNavigation } from '@/components/plans/step-navigation'
 
 export default function MappingPage() {
   const params = useParams<{ planId: string }>()
-  const router = useRouter()
   const planId = params.planId
 
   const {
@@ -25,15 +22,6 @@ export default function MappingPage() {
     triggerAutoLink,
     selectSourceObject,
   } = useObjectMapping(planId)
-
-  async function handleNext() {
-    await fetch(`/api/plans/${planId}/step`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 'FIELD_MAPPING' }),
-    })
-    router.push(`/plans/${planId}/field-mapping`)
-  }
 
   return (
     <main className="max-w-6xl mx-auto p-8">
@@ -70,19 +58,13 @@ export default function MappingPage() {
           />
 
           {mappings.length > 0 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                {mappings.length} object pair{mappings.length !== 1 ? 's' : ''} mapped.
-                {unmappedObjects.length > 0 && ` ${unmappedObjects.length} unmapped.`}
-              </p>
-              <Button onClick={handleNext}>
-                Next: Field Mapping &rarr;
-              </Button>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              {mappings.length} object pair{mappings.length !== 1 ? 's' : ''} mapped.
+              {unmappedObjects.length > 0 && ` ${unmappedObjects.length} unmapped.`}
+            </p>
           )}
         </div>
       )}
-      <StepNavigation planId={params.planId} currentStep="MAPPING" />
     </main>
   )
 }
