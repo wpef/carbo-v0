@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useFieldMapping } from '@/hooks/use-field-mapping'
 import { FieldMappingView } from '@/components/mapping/FieldMappingView'
 import { FilterPanel } from '@/components/filters/filter-panel'
+import { MigrationPreviewPanel } from '@/components/mapping/MigrationPreviewPanel'
 import { Button } from '@/components/ui/button'
 import { StepNavigation } from '@/components/plans/step-navigation'
 import type { ObjectMappingDTO } from '@/lib/types/mapping'
@@ -88,13 +89,15 @@ function FieldMappingPanel({ planId, mapping, onChanged }: { planId: string; map
     refresh,
   } = useFieldMapping(planId, mapping.id)
 
+  const [showPreview, setShowPreview] = useState(false)
+
   const mappedCount = fieldMappings.length
   const totalSourceFields = mappedCount + unmappedSourceFields.length
 
   return (
     <div className="space-y-8">
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading fields...</p>
+        <p className="text-sm text-muted-foreground">Chargement des champs...</p>
       ) : (
         <>
           {/* Filters first */}
@@ -106,24 +109,43 @@ function FieldMappingPanel({ planId, mapping, onChanged }: { planId: string; map
             />
           </section>
 
-          {/* Preview link + stats */}
+          {/* Stats + preview toggle */}
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">
-              {mappedCount}/{totalSourceFields} source field{totalSourceFields !== 1 ? 's' : ''} mapped.
+              {mappedCount}/{totalSourceFields} champ{totalSourceFields !== 1 ? 's' : ''} source mappé{mappedCount !== 1 ? 's' : ''}.
               {unmappedSourceFields.length > 0 && (
                 <span className="text-amber-600 ml-2">
-                  {unmappedSourceFields.length} unmapped.
+                  {unmappedSourceFields.length} non mappé{unmappedSourceFields.length !== 1 ? 's' : ''}.
                 </span>
               )}
             </div>
-            <Link
-              href={`/plans/${planId}/source/preview/${mapping.sourceObjectApiName}`}
-              target="_blank"
-              className="text-xs text-primary hover:underline"
-            >
-              Preview source data &rarr;
-            </Link>
+            {fieldMappings.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowPreview((v) => !v)}
+                className={`text-xs border rounded px-3 py-1 transition-colors ${
+                  showPreview
+                    ? 'bg-muted border-foreground/30 text-foreground'
+                    : 'hover:bg-muted text-muted-foreground'
+                }`}
+              >
+                {showPreview ? 'Masquer l\'apercu' : 'Apercu de migration'}
+              </button>
+            )}
           </div>
+
+          {/* Live preview panel */}
+          {showPreview && fieldMappings.length > 0 && (
+            <section className="rounded-lg border border-border bg-muted/20 p-4">
+              <MigrationPreviewPanel
+                planId={planId}
+                objectMappingId={mapping.id}
+                sourceObjectApiName={mapping.sourceObjectApiName}
+                destObjectLabel={mapping.destObjectLabel}
+                fieldMappings={fieldMappings}
+              />
+            </section>
+          )}
 
           {/* Field mapping */}
           <FieldMappingView

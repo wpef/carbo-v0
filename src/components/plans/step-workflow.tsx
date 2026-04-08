@@ -13,39 +13,43 @@ const STEP_HREFS: Record<string, (planId: string) => string> = {
 
 interface StepWorkflowProps {
   planId: string
+  /** Max step the plan has reached — used to colour circles and unlock links */
   currentStep: string
+  /** Step corresponding to the currently viewed page — highlighted in the sidebar */
+  activePage?: string
 }
 
-export function StepWorkflow({ planId, currentStep }: StepWorkflowProps) {
+export function StepWorkflow({ planId, currentStep, activePage }: StepWorkflowProps) {
   const normalized = normalizeStep(currentStep)
+  const activeNormalized = activePage ? normalizeStep(activePage) : normalized
   const currentIndex = PLAN_STEPS.findIndex((s) => s.id === normalized)
 
   return (
     <nav className="space-y-2">
       {PLAN_STEPS.map((step, index) => {
         const isCompleted = index < currentIndex
-        const isCurrent = step.id === normalized
-        const isAccessible = isCompleted || isCurrent
+        const isCurrent = step.id === activeNormalized
+        const isAccessible = index <= currentIndex
         const href = STEP_HREFS[step.id]?.(planId)
 
         const circle = (
           <div
             className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium border-2 shrink-0 ${
-              isCompleted
+              isCurrent
                 ? 'bg-primary text-primary-foreground border-primary'
-                : isCurrent
-                  ? 'border-primary text-primary'
+                : isCompleted
+                  ? 'bg-primary/20 text-primary border-primary/40'
                   : 'border-muted text-muted-foreground'
             }`}
           >
-            {isCompleted ? '✓' : step.order}
+            {isCompleted && !isCurrent ? '✓' : step.order}
           </div>
         )
 
         const label = (
           <span
             className={`text-sm ${
-              isCurrent ? 'font-medium text-foreground' : isCompleted ? 'text-foreground' : 'text-muted-foreground'
+              isCurrent ? 'font-semibold text-foreground' : isCompleted ? 'text-foreground' : 'text-muted-foreground'
             }`}
           >
             {step.label}
