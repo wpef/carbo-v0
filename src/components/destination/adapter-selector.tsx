@@ -43,13 +43,14 @@ const DESTINATION_ADAPTERS: AdapterOption[] = [
 interface AdapterSelectorProps {
   onConnect: (adapterType: string, config: Record<string, string>) => Promise<void>
   isLoading: boolean
+  planId?: string
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function AdapterSelector({ onConnect, isLoading }: AdapterSelectorProps) {
+export function AdapterSelector({ onConnect, isLoading, planId }: AdapterSelectorProps) {
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, string>>({})
 
@@ -107,7 +108,11 @@ export function AdapterSelector({ onConnect, isLoading }: AdapterSelectorProps) 
         <Card size="sm">
           <CardHeader>
             <CardTitle>{selectedAdapter.label} Configuration</CardTitle>
-            <CardDescription>Enter your credentials to authenticate.</CardDescription>
+            <CardDescription>
+              {selectedType === 'hubspot'
+                ? 'Paste a Private App token, or use OAuth2 to connect via the browser.'
+                : 'Enter your credentials to authenticate.'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -131,13 +136,26 @@ export function AdapterSelector({ onConnect, isLoading }: AdapterSelectorProps) 
         </Card>
       )}
 
-      <div className="flex justify-end">
-        <Button
-          onClick={handleConnect}
-          disabled={!canConnect || isLoading}
-        >
-          {isLoading ? 'Connecting...' : 'Connect'}
-        </Button>
+      <div className="flex justify-between items-center gap-2">
+        {selectedType === 'hubspot' && planId && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.location.href = `/api/connectors/hubspot/auth?planId=${encodeURIComponent(planId)}`
+            }}
+            disabled={isLoading}
+          >
+            Connect via OAuth2
+          </Button>
+        )}
+        <div className="ml-auto">
+          <Button
+            onClick={handleConnect}
+            disabled={!canConnect || isLoading}
+          >
+            {isLoading ? 'Connecting...' : 'Connect'}
+          </Button>
+        </div>
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { AdapterPicker } from '@/components/source/AdapterPicker'
 import { DemoModeToggle } from '@/components/source/DemoModeToggle'
@@ -15,7 +15,11 @@ import type { AdapterMetadata } from '@/lib/connectors/registry'
 export default function SourceConnectionPage() {
   const params = useParams<{ planId: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const planId = params.planId
+
+  const connectorError = searchParams.get('connector_error')
+  const connected = searchParams.get('connected')
 
   const { connection, loading: connLoading } = useSourceConnection(planId)
   const setup = useConnectionSetup(planId, 'source')
@@ -78,6 +82,18 @@ export default function SourceConnectionPage() {
           Connect to your source system. Schema, objects, and fields will be retrieved automatically.
         </p>
       </div>
+
+      {/* OAuth callback feedback */}
+      {connectorError && (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Connection failed: {connectorError}
+        </div>
+      )}
+      {connected && !connectorError && (
+        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
+          Connected to {connected}. You can continue to the next step.
+        </div>
+      )}
 
       {/* Already connected state */}
       {isAlreadyConnected && (
@@ -143,7 +159,18 @@ export default function SourceConnectionPage() {
 
           {formError && <p className="text-sm text-destructive">{formError}</p>}
 
-          {selectedAdapter && (
+          {selectedAdapter && adapterMeta?.authKind === 'oauth2' && (
+            <Button
+              type="button"
+              onClick={() => {
+                window.location.href = `/api/connectors/${selectedAdapter}/auth?planId=${encodeURIComponent(planId)}`
+              }}
+            >
+              Connect with {adapterMeta.label}
+            </Button>
+          )}
+
+          {selectedAdapter && adapterMeta?.authKind !== 'oauth2' && (
             <Button type="submit" disabled={setup.phase !== 'IDLE'}>
               Connect &amp; Setup
             </Button>

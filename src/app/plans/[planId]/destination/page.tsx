@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { AdapterSelector } from '@/components/destination/adapter-selector'
 import { SetupProgress } from '@/components/connection/SetupProgress'
@@ -17,7 +17,11 @@ interface DestinationConnection {
 
 export default function DestinationConnectionPage() {
   const params = useParams<{ planId: string }>()
+  const searchParams = useSearchParams()
   const planId = params.planId
+
+  const connectorError = searchParams.get('connector_error')
+  const connected = searchParams.get('connected')
 
   const setup = useConnectionSetup(planId, 'destination')
 
@@ -55,6 +59,18 @@ export default function DestinationConnectionPage() {
         </p>
       </div>
 
+      {/* OAuth callback feedback */}
+      {connectorError && (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Connection failed: {connectorError}
+        </div>
+      )}
+      {connected && !connectorError && (
+        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
+          Connected to {connected}. You can continue to the next step.
+        </div>
+      )}
+
       {loading && <p className="text-sm text-muted-foreground">Loading...</p>}
 
       {isAlreadyConnected && (
@@ -70,7 +86,7 @@ export default function DestinationConnectionPage() {
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
             Choose Adapter
           </h2>
-          <AdapterSelector onConnect={handleConnect} isLoading={setup.phase !== 'IDLE'} />
+          <AdapterSelector onConnect={handleConnect} isLoading={setup.phase !== 'IDLE'} planId={planId} />
         </div>
       )}
 
