@@ -14,16 +14,20 @@ npm install prisma @prisma/client
 npm install -D vitest
 ```
 
-### 2. Initialize Prisma
+### 2. Create `.env`
+
+See [Environment Variables](#environment-variables) below — required before the next step.
+
+### 3. Initialize Prisma
 
 ```bash
 npx prisma generate
 npx prisma db push
 ```
 
-This creates the SQLite database at `prisma/dev.db` with the MigrationPlan and AuditLog tables.
+This creates the SQLite database at `./dev.db` with the MigrationPlan and AuditLog tables.
 
-### 3. Install shadcn/ui components
+### 4. Install shadcn/ui components
 
 ```bash
 npx shadcn-ui@latest add card dialog button input badge
@@ -31,12 +35,13 @@ npx shadcn-ui@latest add card dialog button input badge
 
 ## Environment Variables
 
-No feature-specific env vars needed. Prisma defaults to `file:./dev.db` for SQLite.
+**Required** — create `.env` at the project root before running `prisma db push` or the dev server:
 
-Optional in `.env.local`:
 ```
 DATABASE_URL="file:./dev.db"
 ```
+
+Prisma reads `DATABASE_URL` from `.env` via `env("DATABASE_URL")` in `schema.prisma`. Without it, all Prisma calls fail with `PrismaClientInitializationError: Environment variable not found: DATABASE_URL`.
 
 ## Run the app
 
