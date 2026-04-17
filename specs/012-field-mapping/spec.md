@@ -122,6 +122,25 @@ A consultant can remove a field mapping. Removing a field link deletes the mappi
 
 ---
 
+### User Story 7 - Live migration preview (Priority: P2)
+<!-- Added: 2026-04-08 -->
+
+A consultant views a permanent sidebar showing what a real source record would look like after migration. The sidebar loads source records, lets the consultant pick one from a dropdown, and displays a side-by-side before/after view: source field values on the left, transformed destination values on the right. Values changed by equivalence rules are highlighted. The consultant can switch between records to verify the mapping works across different data shapes.
+
+**Why this priority**: Previewing the migration output gives immediate confidence that the mapping is correct, reducing back-and-forth between mapping and testing.
+
+**Independent Test**: A consultant has mapped Contact fields including Industry (picklist with value equivalences). The sidebar shows source record "John Doe" with Industry="Technology". The destination column shows industry="Tech" (transformed) highlighted in amber. The consultant selects a different record from the dropdown and sees different values.
+
+**Acceptance Scenarios**:
+
+1. **Given** the field mapping view with mapped fields, **When** the consultant looks at the right sidebar, **Then** a migration preview is always visible showing source and destination values side by side.
+2. **Given** the preview sidebar, **When** source records are loaded, **Then** a dropdown selector lists available records (labeled with their first text values) and the first record is selected by default.
+3. **Given** a source record is selected, **When** value equivalences exist for some fields, **Then** the destination column shows the transformed values with amber highlighting.
+4. **Given** a source record is selected, **When** no value equivalences exist for a field, **Then** the destination column shows the raw source value (pass-through).
+5. **Given** no field mappings exist, **When** the consultant views the sidebar, **Then** a placeholder message is shown instead of the preview.
+
+---
+
 ### Edge Cases
 
 - A source field has a type not recognized by the system (e.g., a proprietary compound field): the card displays "Unknown type" and the field can still be linked, but the link defaults to dashed red.
@@ -226,3 +245,7 @@ A consultant can remove a field mapping. Removing a field link deletes the mappi
 3. **Data preview link**: Each object pair tab in the field mapping page includes a "Preview source data →" link that opens the record preview page for the source object.
 4. **Field mapping is a dedicated plan step**: The field mapping page (`/plans/[planId]/field-mapping`) is its own step in the plan workflow (`FIELD_MAPPING`), accessed after object mapping is complete. It shows tabs for each object pair with dynamic progress badges (e.g., "6/12" mapped fields, colored green/orange/red).
 5. **Type compatibility matrix**: The 5×5 matrix maps normalized type categories (text, number, date, picklist, boolean) to COMPATIBLE, WARNING, or INCOMPATIBLE. Unknown types default to "text" (most permissive). Type normalization maps 30+ raw type names to 5 canonical categories.
+6. **Migration preview sidebar**: The field mapping page displays a permanent sidebar (right side, `w-96`, sticky within the scroll container) showing a live before/after preview for a selected source record. The sidebar is **outside** the bordered config section — visually separated from the mapping controls. It contains: a header ("Aperçu de migration"), a record selector dropdown (loads 25 source records, labels auto-generated from first text values), and a side-by-side Source|Destination column view. Transformed values (via value equivalences) are highlighted in amber. The preview is computed client-side — only value equivalences are applied (no JS transforms or classification prompts in preview). The sidebar shows a placeholder message ("Mappez des champs pour voir l'aperçu") when no field mappings exist.
+   <!-- Added: 2026-04-08 -->
+7. **Field mapping page layout is two-column**: The `FieldMappingWithPreview` component renders a `flex` layout with the config section (`flex-1`) on the left and the preview sidebar (`w-96 shrink-0`) on the right. The page container is widened (`max-w-360`) to accommodate both columns.
+   <!-- Added: 2026-04-08 -->
