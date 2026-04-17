@@ -2,6 +2,8 @@
 
 import { DemoSourceAdapter } from '@/lib/connectors/adapters/demo-source'
 import { DemoDestinationAdapter } from '@/lib/connectors/adapters/demo-destination'
+import { SalesforceAdapter } from '@/lib/connectors/salesforce'
+import { HubSpotAdapter } from '@/lib/connectors/hubspot'
 import type { ConnectorAdapter } from '@/lib/connectors/types'
 
 export class UnknownAdapterError extends Error {
@@ -17,6 +19,10 @@ export function getAdapterInstance(adapterType: string): ConnectorAdapter {
       return new DemoSourceAdapter()
     case 'demo-destination':
       return new DemoDestinationAdapter()
+    case 'salesforce':
+      return new SalesforceAdapter()
+    case 'hubspot':
+      return new HubSpotAdapter()
     default:
       throw new UnknownAdapterError(adapterType)
   }

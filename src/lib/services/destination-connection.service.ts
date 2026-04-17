@@ -2,8 +2,8 @@
 
 import { prisma } from '@/lib/db/prisma'
 import { logAction } from './audit-service'
-import { getPlan, PlanNotFoundError } from './plan-service'
-import { DemoDestinationAdapter } from '@/lib/connectors/adapters/demo-destination'
+import { getPlan } from './plan-service'
+import { getAdapterInstance, UnknownAdapterError } from '@/lib/connectors/adapter-factory'
 import type { ConnectorAdapter } from '@/lib/connectors/types'
 
 // ---------------------------------------------------------------------------
@@ -32,21 +32,18 @@ export class DestinationConnectionFailedError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Adapter registry (destination-capable adapters)
+// Adapter resolution — delegated to the shared factory
 // ---------------------------------------------------------------------------
 
-const DESTINATION_ADAPTERS: Record<string, () => ConnectorAdapter> = {
-  'demo-destination': () => new DemoDestinationAdapter(),
-}
-
 function getAdapter(adapterType: string): ConnectorAdapter {
-  const factory = DESTINATION_ADAPTERS[adapterType]
-  if (!factory) {
-    throw new DestinationConnectionFailedError(
-      `Unknown adapter type: ${adapterType}. Available: ${Object.keys(DESTINATION_ADAPTERS).join(', ')}`
-    )
+  try {
+    return getAdapterInstance(adapterType)
+  } catch (err) {
+    if (err instanceof UnknownAdapterError) {
+      throw new DestinationConnectionFailedError(err.message)
+    }
+    throw err
   }
-  return factory()
 }
 
 // ---------------------------------------------------------------------------

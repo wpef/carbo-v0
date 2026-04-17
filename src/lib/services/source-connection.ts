@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { logAction } from './audit-service'
 import { getAdapterMetadata } from '@/lib/connectors/registry'
-import { DemoSourceAdapter } from '@/lib/connectors/adapters/demo-source'
+import { getAdapterInstance, UnknownAdapterError } from '@/lib/connectors/adapter-factory'
 import { PlanNotFoundError } from './plan-service'
 
 // --- Errors ---
@@ -27,18 +27,6 @@ export class SourceConnectionNotFoundError extends Error {
   }
 }
 
-// --- Helpers ---
-
-function getAdapterInstance(adapterType: string) {
-  switch (adapterType) {
-    case 'demo':
-      return new DemoSourceAdapter()
-    // Future: 'salesforce' -> new SalesforceAdapter()
-    default:
-      return null
-  }
-}
-
 // --- Service functions ---
 
 /**
@@ -59,8 +47,13 @@ export async function connectSource(planId: string, adapterType: string, config:
   if (metadata.role !== 'source') throw new InvalidAdapterError(adapterType)
 
   // Get adapter instance
-  const adapter = getAdapterInstance(adapterType)
-  if (!adapter) throw new InvalidAdapterError(adapterType)
+  let adapter
+  try {
+    adapter = getAdapterInstance(adapterType)
+  } catch (err) {
+    if (err instanceof UnknownAdapterError) throw new InvalidAdapterError(adapterType)
+    throw err
+  }
 
   // If a connection already exists, delete it first (replace semantics)
   const existing = await prisma.sourceConnection.findUnique({ where: { planId } })
