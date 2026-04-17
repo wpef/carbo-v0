@@ -43,9 +43,11 @@ then deletes it.
   current step/status, creation date, last update date.
 - **FR-003**: The system MUST allow the consultant to delete a plan, cascade-deleting all
   associated data (connections, schemas, selections, mappings, documents).
-- **FR-004**: The plan detail page MUST display a vertical step workflow showing all steps and
-  the consultant's progress. Each completed step shows a green checkmark. The current step is
-  highlighted.
+- **FR-004**: The plan workflow (vertical step indicator with progress) MUST be displayed exactly once, in the persistent sidebar defined by FR-007. Each completed step shows a green checkmark; the current step is highlighted. The plan detail page (`/plans/[planId]`) MUST NOT render its own in-page copy of the workflow — the main content area shows only the plan metadata (name, description, creation date) and the current step's description + call-to-action.
+  <!-- Updated: 2026-04-17 — Removed in-page workflow duplicate; workflow lives solely in the layout sidebar. -->
+  <!-- Updated: 2026-04-08 — Ensuite déplacé dans la sidebar persistente du layout. -->
+  <!-- Note: Refer to FR-007 for the layout structure. -->
+  
 - **FR-005**: The plan MUST track its overall status: DRAFT (in progress), READY (all steps
   before Run are complete), BROKEN (schema change broke mappings).
 - **FR-006**: All plan operations MUST be logged to the audit trail.
@@ -84,6 +86,8 @@ then deletes it.
    <!-- Added: 2026-04-08 -->
 5. **Sidebar sticky not working** — The preview sidebar and workflow sidebar used `position: sticky` inside a parent with `overflow-auto`, which creates a new scroll context and breaks sticky positioning. Fixed by restructuring the layout: the outer wrapper is `h-screen overflow-hidden`, the sidebar is a flex child (no sticky needed), and only the main content area scrolls (`overflow-auto`).
    <!-- Added: 2026-04-08 -->
+6. **Workflow duplicated on plan detail page** — The plan detail page rendered its own `<StepWorkflow>` aside in addition to the layout's persistent sidebar, showing the workflow twice. Fixed by removing the in-page workflow and the duplicated back-link/plan-header (already provided by the layout). The detail page now shows only plan metadata (name, description, creation date) + current-step action.
+   <!-- Added: 2026-04-17 -->
 
 ### Clarifications
 

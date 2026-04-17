@@ -3,9 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { StepWorkflow } from '@/components/plans/step-workflow'
 import { DeletePlanDialog } from '@/components/plans/delete-plan-dialog'
-import { Badge } from '@/components/ui/badge'
 import { normalizeStep } from '@/lib/types/plan'
 
 interface Plan {
@@ -90,33 +88,20 @@ export default function PlanDetailPage() {
   if (error || !plan) return <main className="max-w-5xl mx-auto p-8"><p className="text-destructive">{error || 'Plan not found'}</p></main>
 
   return (
-    <main className="max-w-5xl mx-auto p-8">
-      <div className="mb-6">
-        <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">&larr; Back to plans</Link>
-      </div>
-
+    <main className="max-w-3xl mx-auto p-8">
       <div className="flex items-start justify-between mb-8">
         <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold">{plan.name}</h1>
-            <Badge variant={plan.status === 'BROKEN' ? 'destructive' : 'secondary'}>{plan.status}</Badge>
-          </div>
+          <h1 className="text-2xl font-bold mb-1">{plan.name}</h1>
           {plan.description && <p className="text-muted-foreground">{plan.description}</p>}
-          <p className="text-xs text-muted-foreground mt-2">Created {new Date(plan.createdAt).toLocaleDateString()}</p>
+          <p className="text-xs text-muted-foreground mt-2">Créé le {new Date(plan.createdAt).toLocaleDateString('fr-FR')}</p>
         </div>
         <DeletePlanDialog planId={plan.id} planName={plan.name} />
       </div>
 
-      <div className="grid gap-8 md:grid-cols-[240px_1fr]">
-        <aside>
-          <h2 className="text-sm font-medium mb-4">Workflow</h2>
-          <StepWorkflow planId={plan.id} currentStep={plan.currentStep} />
-        </aside>
-        <section>
-          <h2 className="text-sm font-medium mb-4">Current Step</h2>
-          <StepAction planId={plan.id} currentStep={plan.currentStep} />
-        </section>
-      </div>
+      <section>
+        <h2 className="text-sm font-medium mb-4">Étape actuelle</h2>
+        <StepAction planId={plan.id} currentStep={plan.currentStep} />
+      </section>
     </main>
   )
 }

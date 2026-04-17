@@ -34,7 +34,10 @@
       "Bash(mkdir -p specs/_archive_v1/014-validation-rules)",
       "Bash(mv specs/014-validation-rules/spec.md specs/_archive_v1/014-validation-rules/spec.md)",
       "Bash(rmdir specs/014-validation-rules)",
-      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma generate)"
+      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma generate)",
+      "Bash(git ls-tree:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ls -la .env*)"
     ]
   }
 }
