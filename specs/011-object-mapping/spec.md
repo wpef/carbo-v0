@@ -116,7 +116,7 @@ A consultant can remove an existing link between a source object and a destinati
 - **FR-010**: The system MUST allow removing an object link with a confirmation dialog that warns about cascade deletion.
 - **FR-011**: Removing an object link MUST cascade-delete all child field mappings, migration logic rules, and migration filters.
 - **FR-012**: The system MUST log object link creation and removal to the audit trail (Constitution Principle VI).
-- **FR-013**: The object list MUST support search or filtering when the number of objects exceeds a comfortable visual threshold.
+- **FR-013**: The object list MUST support text search AND category filters. Category filters include: All (default), Mapped only, Unmapped only, Standard only, Custom only. These filters apply independently to each column (source and destination).
 
 ### UI Components
 
@@ -164,4 +164,5 @@ A consultant can remove an existing link between a source object and a destinati
 ### Clarifications
 
 1. **Object mapping is its own step**: The mapping page (`/plans/[planId]/mapping`) only handles object-to-object linking. Field mapping is a separate step on its own page.
-2. **Navigation after mapping**: After creating object mappings, the user clicks "Next: Field Mapping →" to advance to the dedicated field mapping step.
+2. **Navigation after mapping**: Step advancement is handled by the global sidebar button, not a per-page "Next" button. The mapping page no longer has its own "Next: Field Mapping →" button.
+   <!-- Updated: 2026-04-08 — Per-page next button removed in favor of centralized sidebar navigation. -->
