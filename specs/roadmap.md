@@ -85,12 +85,6 @@ first creating a plan. The home page is a list of plans.
 |---|---------|-------|------------|
 | 022 | Schema Write | Create objects/properties in destination (gated by adapter capability) | 008 |
 
-### Connection Reconfiguration (within plan)
-
-| # | Feature | Scope | Depends on |
-|---|---------|-------|------------|
-| 023 | Connection Reconfiguration | Change source/destination adapter or refresh schema on an existing plan. Computes schema diff vs. stored snapshot, preserves mappings that remain structurally valid, flags/deletes only the broken ones, shows impact preview before confirming. Documents marked `outdated` when affected. | 002, 006, 011, 012, 013, 015, 017 |
-
 ### Adapters (Layer 2)
 
 | Adapter | Role | Implements |
@@ -102,8 +96,8 @@ first creating a plan. The home page is a list of plans.
 
 | # | Feature | Scope |
 |---|---------|-------|
-| 024 | Export/Import JSON | Serialize a plan to portable JSON |
-| 025 | Migration Execution | Apply mapping on real data (dry-run + execute) |
+| 023 | Export/Import JSON | Serialize a plan to portable JSON |
+| 024 | Migration Execution | Apply mapping on real data (dry-run + execute) |
 
 ## Phase 3 — Scale
 

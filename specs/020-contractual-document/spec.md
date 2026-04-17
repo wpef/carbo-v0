@@ -55,6 +55,9 @@ As a consultant, I can generate a formal contractual document with signature blo
 - **FR-013**: The system MUST log document generation events to the audit trail with plan ID, document type, reference number, and generation stats (Constitution Principle VI).
 - **FR-014**: The document reference number MUST be unique across all generated contractual documents (e.g., `CARBO-YYYYMMDD-XXXX` format).
 - **FR-015**: All sections (scope, correspondence, rules, exclusions, filters, signature) MUST be present in every generated document, even if empty — no section is conditionally omitted.
+- **FR-016**: The generated document MUST carry a `status` field with values `CURRENT` (default on generation) or `OUTDATED`. Source/destination reconfiguration (see 002 FR-013 and 006 FR-012) MAY transition a `CURRENT` document to `OUTDATED` when the reconfiguration impacts downstream mappings, rules, or the signed scope. An `OUTDATED` contractual document MUST remain viewable (audit/legal trail) but MUST display a prominent banner indicating it no longer reflects the current plan; regeneration MUST produce a new document with a new reference number, never overwriting the outdated one.
+  <!-- Added: 2026-04-17 — supports the reconfiguration cascade defined in 002/006 -->
+
 
 ## Key Entities
 

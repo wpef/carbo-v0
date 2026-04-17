@@ -47,6 +47,9 @@ As a consultant, I can generate a readable text document that describes the enti
 - **FR-010**: The system MUST preview the generated document as rendered HTML within the application.
 - **FR-011**: The system MUST log document generation events (start, completion, error) to the audit trail with plan ID, document type, and generation stats (Constitution Principle VI).
 - **FR-012**: The system MUST include a table of contents at the top of the document when the mapping plan contains 3 or more object mappings.
+- **FR-013**: The generated document MUST carry a `status` field with values `CURRENT` (default on generation) or `OUTDATED`. Source/destination reconfiguration (see 002 FR-013 and 006 FR-012) MAY transition a `CURRENT` document to `OUTDATED` when the reconfiguration impacts downstream mappings or rules. An `OUTDATED` document MUST remain viewable but MUST display a banner indicating it no longer reflects the current plan and MUST prompt regeneration.
+  <!-- Added: 2026-04-17 — supports the reconfiguration cascade defined in 002/006 -->
+
 
 ## Key Entities
 
