@@ -150,3 +150,49 @@ export async function getDestinationConnection(planId: string) {
   })
   return connection ?? null
 }
+
+/**
+ * Persist a destination connection whose credentials were obtained externally
+ * (e.g. by an OAuth callback, or a Private App token already validated by the
+ * caller). Unlike `connectDestination()`, this does NOT call `adapter.connect()`
+ * and replaces any existing connection on the same plan.
+ *
+ * Used by the HubSpot OAuth callback and the HubSpot Private App POST route.
+ */
+export async function upsertDestinationConnectionRaw(
+  planId: string,
+  adapterType: string,
+  config: Record<string, unknown>,
+  status: string,
+) {
+  await getPlan(planId) // throws PlanNotFoundError if not found
+
+  const existing = await prisma.destinationConnection.findUnique({ where: { planId } })
+  if (existing) {
+    await prisma.destinationConnection.delete({ where: { planId } })
+    await logAction(planId, 'destination.disconnected', {
+      planId,
+      connectionId: existing.id,
+      reason: 'replaced-oauth-or-token',
+    })
+  }
+
+  const connection = await prisma.destinationConnection.create({
+    data: {
+      planId,
+      adapterType,
+      status,
+      config: JSON.stringify(config),
+      connectedAt: new Date(),
+    },
+  })
+
+  await logAction(planId, 'destination.connected', {
+    planId,
+    adapterType,
+    connectionId: connection.id,
+    method: 'oauth-or-private-app',
+  })
+
+  return connection
+}

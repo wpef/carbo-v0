@@ -130,3 +130,42 @@ export async function getSourceConnection(planId: string) {
 
   return prisma.sourceConnection.findUnique({ where: { planId } })
 }
+
+/**
+ * Persist a source connection whose credentials have already been obtained
+ * externally (e.g. by an OAuth callback route). Unlike `connectSource()`, this
+ * does NOT call `adapter.connect()` — the caller is responsible for validating
+ * tokens beforehand. Existing connection on the same plan is replaced.
+ *
+ * Used by the Salesforce OAuth callback to persist the token bundle returned
+ * by the `/services/oauth2/token` exchange.
+ */
+export async function upsertSourceConnectionRaw(
+  planId: string,
+  adapterType: string,
+  config: Record<string, unknown>,
+  status: string,
+) {
+  const plan = await prisma.migrationPlan.findUnique({ where: { id: planId } })
+  if (!plan) throw new PlanNotFoundError(planId)
+
+  const existing = await prisma.sourceConnection.findUnique({ where: { planId } })
+  if (existing) {
+    await prisma.sourceConnection.delete({ where: { planId } })
+    await logAction(planId, 'SOURCE_DISCONNECTED', { adapterType: existing.adapterType, reason: 'replaced-oauth' })
+  }
+
+  const connection = await prisma.sourceConnection.create({
+    data: {
+      planId,
+      adapterType,
+      status,
+      config: JSON.stringify(config),
+      connectedAt: new Date(),
+    },
+  })
+
+  await logAction(planId, 'SOURCE_CONNECTED', { adapterType, status, method: 'oauth-callback' })
+
+  return connection
+}
