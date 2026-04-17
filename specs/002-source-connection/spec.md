@@ -27,8 +27,11 @@ from the adapter list, authenticates, and sees the connection status as CONNECTE
 
 ## Edge Cases
 
-- The consultant switches adapter type after connecting: the old connection and all dependent
-  data are removed, the new adapter flow starts fresh.
+- The consultant switches adapter type after connecting: handled by feature
+  **023-connection-reconfiguration** (smart partial reset — preserves mappings that remain
+  structurally valid, invalidates only the broken ones, shows impact preview before applying).
+  The naive full-cascade behavior described previously is superseded.
+  <!-- Updated: 2026-04-17 — delegated to 023 -->
 - Authentication fails: clear error message, the step remains pending.
 
 ## Functional Requirements

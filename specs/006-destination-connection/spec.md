@@ -31,6 +31,18 @@ of the plan.
 - **FR-002**: The system MUST display available destination adapters from the adapter registry.
 - **FR-003**: The connection MUST be stored linked to the plan (planId → destinationConnectionId).
 - **FR-004**: A "Use Demo Data" option MUST be available as an alternative to real authentication.
+- **FR-005**: Reconfiguring a connected destination (changing adapter, refreshing credentials,
+  or refreshing schema) MUST follow feature **023-connection-reconfiguration** — smart partial
+  reset with impact preview, not a full cascade delete.
+  <!-- Added: 2026-04-17 -->
+
+## Edge Cases
+
+- The consultant switches destination adapter after connecting: handled by feature
+  **023-connection-reconfiguration** (smart partial reset — preserves mappings that remain
+  structurally valid, invalidates only the broken ones, shows impact preview before applying).
+  <!-- Added: 2026-04-17 -->
+- Authentication fails: clear error message, the step remains pending.
 
 ## Key Entities
 
