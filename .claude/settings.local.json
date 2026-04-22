@@ -37,7 +37,11 @@
       "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma generate)",
       "Bash(git ls-tree:*)",
       "mcp__Claude_Preview__preview_start",
-      "Bash(ls -la .env*)"
+      "Bash(ls -la .env*)",
+      "Bash(npm run *)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(git rm *)"
     ]
   }
 }
