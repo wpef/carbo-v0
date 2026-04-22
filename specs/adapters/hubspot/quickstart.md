@@ -29,7 +29,7 @@ Create a Private App in HubSpot: Settings > Integrations > Private Apps > Create
 ```env
 HUBSPOT_CLIENT_ID=your_client_id
 HUBSPOT_CLIENT_SECRET=your_client_secret
-HUBSPOT_CALLBACK_URL=http://localhost:3000/api/connectors/hubspot/callback
+HUBSPOT_CALLBACK_URL=http://localhost:3001/api/connectors/hubspot/callback
 ```
 
 Create an app in HubSpot Developer Portal. Add redirect URI matching `HUBSPOT_CALLBACK_URL`. Select required scopes.
@@ -44,7 +44,7 @@ npm run dev
 
 ```bash
 # Validate token via API route
-curl -X POST http://localhost:3000/api/connectors/hubspot/auth \
+curl -X POST http://localhost:3001/api/connectors/hubspot/auth \
   -H "Content-Type: application/json" \
   -d '{"method":"private-app","accessToken":"pat-na1-..."}'
 ```
@@ -53,7 +53,7 @@ Expected: `200 OK` with portal name and CONNECTED status.
 
 ## Test OAuth2 flow
 
-1. Navigate to: `http://localhost:3000/api/connectors/hubspot/auth?planId=<your-plan-id>`
+1. Navigate to: `http://localhost:3001/api/connectors/hubspot/auth?planId=<your-plan-id>`
 2. Authorize in HubSpot
 3. Callback completes, redirect to plan page
 
@@ -62,7 +62,7 @@ Expected: `200 OK` with portal name and CONNECTED status.
 After connecting, create a test property:
 
 ```bash
-curl -X POST http://localhost:3000/api/connectors/hubspot/schema/properties \
+curl -X POST http://localhost:3001/api/connectors/hubspot/schema/properties \
   -H "Content-Type: application/json" \
   -d '{"objectType":"contacts","name":"migration_test","label":"Migration Test","type":"string"}'
 ```
