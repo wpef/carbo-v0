@@ -29,7 +29,11 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files
+.env
+.env.test
 .env*.local
+# …except the template
+!.env.example
 
 # vercel
 .vercel
