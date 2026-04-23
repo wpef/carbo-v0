@@ -61,3 +61,5 @@ tests/
 ```
 
 **Structure Decision**: Field retrieval is the final sub-step of the source flow. The page lives under `plans/[planId]/source/fields/`. Fields are retrieved in batch for all selected objects, with per-object progress reporting.
+
+**Règle — instanciation d'adaptateur** : Le service `field-retrieval.ts` DOIT instancier les adaptateurs exclusivement via la factory canonique `src/lib/connectors/adapter-factory.ts`. Toute factory locale est interdite : elle échoue silencieusement dès qu'un nouvel adaptateur est ajouté sans que le service soit mis à jour (incident constaté en test live SF le 2026-04-23).

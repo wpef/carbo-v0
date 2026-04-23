@@ -90,3 +90,5 @@ tests/
 ```
 
 **Structure Decision**: Mirror Salesforce adapter structure for consistency. Extra module `hubspot-schema-write.ts` for the schema write capability (canWriteSchema=true). OAuth2 and Private App auth in a single auth module with method discrimination.
+
+**Règle — instanciation depuis les services** : Tout code service qui a besoin d'une instance de cet adaptateur DOIT passer par `src/lib/connectors/adapter-factory.ts`. Importer la classe `HubSpotAdapter` directement depuis les services est interdit — cela court-circuite la factory et casse l'ajout de nouveaux adaptateurs.

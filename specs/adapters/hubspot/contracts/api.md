@@ -46,7 +46,7 @@ Initiate HubSpot OAuth2 flow.
 **Response**: `302 Redirect` to HubSpot authorization URL with:
 - `client_id` from env
 - `redirect_uri` from env
-- `scope` (crm.objects, crm.schemas, etc.)
+- `scope` (`crm.objects.*` + `crm.schemas.*` for standard objects; `crm.objects.custom.*` for custom objects on Enterprise portals. Do NOT include `crm.schemas.custom.*` — those scope names do not exist and cause OAuth/deploy failure.)
 - `state` (encoded planId)
 
 **Errors**:

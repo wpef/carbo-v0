@@ -58,3 +58,5 @@ tests/
 ```
 
 **Structure Decision**: Schema retrieval is a sub-step of the source configuration flow. The page lives under `plans/[planId]/source/schema/` to maintain the plan-scoped hierarchy.
+
+**Règle — instanciation d'adaptateur** : Le service `schema-retrieval.ts` DOIT instancier les adaptateurs exclusivement via la factory canonique `src/lib/connectors/adapter-factory.ts`. Toute factory locale est interdite : elle échoue silencieusement dès qu'un nouvel adaptateur est ajouté sans que le service soit mis à jour (incident constaté en test live SF le 2026-04-23).
