@@ -2,7 +2,7 @@
 
 **Feature**: 006-destination-connection
 **Created**: 2026-03-27
-**Last updated**: 2026-04-17
+**Last updated**: 2026-04-22
 **Status**: Draft
 **Depends on**: 001-migration-plan, 000-connector-interface
 **Impacts (for reconfiguration cascade)**: 007, 008, 011, 012, 013, 015, 017, 019, 020
@@ -53,6 +53,22 @@ valid and invalidates only what is genuinely broken.
     **Then** the plan's `currentStep` is rolled back to the latest still-valid step
     (see FR-015 rules).
 
+**Acceptance Scenarios — Récupération automatique après callback OAuth** <!-- Added: 2026-04-22 -->:
+
+11. **Given** a HubSpot OAuth callback completes and the URL contient `?connected=hubspot`,
+    **When** la page destination se charge, **Then** la récupération du schéma et des champs
+    se déclenche automatiquement sans action de l'utilisateur ; la page affiche un indicateur
+    de progression puis passe à l'état CONNECTED une fois terminée.
+12. **Given** la destination est à l'état CONNECTED, **When** le consultant clique sur
+    « Rafraîchir le schéma », **Then** la chaîne schéma→fields se relance ; le snapshot stocké
+    est écrasé silencieusement ; la page repasse brièvement en état de chargement puis
+    réaffiche CONNECTED avec le schéma mis à jour.
+13. **Given** la destination est CONNECTED et le consultant rafraîchit un schéma dont une
+    propriété HubSpot a été supprimée côté distant, **When** le rafraîchissement se termine,
+    **Then** le nouveau snapshot écrase l'ancien sans dialog de confirmation ; les field
+    mappings référençant la propriété supprimée sont marqués `linkStatus=BROKEN` ; aucun
+    artifact n'est supprimé automatiquement.
+
 ## Edge Cases
 
 - **Adapter type switch** (e.g., `demo-destination` → `hubspot`): partial-reset logic applies
@@ -69,6 +85,13 @@ valid and invalidates only what is genuinely broken.
   `needs-review`, filters referencing it deleted.
 - **No change detected**: no-op, no dialog. Audit logs a "refreshed" action.
 - **Authentication fails (initial connect)**: clear error message, the step remains pending.
+- **Récupération automatique échoue après callback OAuth** : message d'erreur affiché sur la
+  page destination ; le statut reste CONNECTED (la connexion OAuth a réussi) ; le bouton
+  « Rafraîchir le schéma » est visible pour que le consultant puisse relancer la récupération
+  manuellement.
+- **Navigation pendant la récupération** : si le consultant quitte la page en cours de
+  récupération, le traitement côté serveur se poursuit jusqu'à son terme ; le snapshot est
+  disponible à la prochaine visite de la page.
 
 ## Functional Requirements
 
@@ -119,6 +142,26 @@ valid and invalidates only what is genuinely broken.
   - Any field mapping deleted or flagged BROKEN → rollback to at most `FIELD_MAPPING`.
   - Documents outdated (and no mapping-level impact) → rollback to at most `DOCUMENTS`.
   - Otherwise → current step preserved.
+
+### Récupération automatique après callback OAuth <!-- Added: 2026-04-22 -->
+
+- **FR-016**: Après un callback OAuth réussi (URL contient `?connected=<adapterType>`), la
+  page destination DOIT déclencher automatiquement la récupération du schéma et des champs
+  (chaîne schéma→fields) sans action supplémentaire de l'utilisateur. La récupération
+  destination ne comporte pas d'étape de sélection d'objets (contrairement à la source) :
+  la chaîne complète est schéma→fields uniquement. Aucun dialog de confirmation dans le
+  flux MVP.
+- **FR-017**: Lorsqu'une connexion est à l'état CONNECTED, un bouton « Rafraîchir le schéma »
+  DOIT être visible sur la page destination. Il déclenche la même chaîne schéma→fields.
+  MVP : le snapshot stocké est écrasé silencieusement, sans diff ni dialog, même si le
+  nouveau schéma supprime des propriétés existantes.
+- **FR-018**: Le flux de déclenchement automatique (FR-016) et le bouton de rafraîchissement
+  manuel (FR-017) contournent délibérément la cascade diff/confirmation (FR-007→013) pour
+  la Phase 1. Cette divergence est explicite : la cascade complète s'appliquera en Phase 2.
+  Dans l'intervalle, les références downstream orphelines (field mappings dont la propriété
+  destination n'existe plus dans le snapshot) s'appuient sur le mécanisme
+  `linkStatus=BROKEN` du data model pour signaler leur état. Aucun artifact n'est supprimé
+  automatiquement lors d'un rafraîchissement MVP.
 
 ## Key Entities
 
