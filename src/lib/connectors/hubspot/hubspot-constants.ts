@@ -8,7 +8,15 @@ export const HS_ENV_KEYS = {
   callbackUrl: 'HUBSPOT_CALLBACK_URL',
 } as const
 
-/** HubSpot OAuth2 scopes requested when initiating the flow. */
+/**
+ * HubSpot OAuth2 scopes requested when initiating the flow.
+ *
+ * Note: `crm.schemas.custom.read` / `crm.schemas.custom.write` are NOT valid
+ * HubSpot scopes (verified 2026-04-23 — `hs project upload` rejects them).
+ * Custom-object operations go through `crm.objects.custom.*` (Enterprise
+ * portal only); custom-object schema changes go through the standard
+ * Properties API once the object is granted via those object scopes.
+ */
 export const HS_OAUTH_SCOPES = [
   'crm.objects.contacts.read',
   'crm.objects.contacts.write',
@@ -24,8 +32,6 @@ export const HS_OAUTH_SCOPES = [
   'crm.schemas.deals.write',
   'crm.objects.custom.read',
   'crm.objects.custom.write',
-  'crm.schemas.custom.read',
-  'crm.schemas.custom.write',
   'tickets',
 ].join(' ')
 
