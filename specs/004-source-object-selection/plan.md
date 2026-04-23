@@ -65,3 +65,5 @@ tests/
 ```
 
 **Structure Decision**: Object selection is a sub-step of the source flow, following schema retrieval. On-demand expand calls (record count, fields, sample records) are adapter pass-through calls at dedicated sub-routes.
+
+**Règle — instanciation d'adaptateur** : Le service `object-selection.ts` DOIT instancier les adaptateurs exclusivement via la factory canonique `src/lib/connectors/adapter-factory.ts`. Toute factory locale est interdite : elle échoue silencieusement dès qu'un nouvel adaptateur est ajouté sans que le service soit mis à jour (incident constaté en test live SF le 2026-04-23).

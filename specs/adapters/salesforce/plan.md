@@ -89,3 +89,5 @@ tests/
 ```
 
 **Structure Decision**: Adapter code isolated in `src/lib/connectors/salesforce/`. OAuth routes under `src/app/api/connectors/salesforce/`. Clear separation: auth, schema, records, constants as separate modules for readability.
+
+**Règle — instanciation depuis les services** : Tout code service qui a besoin d'une instance de cet adaptateur DOIT passer par `src/lib/connectors/adapter-factory.ts`. Importer la classe `SalesforceAdapter` directement depuis les services est interdit — cela court-circuite la factory et casse l'ajout de nouveaux adaptateurs.
