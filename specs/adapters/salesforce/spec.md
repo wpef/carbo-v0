@@ -15,6 +15,9 @@ As a consultant, I can connect to Salesforce and use it as a source system in Ca
 
 1. **Given** valid Salesforce Connected App credentials (client ID, client secret, callback URL), **When** the consultant initiates a connection, **Then** the system redirects to the Salesforce OAuth2 authorization page with a PKCE code challenge (S256 method).
 2. **Given** the consultant authorizes the Connected App in Salesforce, **When** the callback is received, **Then** the system exchanges the authorization code for tokens using a direct HTTP POST to `/services/oauth2/token` with the code_verifier parameter, and the connection status is set to CONNECTED with the org name displayed.
+
+   **Note:** The OAuth callback itself only persists the connection; it does NOT trigger schema/fields retrieval. The UI layer (feature 002 for source) auto-triggers schema retrieval after the callback redirect. A manual "Refresh schema" button on the source page allows the consultant to re-trigger retrieval if the Salesforce admin added/removed fields since the last fetch.
+
 3. **Given** a CONNECTED Salesforce connection, **When** the system retrieves the object list, **Then** it calls describeGlobal via jsforce and returns all objects (standard and custom) with label, API name, description, and isCustom flag.
 4. **Given** the full object list (~1200+ objects), **When** the object selection step is displayed, **Then** system objects (~130 known patterns) are filtered out by default, custom objects (__c suffix) and common CRM objects (Account, Contact, Lead, Opportunity, Case, Campaign, Task, Event, Note, Attachment, ContentDocument) are pre-selected, and the consultant can search/filter by label or API name.
 5. **Given** the object selection list, **When** the consultant expands an object, **Then** the system fetches the record count (via `SELECT COUNT() FROM ObjectName`) and sample fields on-demand only — no API call is made until the expand is triggered.
