@@ -22,11 +22,21 @@ interface SetupResults {
   fieldCount: number | null
 }
 
+interface StartSetupOptions {
+  /**
+   * Skip the initial POST /source (or /destination-connection) step.
+   * Use when the connection is already persisted (e.g., after an OAuth
+   * callback that wrote the CONNECTED record server-side).
+   * When true, the chain starts at schema retrieval.
+   */
+  skipConnect?: boolean
+}
+
 interface UseConnectionSetupResult {
   phase: SetupPhase
   error: string | null
   results: SetupResults
-  startSetup: (adapterType: string, config: Record<string, unknown>) => Promise<void>
+  startSetup: (adapterType: string, config: Record<string, unknown>, options?: StartSetupOptions) => Promise<void>
   isComplete: boolean
 }
 
@@ -70,21 +80,28 @@ export function useConnectionSetup(planId: string, role: 'source' | 'destination
     fieldCount: null,
   })
 
-  const startSetup = useCallback(async (adapterType: string, config: Record<string, unknown>) => {
+  const startSetup = useCallback(async (
+    adapterType: string,
+    config: Record<string, unknown>,
+    options?: StartSetupOptions,
+  ) => {
     setError(null)
     setResults({ objectCount: null, selectedCount: null, totalCount: null, fieldCount: null })
 
     try {
-      // Step 1: Connect
-      setPhase('CONNECTING')
-      const connectRes = await fetch(getConnectPath(planId, role), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adapterType, config }),
-      })
-      if (!connectRes.ok) {
-        const data = await connectRes.json().catch(() => ({}))
-        throw new Error(data.message ?? data.error ?? 'Connection failed.')
+      if (!options?.skipConnect) {
+        // Step 1: Connect (skipped when the connection is already persisted,
+        // e.g. after an OAuth callback wrote the CONNECTED record).
+        setPhase('CONNECTING')
+        const connectRes = await fetch(getConnectPath(planId, role), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adapterType, config }),
+        })
+        if (!connectRes.ok) {
+          const data = await connectRes.json().catch(() => ({}))
+          throw new Error(data.message ?? data.error ?? 'Connection failed.')
+        }
       }
 
       // Step 2: Retrieve schema
