@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { AdapterPicker } from '@/components/source/AdapterPicker'
@@ -28,6 +28,21 @@ export default function SourceConnectionPage() {
   const [adapterMeta, setAdapterMeta] = useState<AdapterMetadata | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState('')
+
+  // Auto-trigger schema retrieval after OAuth callback
+  const oauthSetupFired = useRef(false)
+  useEffect(() => {
+    if (
+      !connected ||
+      connectorError ||
+      connLoading ||
+      connection?.status !== 'CONNECTED' ||
+      setup.phase !== 'IDLE' ||
+      oauthSetupFired.current
+    ) return
+    oauthSetupFired.current = true
+    setup.startSetup(connected, {}, { skipConnect: true })
+  }, [connected, connectorError, connLoading, connection, setup.phase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch adapter metadata when selection changes
   useEffect(() => {
@@ -101,6 +116,14 @@ export default function SourceConnectionPage() {
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
             Source connected ({connection.adapterType}). Setup already completed.
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={setup.phase !== 'IDLE'}
+            onClick={() => setup.startSetup(connection.adapterType!, {}, { skipConnect: true })}
+          >
+            Refresh schema
+          </Button>
         </div>
       )}
 
