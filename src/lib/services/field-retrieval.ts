@@ -2,9 +2,7 @@
 
 import { prisma } from '@/lib/db/prisma'
 import { logAction } from './audit-service'
-import { DemoSourceAdapter } from '@/lib/connectors/adapters/demo-source'
-import { DemoDestinationAdapter } from '@/lib/connectors/adapters/demo-destination'
-import type { ConnectorAdapter } from '@/lib/connectors/types'
+import { getAdapterInstance } from '@/lib/connectors/adapter-factory'
 import type {
   FieldRetrievalResult,
   FieldsByObjectResult,
@@ -32,19 +30,6 @@ export class FieldRetrievalObjectNotFoundError extends Error {
   constructor(objectId: string) {
     super(`No object found with id: ${objectId}`)
     this.name = 'FieldRetrievalObjectNotFoundError'
-  }
-}
-
-// --- Adapter factory ---
-
-function getAdapterInstance(adapterType: string): ConnectorAdapter {
-  switch (adapterType) {
-    case 'demo':
-      return new DemoSourceAdapter()
-    case 'demo-destination':
-      return new DemoDestinationAdapter()
-    default:
-      throw new Error(`No adapter instance available for type: ${adapterType}`)
   }
 }
 
