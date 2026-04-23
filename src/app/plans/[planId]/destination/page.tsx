@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 import { AdapterSelector } from '@/components/destination/adapter-selector'
 import { SetupProgress } from '@/components/connection/SetupProgress'
 import { useConnectionSetup } from '@/hooks/use-connection-setup'
@@ -27,6 +28,20 @@ export default function DestinationConnectionPage() {
 
   const [existingConnection, setExistingConnection] = useState<DestinationConnection | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Auto-trigger schema+fields retrieval after an OAuth callback (?connected=<adapterType>)
+  const oauthSetupFired = useRef(false)
+  useEffect(() => {
+    if (oauthSetupFired.current) return
+    if (!connected) return
+    if (connectorError) return
+    if (loading) return
+    if (existingConnection?.status !== 'CONNECTED') return
+    if (setup.phase !== 'IDLE') return
+
+    oauthSetupFired.current = true
+    setup.startSetup(connected, {}, { skipConnect: true })
+  }, [connected, connectorError, loading, existingConnection, setup.phase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check existing connection
   useEffect(() => {
@@ -78,6 +93,13 @@ export default function DestinationConnectionPage() {
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
             Destination connected ({existingConnection.adapterType}). Setup already completed.
           </div>
+          <Button
+            variant="outline"
+            disabled={setup.phase !== 'IDLE'}
+            onClick={() => setup.startSetup(existingConnection.adapterType, {}, { skipConnect: true })}
+          >
+            Refresh schema
+          </Button>
         </div>
       )}
 
