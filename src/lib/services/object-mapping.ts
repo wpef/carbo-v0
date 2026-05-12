@@ -69,6 +69,13 @@ function toDTO(
 
 /**
  * List all object mappings for a plan, enriched with source/dest labels.
+ *
+ * Labels are resolved against the CURRENT snapshot by apiName (017 Design
+ * Decisions, 2026-05-12). Stored FK (sourceObjectId/destObjectId) may point
+ * at a now-deleted SchemaObject after snapshot rotation — we don't trust it.
+ * If the apiName lookup also fails, we fall back to the apiName itself as
+ * the label (the consultant will see the mapping flagged BROKEN at the
+ * field level once they open it).
  */
 export async function listObjectMappings(planId: string): Promise<ObjectMappingDTO[]> {
   const mappings = await prisma.objectMapping.findMany({
@@ -78,23 +85,35 @@ export async function listObjectMappings(planId: string): Promise<ObjectMappingD
 
   if (mappings.length === 0) return []
 
-  // Batch-load source and destination objects to get labels
-  const sourceObjectIds = mappings.map((m) => m.sourceObjectId)
-  const destObjectIds = mappings.map((m) => m.destObjectId)
-
-  const [sourceObjects, destObjects] = await Promise.all([
-    prisma.schemaObject.findMany({ where: { id: { in: sourceObjectIds } } }),
-    prisma.schemaObject.findMany({ where: { id: { in: destObjectIds } } }),
+  // Resolve current snapshots once, then build apiName→object maps
+  const [sourceConn, destConn] = await Promise.all([
+    prisma.sourceConnection.findUnique({ where: { planId } }),
+    prisma.destinationConnection.findUnique({ where: { planId } }),
   ])
 
-  const sourceById = new Map(sourceObjects.map((o) => [o.id, o]))
-  const destById = new Map(destObjects.map((o) => [o.id, o]))
+  const [sourceSnapshot, destSnapshot] = await Promise.all([
+    sourceConn
+      ? prisma.schemaSnapshot.findFirst({
+          where: { connectionId: sourceConn.id, role: 'source', status: 'CURRENT' },
+          include: { objects: true },
+        })
+      : Promise.resolve(null),
+    destConn
+      ? prisma.schemaSnapshot.findFirst({
+          where: { connectionId: destConn.id, role: 'destination', status: 'CURRENT' },
+          include: { objects: true },
+        })
+      : Promise.resolve(null),
+  ])
+
+  const sourceByApiName = new Map((sourceSnapshot?.objects ?? []).map((o) => [o.apiName, o]))
+  const destByApiName = new Map((destSnapshot?.objects ?? []).map((o) => [o.apiName, o]))
 
   return mappings.map((m) =>
     toDTO(
       m,
-      sourceById.get(m.sourceObjectId)?.label ?? m.sourceObjectApiName,
-      destById.get(m.destObjectId)?.label ?? m.destObjectApiName,
+      sourceByApiName.get(m.sourceObjectApiName)?.label ?? m.sourceObjectApiName,
+      destByApiName.get(m.destObjectApiName)?.label ?? m.destObjectApiName,
     ),
   )
 }
