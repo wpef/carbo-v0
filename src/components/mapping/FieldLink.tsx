@@ -22,6 +22,7 @@ const STATUS_COLORS: Record<LinkStatus, string> = {
   GREEN_PARTIAL: '#f59e0b',
   RED_SOLID: '#ef4444',
   RED_DASHED: '#ef4444',
+  BROKEN: '#b91c1c', // darker red — broken mapping (017)
 }
 
 export function FieldLink({

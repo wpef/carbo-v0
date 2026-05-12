@@ -115,5 +115,10 @@ export function useSchema(planId: string, role: 'source' | 'destination' = 'sour
     retrieving: state.retrieving,
     error: state.error,
     retrieveSchema,
+    /**
+     * Manually re-fetch the current snapshot. Useful after an external refresh
+     * (e.g., useConnectionSetup full chain) to sync the display.
+     */
+    refetch: fetchSnapshot,
   }
 }
