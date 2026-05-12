@@ -18,6 +18,8 @@ As a consultant, I can retrieve the full list of objects from a connected system
 3. **Given** a CURRENT and PREVIOUS snapshot exist, **When** the consultant triggers a schema refresh, **Then** the system retrieves the latest schema, saves it as the new CURRENT, and computes a diff: added objects, removed objects, and modified objects (field changes).
 4. **Given** a schema diff with changes, **When** the consultant views the diff, **Then** added objects are clearly marked as new, removed objects are flagged with a warning, and modified objects show what changed.
 5. **Given** schema retrieval fails (network error, permissions), **When** the error occurs, **Then** the system displays a clear error message and retains the existing CURRENT snapshot (no data loss).
+6. **Given** an existing CURRENT snapshot and the consultant is on `/plans/[planId]/source/schema`, **When** they click "Rafraîchir le schéma", **Then** the **full chain** schema → objects → fields is executed (identical to the refresh button on `/plans/[planId]/source`), AND the mapping integrity check is triggered at the end. The page must never end in a state where the new snapshot has objects but no fields. <!-- Added: 2026-05-12 -->
+7. **Given** the refresh on `/source/schema` completes and the new snapshot has removed or changed objects/fields referenced by existing mappings, **Then** the integrity check flags those mappings as broken (linkStatus=BROKEN) and the plan status transitions to BROKEN. The consultant must resolve manually (delete or recreate the mapping) — the system never re-binds, re-maps, or deletes automatically. <!-- Added: 2026-05-12 -->
 
 ## Edge Cases
 
@@ -39,6 +41,8 @@ As a consultant, I can retrieve the full list of objects from a connected system
 - **FR-007**: The system MUST prevent concurrent schema retrievals for the same connection.
 - **FR-008**: The system MUST log every schema retrieval (success, failure, diff summary) to the audit trail.
 - **FR-009**: Schema retrieval MUST NOT fail silently. Any error MUST be reported to the consultant with a clear message.
+- **FR-010**: Every refresh trigger — refresh button on `/source/schema`, refresh button on `/source`, post-OAuth auto-trigger — MUST execute the **full chain** schema → objects → fields (no partial chain). Any divergence between trigger paths is a bug. <!-- Added: 2026-05-12 -->
+- **FR-011**: At the end of every successful refresh, the system MUST trigger the mapping integrity check (`checkMappingIntegrity`, feature 017) for the plan owning the refreshed connection. The integrity check MUST update the plan status to BROKEN if any mapping is found broken, and DRAFT/READY otherwise. No automatic remediation (no re-bind, no auto-delete, no auto-remap) — Principle IX (human-in-the-loop). <!-- Added: 2026-05-12 -->
 
 ## Key Entities
 
