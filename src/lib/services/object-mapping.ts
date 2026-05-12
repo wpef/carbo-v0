@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { logAction } from './audit-service'
 import { getAutoLinkPairs } from './auto-link-registry'
+import { checkAndUpdatePlanStatus } from './mapping-integrity'
 import type {
   ObjectMappingDTO,
   UnmappedSourceObject,
@@ -159,6 +160,11 @@ export async function createObjectMapping(
     destObjectApiName,
   })
 
+  // T007 — re-check integrity after CRUD so plan.status reflects reality
+  await checkAndUpdatePlanStatus(planId).catch((err) =>
+    console.warn('[WARN] checkAndUpdatePlanStatus after createObjectMapping failed (non-fatal):', err),
+  )
+
   return toDTO(
     mapping,
     sourceObj?.label ?? sourceObjectApiName,
@@ -182,6 +188,12 @@ export async function deleteObjectMapping(planId: string, mappingId: string): Pr
     sourceObjectApiName: mapping.sourceObjectApiName,
     destObjectApiName: mapping.destObjectApiName,
   })
+
+  // T007 — re-check integrity after delete: removing a broken mapping may flip
+  // the plan back to DRAFT once no broken mappings remain.
+  await checkAndUpdatePlanStatus(planId).catch((err) =>
+    console.warn('[WARN] checkAndUpdatePlanStatus after deleteObjectMapping failed (non-fatal):', err),
+  )
 }
 
 /**

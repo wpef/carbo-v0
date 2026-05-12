@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 import { logAction } from './audit-service'
 import { checkTypeCompatibility } from './type-compatibility'
 import { getFieldAutoMatchPairs } from './field-auto-match-registry'
+import { checkAndUpdatePlanStatus } from './mapping-integrity'
 import type {
   FieldMappingDTO,
   CreateFieldMappingInput,
@@ -365,6 +366,11 @@ export async function createFieldMapping(
     typeCompatibility: compatibility,
   })
 
+  // T007 — re-check integrity after CRUD so plan.status reflects reality
+  await checkAndUpdatePlanStatus(objectMapping.planId).catch((err) =>
+    console.warn('[WARN] checkAndUpdatePlanStatus after createFieldMapping failed (non-fatal):', err),
+  )
+
   return toDTO(mapping, sourceField, destField, null)
 }
 
@@ -386,6 +392,12 @@ export async function deleteFieldMapping(fieldMappingId: string): Promise<void> 
     sourceFieldApiName: mapping.sourceFieldApiName,
     destFieldApiName: mapping.destFieldApiName,
   })
+
+  // T007 — re-check integrity after delete: removing a broken mapping may flip
+  // the plan back to DRAFT once no broken mappings remain.
+  await checkAndUpdatePlanStatus(mapping.objectMapping.planId).catch((err) =>
+    console.warn('[WARN] checkAndUpdatePlanStatus after deleteFieldMapping failed (non-fatal):', err),
+  )
 }
 
 /**
