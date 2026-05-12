@@ -2,7 +2,9 @@
 
 export type TypeCompatibility = 'COMPATIBLE' | 'WARNING' | 'INCOMPATIBLE'
 
-export type LinkStatus = 'GREEN' | 'GREEN_PARTIAL' | 'RED_SOLID' | 'RED_DASHED'
+// 017 — BROKEN added 2026-05-12: source or destination field no longer exists in current snapshot
+// (Constitution Principle IX — broken mappings are marked, never auto-resolved)
+export type LinkStatus = 'GREEN' | 'GREEN_PARTIAL' | 'RED_SOLID' | 'RED_DASHED' | 'BROKEN'
 
 export interface FieldMappingDTO {
   id: string

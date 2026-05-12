@@ -75,6 +75,7 @@ interface LinkStatusResult {
  * Derives LinkStatus from section type + migration logic completeness.
  *
  * New paradigm:
+ * - Source or destination field missing from CURRENT snapshot → BROKEN (017 Design Decisions, 2026-05-12)
  * - No config needed (D4 INFORMATIONAL) → GREEN
  * - Incompatible (D3 ERROR) → RED_DASHED
  * - Config needed, not done → RED_SOLID ("À configurer")
@@ -88,7 +89,21 @@ export function computeLinkStatus(
   mappedSourceValueCount?: number,
   destValueCount?: number,
   mappedDestValueCount?: number,
+  sourceFieldExists?: boolean,
+  destFieldExists?: boolean,
 ): LinkStatusResult {
+  // BROKEN (017) → source or destination field no longer exists in the current schema
+  // (Constitution Principle IX — no auto-resolve; the consultant must delete and recreate)
+  if (sourceFieldExists === false && destFieldExists === false) {
+    return { linkStatus: 'BROKEN', statusDetail: 'Champs source et destination introuvables dans le schéma actuel' }
+  }
+  if (sourceFieldExists === false) {
+    return { linkStatus: 'BROKEN', statusDetail: 'Champ source introuvable dans le schéma actuel' }
+  }
+  if (destFieldExists === false) {
+    return { linkStatus: 'BROKEN', statusDetail: 'Champ destination introuvable dans le schéma actuel' }
+  }
+
   // D3 (ERROR) → always incompatible
   if (sectionType === 'ERROR') return { linkStatus: 'RED_DASHED' }
 
@@ -171,6 +186,12 @@ function toDTO(
     mappedDestValueCount = dstPicklist.filter((v) => mappedDstValues.has(v)).length
   }
 
+  // 017 — broken state derives from the resolution of the source/dest fields
+  // against the CURRENT snapshot (apiName-based). sourceField/destField are null
+  // when the apiName is no longer present in the current snapshot.
+  const sourceFieldExists = sourceField !== null
+  const destFieldExists = destField !== null
+
   const { linkStatus, statusDetail } = computeLinkStatus(
     sectionType,
     migrationLogic?.status ?? null,
@@ -178,6 +199,8 @@ function toDTO(
     mappedSourceValueCount,
     destValueCount,
     mappedDestValueCount,
+    sourceFieldExists,
+    destFieldExists,
   )
 
   return {
@@ -202,9 +225,46 @@ function toDTO(
 // --- Service functions ---
 
 /**
+ * Resolve the SchemaObject in the CURRENT snapshot for a given plan + role + apiName.
+ * Returns null if the connection, snapshot, or object can't be found by apiName.
+ *
+ * This is the read-time fallback that lets the UI render mappings even when the
+ * stored FK (objectMapping.sourceObjectId / destObjectId) points at a now-deleted
+ * SchemaObject from a previous snapshot (017 Design Decisions, 2026-05-12).
+ * No DB write — Constitution Principle IX.
+ */
+async function resolveCurrentObject(
+  planId: string,
+  role: 'source' | 'destination',
+  apiName: string,
+) {
+  const conn = role === 'source'
+    ? await prisma.sourceConnection.findUnique({ where: { planId } })
+    : await prisma.destinationConnection.findUnique({ where: { planId } })
+  if (!conn) return null
+
+  const snapshot = await prisma.schemaSnapshot.findFirst({
+    where: { connectionId: conn.id, role, status: 'CURRENT' },
+  })
+  if (!snapshot) return null
+
+  return prisma.schemaObject.findFirst({
+    where: { snapshotId: snapshot.id, apiName },
+  })
+}
+
+/**
  * List all field mappings for an object mapping, enriched with field labels and types.
+ *
+ * Fields are resolved against the CURRENT snapshot by apiName (not by stored FK),
+ * so that mappings stay renderable even after a schema refresh rotates snapshots.
+ * Mappings whose source or destination field no longer exists in the current schema
+ * are returned with linkStatus=BROKEN.
  */
 export async function listFieldMappings(objectMappingId: string): Promise<FieldMappingDTO[]> {
+  const objectMapping = await prisma.objectMapping.findUnique({ where: { id: objectMappingId } })
+  if (!objectMapping) return []
+
   const mappings = await prisma.fieldMapping.findMany({
     where: { objectMappingId },
     include: {
@@ -217,20 +277,28 @@ export async function listFieldMappings(objectMappingId: string): Promise<FieldM
 
   if (mappings.length === 0) return []
 
-  const sourceFieldIds = mappings.map((m) => m.sourceFieldId)
-  const destFieldIds = mappings.map((m) => m.destFieldId)
-
-  const [sourceFields, destFields] = await Promise.all([
-    prisma.objectField.findMany({ where: { id: { in: sourceFieldIds } } }),
-    prisma.objectField.findMany({ where: { id: { in: destFieldIds } } }),
+  // Resolve source/destination objects from the CURRENT snapshots (apiName-based).
+  // Stored FK (objectMapping.sourceObjectId / destObjectId) is treated as a hint only.
+  const [currentSourceObj, currentDestObj] = await Promise.all([
+    resolveCurrentObject(objectMapping.planId, 'source', objectMapping.sourceObjectApiName),
+    resolveCurrentObject(objectMapping.planId, 'destination', objectMapping.destObjectApiName),
   ])
 
-  const sourceById = new Map(sourceFields.map((f) => [f.id, f]))
-  const destById = new Map(destFields.map((f) => [f.id, f]))
+  const [currentSourceFields, currentDestFields] = await Promise.all([
+    currentSourceObj
+      ? prisma.objectField.findMany({ where: { objectId: currentSourceObj.id } })
+      : Promise.resolve([]),
+    currentDestObj
+      ? prisma.objectField.findMany({ where: { objectId: currentDestObj.id } })
+      : Promise.resolve([]),
+  ])
+
+  const sourceByApiName = new Map(currentSourceFields.map((f) => [f.apiName, f]))
+  const destByApiName = new Map(currentDestFields.map((f) => [f.apiName, f]))
 
   return mappings.map((m) => {
-    const sourceField = sourceById.get(m.sourceFieldId) ?? null
-    const destField = destById.get(m.destFieldId) ?? null
+    const sourceField = sourceByApiName.get(m.sourceFieldApiName) ?? null
+    const destField = destByApiName.get(m.destFieldApiName) ?? null
     const logic = m.migrationLogic
     return toDTO(
       m,
@@ -322,14 +390,21 @@ export async function deleteFieldMapping(fieldMappingId: string): Promise<void> 
 
 /**
  * Return source fields for the object mapping that don't have a field mapping yet.
+ *
+ * Resolves the source object via the CURRENT snapshot by apiName, not by stored FK
+ * (017 Design Decisions). Returns [] if the source object no longer exists in the
+ * current schema — the consultant must delete and recreate the mapping.
  */
 export async function getUnmappedSourceFields(objectMappingId: string): Promise<UnmappedSourceField[]> {
   const objectMapping = await prisma.objectMapping.findUnique({ where: { id: objectMappingId } })
   if (!objectMapping) return []
 
-  // Get all fields for the source object
+  // Resolve via CURRENT snapshot by apiName — stored FK may be stale after refresh
+  const sourceObj = await resolveCurrentObject(objectMapping.planId, 'source', objectMapping.sourceObjectApiName)
+  if (!sourceObj) return []
+
   const sourceFields = await prisma.objectField.findMany({
-    where: { objectId: objectMapping.sourceObjectId },
+    where: { objectId: sourceObj.id },
     orderBy: { apiName: 'asc' },
   })
 
@@ -355,13 +430,19 @@ export async function getUnmappedSourceFields(objectMappingId: string): Promise<
 /**
  * Return destination fields available for the object mapping.
  * Returns all dest object fields (one-to-one is enforced at source side only).
+ *
+ * Resolves the destination object via the CURRENT snapshot by apiName, not by stored
+ * FK (017 Design Decisions). Returns [] if the destination object no longer exists.
  */
 export async function getAvailableDestFields(objectMappingId: string): Promise<AvailableDestField[]> {
   const objectMapping = await prisma.objectMapping.findUnique({ where: { id: objectMappingId } })
   if (!objectMapping) return []
 
+  const destObj = await resolveCurrentObject(objectMapping.planId, 'destination', objectMapping.destObjectApiName)
+  if (!destObj) return []
+
   const destFields = await prisma.objectField.findMany({
-    where: { objectId: objectMapping.destObjectId },
+    where: { objectId: destObj.id },
     orderBy: { apiName: 'asc' },
   })
 
@@ -393,10 +474,21 @@ export async function autoMatchFields(objectMappingId: string): Promise<FieldAut
     return { created: 0, skipped: 0, pairs: [] }
   }
 
-  // Load source and dest fields by apiName
+  // Resolve source/dest objects from CURRENT snapshots (apiName-based, FK may be stale)
+  const [currentSourceObj, currentDestObj] = await Promise.all([
+    resolveCurrentObject(objectMapping.planId, 'source', objectMapping.sourceObjectApiName),
+    resolveCurrentObject(objectMapping.planId, 'destination', objectMapping.destObjectApiName),
+  ])
+
+  if (!currentSourceObj || !currentDestObj) {
+    // Source or dest object no longer exists — nothing to auto-match
+    return { created: 0, skipped: 0, pairs: [] }
+  }
+
+  // Load source and dest fields from the current snapshot objects
   const [sourceFields, destFields] = await Promise.all([
-    prisma.objectField.findMany({ where: { objectId: objectMapping.sourceObjectId } }),
-    prisma.objectField.findMany({ where: { objectId: objectMapping.destObjectId } }),
+    prisma.objectField.findMany({ where: { objectId: currentSourceObj.id } }),
+    prisma.objectField.findMany({ where: { objectId: currentDestObj.id } }),
   ])
 
   const sourceByApiName = new Map(sourceFields.map((f) => [f.apiName, f]))
