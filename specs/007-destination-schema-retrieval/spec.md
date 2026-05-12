@@ -19,12 +19,16 @@ of available objects with labels, API names, and custom/standard badges.
    are displayed with label, API name, standard/custom badge, and description.
 2. **Given** a retrieved destination schema, **When** the consultant refreshes, **Then** a diff
    is shown (added/removed/modified objects).
+3. **Given** an existing CURRENT snapshot and the consultant is on `/plans/[planId]/destination/schema`, **When** they click "Rafraîchir le schéma", **Then** the **full chain** schema → fields is executed (identical to the refresh button on `/plans/[planId]/destination`), AND the mapping integrity check is triggered at the end. The page must never end in a state where the new snapshot has objects but no fields. <!-- Added: 2026-05-12 -->
+4. **Given** the refresh on `/destination/schema` completes and the new snapshot has removed or changed objects/fields referenced by existing mappings, **Then** the integrity check flags those mappings as broken (linkStatus=BROKEN) and the plan status transitions to BROKEN. The consultant must resolve manually (delete or recreate the mapping) — the system never re-binds, re-maps, or deletes automatically. <!-- Added: 2026-05-12 -->
 
 ## Functional Requirements
 
 - **FR-001**: The system MUST retrieve all objects from the destination via the adapter.
 - **FR-002**: Schema snapshots MUST follow the CURRENT/PREVIOUS rotation (max 2).
 - **FR-003**: Schema retrieval MUST be logged to the audit trail.
+- **FR-004**: Every refresh trigger — refresh button on `/destination/schema`, refresh button on `/destination`, post-OAuth auto-trigger — MUST execute the **full chain** schema → fields (no partial chain). Destination has no object-selection step (all objects retrieved), but fields retrieval is still mandatory. Any divergence between trigger paths is a bug. <!-- Added: 2026-05-12 -->
+- **FR-005**: At the end of every successful refresh, the system MUST trigger the mapping integrity check (`checkMappingIntegrity`, feature 017) for the plan owning the refreshed connection. The integrity check MUST update the plan status to BROKEN if any mapping is found broken, and DRAFT/READY otherwise. No automatic remediation — Principle IX (human-in-the-loop). <!-- Added: 2026-05-12 -->
 
 ## Assumptions
 
