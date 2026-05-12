@@ -1,25 +1,34 @@
 <!--
   SYNC IMPACT REPORT
   ==================
-  Version change: 1.1.0 → 1.2.0 (MINOR: nouveau principe VIII, stack résolu)
+  Version change: 1.2.0 → 1.3.0 (MINOR: nouveau principe IX)
 
   Principes ajoutés:
-    VIII. Modularité et isolation (nouveau) — features isolées, freezable, US atomiques
+    IX. Human-in-the-loop sur opérations destructives ou ambiguës (nouveau) —
+        l'automation ne prend jamais de décision destructive ou ambiguë à la place
+        du consultant. Auto-match/auto-link uniquement à la première connexion ou
+        sur trigger explicite. Pas de re-binding FK silencieux après refresh schema.
+        Pas d'auto-suppression de mappings cassés. Pas d'auto-remap par match
+        fuzzy. Tous les effets "auto-*" doivent être réversibles et visibles.
 
   Sections modifiées:
-    - Technology Standards : stack complet défini (Tailwind, Prisma/SQLite, Vitest, jsforce, etc.)
-      Résolution de tous les TODOs (BACKEND_STACK, DATABASE, Testing)
-    - Principe VIII : inter-module isolation via interfaces abstraites, Open/Closed, US atomiques
+    - Principe IX : ajouté, décliné en règles concrètes (mapping integrity,
+      auto-match, FK rebind, opérations destructives).
 
   Templates requis:
-    ✅ .specify/templates/plan-template.md  — Constitution Check doit inclure Principe VIII
-    ✅ .specify/templates/spec-template.md  — US stories doivent être atomiques (Principe VIII)
-    ✅ .specify/templates/tasks-template.md — Pas de changement structurel
-    ✅ .specify/templates/agent-file-template.md — Pas de changement
+    ⚠ .specify/templates/plan-template.md  — Constitution Check DOIT inclure
+       le Principe IX (à mettre à jour dans une PR séparée si besoin).
+    ✅ .specify/templates/spec-template.md  — pas de changement structurel.
+    ✅ .specify/templates/tasks-template.md — pas de changement.
+    ✅ .specify/templates/agent-file-template.md — pas de changement.
 
-  TODOs résolus:
-    - ✅ TODO(BACKEND_STACK): Next.js Route Handlers
-    - ✅ TODO(DATABASE): SQLite via Prisma ORM
+  Plans concernés à mettre à jour (Constitution Check tableau) :
+    - specs/003-source-schema-retrieval/plan.md
+    - specs/007-destination-schema-retrieval/plan.md
+    - specs/017-mapping-integrity-check/plan.md
+    - specs/011-object-mapping/plan.md (auto-link)
+    - specs/012-field-mapping/plan.md (auto-match)
+    - tout futur plan avec automation
 -->
 
 # Carbo-v0 Constitution
@@ -116,6 +125,36 @@ valide le connecteur Salesforce ne veut pas que le travail sur le mapping plan r
 validation. La granularité atomique des US permet une validation incrémentale et une priorisation
 fine.
 
+### IX. Human-in-the-loop sur opérations destructives ou ambiguës
+
+L'automation NE PEUT PAS prendre, à la place du consultant, une décision qui est soit destructive
+(supprime du travail existant), soit ambiguë (plusieurs résolutions plausibles dont la "bonne"
+dépend du contexte métier). La décision humaine prévaut toujours sur l'automation.
+
+**Déclinaisons concrètes**:
+
+- **Auto-match / auto-link** : ne tournent qu'à la **première connexion** d'une paire source/destination,
+  ou sur trigger utilisateur explicite (bouton "Auto-match"). JAMAIS automatiquement après un
+  refresh de schéma. Un plan refreshé contenant des mappings cassés n'est PAS équivalent à un plan
+  vierge — il contient des décisions consultant qui ne doivent pas être écrasées.
+- **Mappings cassés (linkStatus=BROKEN)** : le système les **marque** uniquement. Pas d'auto-suppression,
+  pas d'auto-remap par match fuzzy, pas de re-binding silencieux des FK pendant la rotation de
+  snapshot. Le consultant supprime ou recrée manuellement (cf. spec 017, section "Design Decisions").
+- **Résolutions par apiName** : lire les fields/objects par apiName contre le snapshot CURRENT est
+  permis (read-time fallback pour rendre l'UI fonctionnelle). Écrire / muter des FK par apiName
+  est interdit sans confirmation utilisateur.
+- **Opérations destructives** (écrasement, suppression, cascade) : DOIVENT être explicites,
+  réversibles ou tracées, et confirmées via UI dans le cas général.
+- **Tout effet auto-*** : DOIT être visible (banner, badge, message clair) et le consultant
+  DOIT pouvoir l'inspecter et le défaire.
+
+**Rationale** : Carbo-v0 est un outil de migration de données pour clients. Un re-binding silencieux
+de `customer_id` vers `external_id` (mêmes patterns de nom, sémantique potentiellement différente)
+peut faire passer des données dans des champs erronés sans alerter le consultant. La donnée transite
+chez le client final — un silent fail invisible cassse la confiance contractuelle (Principe III) et
+la traçabilité (Principe VI). Les "automations malines" sont passives, jamais actives sur la donnée
+ou la structure du plan.
+
 ## Technology Standards
 
 **Frontend** : Next.js 14+ (App Router) + TypeScript + Tailwind CSS + shadcn/ui.
@@ -179,4 +218,4 @@ conflit entre ce document et toute autre directive, cette constitution a la prio
 le `plan.md` de la feature. Toute violation DOIT être justifiée dans le Complexity Tracking du
 plan, faute de quoi la PR est bloquée.
 
-**Version**: 1.2.0 | **Ratified**: 2026-03-17 | **Last Amended**: 2026-03-25
+**Version**: 1.3.0 | **Ratified**: 2026-03-17 | **Last Amended**: 2026-05-12
