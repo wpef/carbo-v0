@@ -63,3 +63,38 @@ As a consultant, I am notified when schema changes break my existing mappings so
 - The type compatibility matrix used for type change detection is the same matrix defined in feature 010.
 - Integrity issues are persisted so the consultant can view them across sessions without requiring a re-check.
 - The integrity check is a synchronous operation that runs after schema refresh completes.
+
+## Design Decisions <!-- Added: 2026-05-12 — captured from live test session -->
+
+### No automatic FK re-binding (Principle IX)
+
+When the schema refresh creates new `SchemaObject` / `ObjectField` records (with new UUIDs), the existing `ObjectMapping.sourceObjectId` / `ObjectMapping.destObjectId` / `FieldMapping.sourceFieldId` / `FieldMapping.destFieldId` keep pointing at the **old snapshot's records** (which the rotation demotes to PREVIOUS, then deletes on the next refresh). The FK references therefore become structurally fragile.
+
+**The system does NOT attempt to "heal" these references by name matching.** No automatic re-bind, no fuzzy auto-remap, no silent FK update during snapshot rotation.
+
+Instead:
+
+1. The integrity check runs after every schema refresh (003 FR-011, 007 FR-005).
+2. For each mapping, the check resolves `sourceObjectApiName` / `destObjectApiName` / `sourceFieldApiName` / `destFieldApiName` against the **current** snapshot — by name, not by stored FK ID.
+3. If the resolution fails (object/field absent in the new snapshot, or type incompatible), the mapping is flagged BROKEN.
+4. The plan status transitions to BROKEN.
+5. The consultant resolves manually via the UI (delete or recreate the mapping) — banner + per-mapping action.
+
+**Rationale**: A re-bind by apiName could silently bind a mapping to a renamed field that has different semantics (e.g., `customer_id` renamed to `external_id` — same naming pattern, completely different data domain). Forcing the consultant to confirm preserves data fidelity (Principle III). The decision to remap is irreducibly human — the system has no way to know whether the new field is the "same" field semantically.
+
+This decision rules out **explicitly**:
+
+- Auto re-binding by apiName match (read-time or write-time).
+- Auto-remap by fuzzy name match (Levenshtein, prefix, etc.).
+- Silent FK update during snapshot rotation.
+- Automatic deletion of broken mappings on refresh (cascade is opt-in via the repair endpoint).
+
+This decision keeps **in scope**:
+
+- **Read-time resolution by apiName** for displaying broken mappings: `getUnmappedSourceFields(mappingId)`, `getAvailableDestFields(mappingId)`, `listFieldMappings`, etc. MUST resolve the source/destination object's fields against the current snapshot by apiName, not by stored FK. The stored FK is treated as a hint only — never authoritative. This is not "automation" because no data is mutated; it is the only way the UI can render a broken mapping at all.
+
+### Auto-match / auto-link only at initial connection
+
+The existing `autoLink` (object-mapping) and `autoMatchFields` (field-mapping) services run only when the plan has **zero existing mappings for that scope** (first time the consultant opens the mapping page for a fresh pair). They MUST NOT run automatically after a schema refresh that leaves mappings in place but flagged BROKEN. A refreshed plan with broken mappings is not equivalent to a fresh plan — it has consultant decisions embedded that must not be overwritten.
+
+The hook `useFieldMapping` already guards this (`if (!hasMappings && !autoMatchedRef.current)`). The corresponding rule must be enforced everywhere auto-match could be triggered.
