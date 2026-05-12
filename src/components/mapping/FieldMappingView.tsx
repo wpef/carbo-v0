@@ -43,6 +43,7 @@ const LINK_STATUS_STYLES: Record<string, string> = {
   GREEN_PARTIAL: 'bg-amber-50 text-amber-700 border-amber-300',
   RED_SOLID: 'bg-red-100 text-red-700 border-red-200',
   RED_DASHED: 'bg-red-100 text-red-700 border-red-200 border-dashed',
+  BROKEN: 'bg-red-200 text-red-900 border-red-500 font-semibold',
 }
 
 const LINK_STATUS_LABELS: Record<string, string> = {
@@ -50,6 +51,7 @@ const LINK_STATUS_LABELS: Record<string, string> = {
   GREEN_PARTIAL: 'Validé (partiel)',
   RED_SOLID: 'À configurer',
   RED_DASHED: 'Incompatible',
+  BROKEN: 'Cassé',
 }
 
 const LINK_STATUS_ICONS: Record<string, string> = {
@@ -57,6 +59,7 @@ const LINK_STATUS_ICONS: Record<string, string> = {
   GREEN_PARTIAL: '⚠',
   RED_SOLID: '●',
   RED_DASHED: '✕',
+  BROKEN: '⚠',
 }
 
 function TypeBadge({ type }: { type: string }) {
@@ -243,61 +246,87 @@ export function FieldMappingView({
               </tr>
             </thead>
             <tbody>
-              {filteredMappings.map((m) => (
-                <tr key={m.id} className="border-t border-border hover:bg-muted/20">
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{m.sourceFieldLabel}</span>
-                      <TypeBadge type={m.sourceFieldType} />
-                    </div>
-                    <span className="text-xs text-muted-foreground font-mono">{m.sourceFieldApiName}</span>
-                  </td>
-                  <td className="text-center text-muted-foreground">&rarr;</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{m.destFieldLabel}</span>
-                      <TypeBadge type={m.destFieldType} />
-                    </div>
-                    <span className="text-xs text-muted-foreground font-mono">{m.destFieldApiName}</span>
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <div className="inline-flex flex-col items-center gap-0.5">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1 ${LINK_STATUS_STYLES[m.linkStatus] ?? LINK_STATUS_STYLES.RED_SOLID}`}
-                        title={m.statusDetail ?? undefined}
-                      >
-                        <span>{LINK_STATUS_ICONS[m.linkStatus] ?? '●'}</span>
-                        {LINK_STATUS_LABELS[m.linkStatus] ?? m.linkStatus}
-                      </span>
-                      {m.statusDetail && (
-                        <span className="text-[10px] text-amber-600 max-w-35 text-center leading-tight">
-                          {m.statusDetail}
+              {filteredMappings.map((m) => {
+                const isBroken = m.linkStatus === 'BROKEN'
+                return (
+                  <tr
+                    key={m.id}
+                    className={`border-t border-border ${
+                      isBroken ? 'bg-red-50 dark:bg-red-950/20' : 'hover:bg-muted/20'
+                    }`}
+                  >
+                    <td className={`px-3 py-2 ${isBroken ? 'opacity-70' : ''}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{m.sourceFieldLabel}</span>
+                        <TypeBadge type={m.sourceFieldType} />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-mono">{m.sourceFieldApiName}</span>
+                    </td>
+                    <td className="text-center text-muted-foreground">&rarr;</td>
+                    <td className={`px-3 py-2 ${isBroken ? 'opacity-70' : ''}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{m.destFieldLabel}</span>
+                        <TypeBadge type={m.destFieldType} />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-mono">{m.destFieldApiName}</span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <div className="inline-flex flex-col items-center gap-0.5">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1 ${LINK_STATUS_STYLES[m.linkStatus] ?? LINK_STATUS_STYLES.RED_SOLID}`}
+                          title={m.statusDetail ?? undefined}
+                        >
+                          <span>{LINK_STATUS_ICONS[m.linkStatus] ?? '●'}</span>
+                          {LINK_STATUS_LABELS[m.linkStatus] ?? m.linkStatus}
                         </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenMigrationLogic(m.id)}
-                        className="text-xs text-primary hover:underline px-1"
-                        title="Configure transformation"
-                      >
-                        Configure
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(m.id)}
-                        className="text-xs text-muted-foreground hover:text-destructive px-1"
-                        title="Remove mapping"
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {m.statusDetail && (
+                          <span
+                            className={`text-[10px] max-w-35 text-center leading-tight ${
+                              isBroken ? 'text-red-700 dark:text-red-400' : 'text-amber-600'
+                            }`}
+                          >
+                            {m.statusDetail}
+                          </span>
+                        )}
+                        {isBroken && (
+                          <span className="text-[10px] text-red-700 dark:text-red-400 max-w-35 text-center leading-tight italic">
+                            Supprimez puis recréez ce mapping.
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {!isBroken ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenMigrationLogic(m.id)}
+                            className="text-xs text-primary hover:underline px-1"
+                            title="Configure transformation"
+                          >
+                            Configure
+                          </button>
+                        ) : (
+                          <span
+                            className="text-xs text-muted-foreground/50 px-1 cursor-not-allowed"
+                            title="Mapping cassé — supprimez et recréez pour pouvoir configurer"
+                          >
+                            Configure
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(m.id)}
+                          className="text-xs text-muted-foreground hover:text-destructive px-1"
+                          title="Remove mapping"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
