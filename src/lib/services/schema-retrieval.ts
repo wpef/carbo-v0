@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { logAction } from './audit-service'
 import { migrateSelection } from './object-selection'
+import { checkAndUpdatePlanStatus } from './mapping-integrity'
 import { getAdapterInstance, UnknownAdapterError } from '@/lib/connectors/adapter-factory'
 import type { SchemaDiff } from '@/lib/types/schema'
 
@@ -113,6 +114,16 @@ export async function retrieveSchema(connectionId: string, role: 'source' | 'des
     snapshotId: snapshot.id,
     objectCount: schema.objects.length,
   })
+
+  // T006 — run integrity check + update plan.status after every schema refresh
+  // (003 FR-011, 007 FR-005). The check is read-only over mappings; no automatic
+  // remediation (Constitution Principle IX).
+  // Non-fatal: if the integrity check itself fails, the schema is still saved.
+  if (planId) {
+    await checkAndUpdatePlanStatus(planId).catch((err) =>
+      console.warn('[WARN] checkAndUpdatePlanStatus failed (non-fatal):', err),
+    )
+  }
 
   return snapshot
 }

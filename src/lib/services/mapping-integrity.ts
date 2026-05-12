@@ -155,6 +155,43 @@ export async function checkMappingIntegrity(planId: string): Promise<IntegrityRe
 }
 
 /**
+ * Run the integrity check AND update the plan status accordingly (T004 + T006).
+ *
+ * Called automatically after every schema refresh (003 FR-011, 007 FR-005) and
+ * after every mapping CRUD operation so that plan.status reflects reality.
+ *
+ * NO automatic remediation (Constitution Principle IX): the check only inspects
+ * and marks the plan as BROKEN if any mapping is broken. The consultant resolves
+ * by deleting/recreating mappings via the UI.
+ *
+ * Returns the same IntegrityReport as checkMappingIntegrity.
+ */
+export async function checkAndUpdatePlanStatus(planId: string): Promise<IntegrityReport> {
+  const report = await checkMappingIntegrity(planId)
+
+  // Plan status update: BROKEN if any issue, DRAFT otherwise.
+  // We don't transition to READY here — that's a higher-level decision (all
+  // mappings complete + documents generated + etc.), not the integrity check's
+  // responsibility.
+  const newStatus = report.isHealthy ? 'DRAFT' : 'BROKEN'
+
+  await prisma.migrationPlan.update({
+    where: { id: planId },
+    data: { status: newStatus },
+  })
+
+  await logAction(planId, 'MAPPING_INTEGRITY_CHECKED', {
+    isHealthy: report.isHealthy,
+    brokenObjectMappings: report.brokenObjectMappings.length,
+    brokenFieldMappings: report.brokenFieldMappings.length,
+    typeChanges: report.typeChanges.length,
+    planStatus: newStatus,
+  })
+
+  return report
+}
+
+/**
  * Repair broken mappings: delete broken object/field mappings.
  * - Sets plan status to BROKEN if issues are found but not all repaired.
  * - Sets plan status to DRAFT after a successful repair.
