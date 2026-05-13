@@ -39,6 +39,7 @@ As a developer, I can implement a new connector by following the interface contr
 - **FR-009**: The interface MUST define capability flags: canRead (boolean), canWrite (boolean), canWriteSchema (boolean). Every connector MUST declare these.
 - **FR-010**: The interface MUST define method signatures for: connect, disconnect, getSchema, getFields, getRecords, getRecordCount, getFieldStats. Optional: createObject, createField (only when canWriteSchema is true).
 - **FR-011**: The interface MUST be pure TypeScript types and interfaces with no runtime implementation. No concrete classes, no dependencies.
+- **FR-012** (Pagination convention, 2026-05-12 — captured after live test): `getRecords(connectionId, objectApiName, page, pageSize)` MUST treat `page` as **1-indexed**. `page=1` returns the first `pageSize` records (OFFSET 0 for SQL-style adapters, no cursor walk for cursor-style adapters). `page=N` (N>1) returns records `(N-1)*pageSize + 1` through `N*pageSize`. A 0-indexed implementation is a **contract violation** that silently drops records on page 1 — exact bug class hit on SF + HubSpot during the live test. The convention is non-negotiable end-to-end: the API route validates `page >= 1`, the UI hook (`useRecordPreview`) initialises state with `page=1`, the demo adapters use `(page-1)*pageSize`. The `ConnectorAdapter.getRecords` JSDoc carries this rule inline so any new adapter implementer sees it at the implementation point.
 
 ## Key Entities
 
