@@ -10,9 +10,9 @@ Detect and display unmapped source fields and unmapped required destination prop
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: SQLite via Prisma (FieldExclusion table linked to ObjectMapping)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (FieldExclusion table linked to ObjectMapping, isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Constraints**: Computation must handle 200+ source fields per object without perceivable delay
 
@@ -28,6 +28,7 @@ Detect and display unmapped source fields and unmapped required destination prop
 | VI | Traceability | PASS | Exclusion/un-exclusion actions logged to audit trail |
 | VII | Observability | PASS | Console logs for unmapped field computation results |
 | VIII | Modularity | PASS | Isolated behind UnmappedFieldsService; data consumed by 011 and 012 via API |
+| IX | Human-in-the-loop | PASS | Détection passive — calcule l'écart et l'affiche, ne supprime jamais un field ; l'exclusion d'un field est une action explicite du consultant ("intentionally excluded") |
 
 ## Project Structure
 

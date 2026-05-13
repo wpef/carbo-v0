@@ -10,9 +10,9 @@ Detect broken mappings after schema changes. When a source or destination schema
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, type-compatibility service (012), Connector Interface types (000)
-**Storage**: SQLite via Prisma (IntegrityIssue table linked to MigrationPlan)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (IntegrityIssue table linked to MigrationPlan, isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Constraints**: Integrity check must complete within 5 seconds for 10 object mappings with 200 field mappings
 
@@ -28,6 +28,7 @@ Detect broken mappings after schema changes. When a source or destination schema
 | VI | Traceability | PASS | All integrity check results and plan status transitions logged to audit trail |
 | VII | Observability | PASS | Console logs for each issue detected, plan status changes |
 | VIII | Modularity | PASS | Isolated behind IntegrityCheckService; uses type-compatibility from 012; triggered by schema refresh (003/007), not internally coupled |
+| IX | Human-in-the-loop | PASS | **Cœur du Principe IX** — marque les mappings cassés via `IntegrityIssue` mais ne supprime / remap jamais automatiquement ; pas de fuzzy match auto ; le consultant résout chaque issue manuellement (remap ou suppression) ; `plan.status=BROKEN` jusqu'à résolution explicite |
 
 ## Project Structure
 

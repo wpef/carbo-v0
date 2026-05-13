@@ -30,6 +30,7 @@ Implement the Salesforce source adapter as a concrete implementation of the Conn
 | VI | Traceability | PASS | Every operation (connect, disconnect, schema retrieval, record read, rate limit, error) logged to audit trail |
 | VII | Observability | PASS | Console logging for OAuth flow steps, API calls, rate limit status, token refresh |
 | VIII | Modularity | PASS | Adapter isolated in `src/lib/connectors/salesforce/`; depends only on ConnectorAdapter interface + jsforce |
+| IX | Human-in-the-loop | N/A | Adapter stateless ; expose des opérations CRUD sur Salesforce, ne prend aucune décision sur le plan ; les opérations destructives éventuelles (Phase 2) seront déclenchées par les features applicatives, jamais par l'adapter lui-même |
 
 ## Project Structure
 
@@ -88,3 +89,5 @@ tests/
 ```
 
 **Structure Decision**: Adapter code isolated in `src/lib/connectors/salesforce/`. OAuth routes under `src/app/api/connectors/salesforce/`. Clear separation: auth, schema, records, constants as separate modules for readability.
+
+**Règle — instanciation depuis les services** : Tout code service qui a besoin d'une instance de cet adaptateur DOIT passer par `src/lib/connectors/adapter-factory.ts`. Importer la classe `SalesforceAdapter` directement depuis les services est interdit — cela court-circuite la factory et casse l'ajout de nouveaux adaptateurs.

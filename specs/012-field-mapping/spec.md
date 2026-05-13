@@ -171,6 +171,39 @@ A consultant views a permanent sidebar showing what a real source record would l
 - **FR-013**: The system MUST log field link creation and removal to the audit trail (Constitution Principle VI).
 - **FR-014**: Field lists MUST support search or filtering when the number of fields exceeds a comfortable visual threshold.
 
+### Drift Highlighting on Field Mapping Page <!-- Added: 2026-05-13 -->
+
+When the plan-reopen drift check (spec 001) has detected schema changes, the Field Mapping page MUST surface every **field-level** change contextually. The detection algorithm + canonical taxonomy live in spec 003. The `linkStatus` paradigm (FR-007) already handles a subset; the rest is surfaced via a **separate `driftFlag`** on the field mapping row so the two concepts stay orthogonal.
+
+#### Coverage by Type ID
+
+| Drift Type (canonical, from 003) | linkStatus coverage | Additional UI on this page |
+|---|---|---|
+| `OBJECT_REMOVED` (source/dest of the open mapping) | linkStatus=BROKEN already (017 T011) | Banner at the top of the page: "L'objet [source/destination] de ce mapping n'existe plus." Action: redirect to /mapping to delete-or-recreate. |
+| `FIELD_REMOVED` on a mapped field | linkStatus=BROKEN already | Existing "Cassé" badge + "Supprimez puis recréez" guidance (current behaviour). |
+| `FIELD_TYPE_CHANGED` to incompatible | linkStatus=BROKEN already | Existing "Cassé" badge + tooltip showing old type → new type. |
+| `FIELD_TYPE_CHANGED` to still-compatible | NOT BROKEN (existing logic still valid) | New driftFlag on the row: amber "Type modifié" badge + tooltip with old → new type. linkStatus unchanged. |
+| `FIELD_BECAME_REQUIRED` (destination) | NOT BROKEN | driftFlag: amber "Désormais obligatoire" + tooltip. Migration logic may need review (e.g., default value). |
+| `FIELD_BECAME_OPTIONAL` | NOT BROKEN | driftFlag: info "Désormais facultatif" (low visual weight). |
+| `FIELD_LABEL_CHANGED` | NOT BROKEN | The row simply renders the new label. Optional small "↻" indicator on the affected side. |
+| `PICKLIST_VALUE_ADDED` (source) | NOT BROKEN | driftFlag: amber if a D1 (VALUE_EQUIVALENCE) logic exists for this mapping ("Nouvelle valeur source à équivalencer"). |
+| `PICKLIST_VALUE_ADDED` (destination) | NOT BROKEN | driftFlag: info ("Nouvelle valeur cible disponible"). |
+| `PICKLIST_VALUE_REMOVED` (source) | NOT BROKEN | driftFlag: amber if the removed value appears in a D1 equivalence ("Valeur source supprimée — équivalence orpheline"). |
+| `PICKLIST_VALUE_REMOVED` (destination) | NOT BROKEN | driftFlag: amber if the removed value appears in a D1 equivalence ("Valeur cible supprimée — équivalence orpheline"). |
+| `FIELD_READONLY_CHANGED` (destination → readOnly=true) | NOT BROKEN | driftFlag: amber "Désormais en lecture seule" — write will fail at execution. |
+| `FIELD_READONLY_CHANGED` (destination → readOnly=false) | NOT BROKEN | driftFlag: info "Maintenant éditable". |
+| `FIELD_UNIQUE_CHANGED` | NOT BROKEN | driftFlag: amber/info depending on direction. |
+| `FIELD_ADDED` on the source object | n/a (no mapping yet) | New badge "Nouveau" in the "Unmapped Source Fields" section. Faint green outline. |
+| `FIELD_ADDED` on the destination object | n/a (no mapping yet) | New badge "Nouveau" in the "Available Dest Fields" pool when proposing a remap. |
+
+#### Functional Requirements (drift highlighting on Field Mapping)
+
+- **FR-Drift-FM-1**: The Field Mapping page MUST consume the `PlanDriftContext` (defined in 001 FR-015) and surface every field-level change visually per the table above.
+- **FR-Drift-FM-2**: The `driftFlag` on a field mapping row is **orthogonal** to `linkStatus`. A mapping can be `linkStatus=GREEN` (logic validated) AND `driftFlag='Désormais obligatoire'` simultaneously. Both indicators MUST be rendered together (badge stack, not mutually exclusive).
+- **FR-Drift-FM-3**: When a drift type with `severity=warning` from 003's taxonomy is present on a mapping, the consultant MAY ignore it (the row stays editable). When `severity=critical`, the linkStatus paradigm already prevents editing the migration logic (see 017 T012). No new editability rules are introduced — `driftFlag` is informational.
+- **FR-Drift-FM-4**: If the consultant clicks `[Rafraîchir le schéma]` from the plan-level banner (001 FR-012) and the refresh succeeds, all `driftFlag` indicators on this page MUST clear automatically. `linkStatus=BROKEN` indicators may persist if the mapping is genuinely broken — those are handled by 017's integrity check, not the drift system.
+- **FR-Drift-FM-5**: Any new drift Type ID added to the canonical taxonomy (spec 003) that has field-level impact MUST be wired into the coverage table above. Failing to add a row leaves a new drift type silent on this page.
+
 ### UI Components
 
 - **B1 — Field List**: Two-column view showing all fields for a source object (left) and its linked destination object (right). Each field is displayed as a B2 card. If a link exists between two fields, it is represented by a C1 element. Clicking a field card opens a modal showing the B3 detail card. Clicking a link opens a modal showing the C2 link detail (see 013-migration-logic).

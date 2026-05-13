@@ -30,6 +30,7 @@ Provide a paginated data preview for any connected object (source or destination
 | VI | Traceability | PASS | Preview events logged (object, page, record count) |
 | VII | Observability | PASS | Console logs for fetch timing, record count, errors |
 | VIII | Modularity | PASS | Reusable component works for both source and destination; isolated service |
+| IX | Human-in-the-loop | PASS | Lecture seule, aucune mutation ; aucune décision auto sur les données affichées |
 
 ## Project Structure
 

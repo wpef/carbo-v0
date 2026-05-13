@@ -10,9 +10,9 @@ Generate an immutable HTML document that describes an entire mapping plan in pla
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: Feature 018 (rule-description service), Feature 016 (unmapped fields)
-**Storage**: SQLite via Prisma -- new `TextDocument` entity
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js 14+ (App Router), Node.js
+**Storage**: Neon Postgres via Prisma -- new `TextDocument` entity (isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js 14+ (App Router) sur Vercel
 **Project Type**: Domain service + API route + preview component within monolithic Next.js project
 **Performance Goals**: Generation <30s for 50-field plan (including LLM calls)
 **Constraints**: HTML template is server-side (not React); document is immutable once created
@@ -30,6 +30,7 @@ Generate an immutable HTML document that describes an entire mapping plan in pla
 | VI | Traceability | PASS | Generation events (start, completion, error) logged to audit trail |
 | VII | Observability | PASS | Console logs for generation progress: loading data, calling rule engine, building HTML |
 | VIII | Modularity | PASS | Service consumes 018 via public interface; owns its template; preview component is self-contained |
+| IX | Human-in-the-loop | PASS | Génération déclenchée explicitement par le consultant ; document immuable une fois créé ; aucune régénération auto sur changement de plan |
 
 ## Project Structure
 

@@ -133,6 +133,33 @@ A consultant can remove an existing link between a source object and a destinati
 
 - **ObjectMapping**: Belongs to a MappingPlan. Has an id, mappingPlanId, sourceObjectName, destinationObjectName, autoCreated (boolean), createdAt, updatedAt. Owns zero or more FieldMappings and MigrationFilters.
 
+## Drift Highlighting on Object Mapping Page <!-- Added: 2026-05-13 -->
+
+When the plan-reopen drift check (spec 001) has detected schema changes, the Object Mapping page MUST highlight the affected objects contextually so the consultant can act without leaving the page. The detection algorithm and the canonical taxonomy of modification types live in spec 003 — this section only describes the **rendering**.
+
+### What is surfaced on this page
+
+Only changes at **object level** are surfaced here. Field-level changes are surfaced on the Field Mapping page (spec 012).
+
+| Drift Type (canonical, from 003) | Side | Visual treatment |
+|---|---|---|
+| `OBJECT_ADDED` | source | New badge "Nouveau" on the source object card. Card highlighted with a faint green outline. |
+| `OBJECT_ADDED` | destination | Same on destination side. |
+| `OBJECT_REMOVED` | source | The card for that object still appears (because an `ObjectMapping` still references it) but is rendered in a red, dashed-border state with badge "Supprimé en source". The SVG link to the destination is dashed red. The mapping is flagged for **delete-or-recreate** (no auto-removal — Principle IX). |
+| `OBJECT_REMOVED` | destination | Same on destination side. |
+
+### Acceptance Scenarios (drift highlighting on Object Mapping) <!-- AS-N after existing -->
+
+- **Given** the plan-reopen drift check has detected `OBJECT_ADDED` on source for an object that is NOT mapped, **When** the consultant opens the Object Mapping page, **Then** that object appears in the source column with a "Nouveau" badge and a faint green outline. It remains in the regular "unmapped" pool — no special bucket.
+- **Given** `OBJECT_REMOVED` on source for an object referenced by an existing `ObjectMapping`, **When** the consultant opens the Object Mapping page, **Then** the card for that mapped object is rendered in red dashed-border state with badge "Supprimé en source", the SVG link is dashed red, and the consultant has a one-click "Supprimer ce mapping" action. The mapping is NOT auto-deleted (Principle IX).
+- **Given** a sticky banner is shown at the plan level (per 001), **When** the consultant resolves all object-level drift on this page (delete or recreate broken mappings, or refresh schema), **Then** the page-level highlighting clears automatically; the plan-level banner persists until ALL drift (across all steps) is resolved or the consultant clicks `[Rafraîchir le schéma]`.
+
+### Functional Requirements (drift highlighting on Object Mapping) <!-- Added: 2026-05-13 -->
+
+- **FR-Drift-1**: The Object Mapping page MUST consume the `PlanDriftContext` (defined in 001 FR-015) and surface every object-level change visually per the table above.
+- **FR-Drift-2**: A mapping whose source or destination object is flagged `OBJECT_REMOVED` MUST display a clear delete-or-recreate action. No auto-removal. The same paradigm as `linkStatus=BROKEN` in 012 — visible, dismissible only via consultant action.
+- **FR-Drift-3**: Any new drift Type ID introduced in the canonical taxonomy (spec 003) that has object-level impact MUST be wired into the table above. This is an extensibility hook — failing to add a row leaves a new drift type silent on this page.
+
 ## Success Criteria
 
 ### Measurable Outcomes

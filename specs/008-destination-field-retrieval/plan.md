@@ -10,9 +10,9 @@ Retrieve all fields/properties for each destination object so the consultant can
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: Next.js 14+ (App Router), Prisma ORM
-**Storage**: SQLite via Prisma — reuses `ObjectField` table from 005
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js App Router, Node.js
+**Storage**: Neon Postgres via Prisma — reuses `ObjectField` table from 005 (isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js 14+ (App Router) sur Vercel
 **Project Type**: Web application (unified Next.js project)
 **Performance Goals**: Field retrieval for all destination objects completes in under 60 seconds
 **Constraints**: All destination objects have fields retrieved (no selection gate). Fields include: label, apiName, dataType, isRequired, isReadOnly, isUnique, referenceTo.
@@ -30,6 +30,7 @@ Retrieve all fields/properties for each destination object so the consultant can
 | VI | Traceability | PASS | Field retrieval logged to audit trail |
 | VII | Observability | PASS | Console logs for retrieval progress (per-object field count) |
 | VIII | Modularity | PASS | Reuses ObjectField entity; field retrieval service shared with 005 |
+| IX | Human-in-the-loop | PASS | Récupération déclenchée par le consultant ou la chaîne post-OAuth ; aucune décision auto, juste un fetch de métadonnées |
 
 ## Project Structure
 

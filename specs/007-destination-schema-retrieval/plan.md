@@ -10,9 +10,9 @@ After connecting a destination, retrieve the full list of destination objects an
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: Next.js 14+ (App Router), Prisma ORM
-**Storage**: SQLite via Prisma — reuses `SchemaSnapshot` + `SchemaObject` tables from 003
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js App Router, Node.js
+**Storage**: Neon Postgres via Prisma — reuses `SchemaSnapshot` + `SchemaObject` tables from 003 (isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js 14+ (App Router) sur Vercel
 **Project Type**: Web application (unified Next.js project)
 **Performance Goals**: Schema retrieval completes in under 60 seconds for up to 2000 objects
 **Constraints**: Max 2 snapshots per connection (CURRENT + PREVIOUS). Destination objects are not selected — all are available for mapping.
@@ -30,6 +30,7 @@ After connecting a destination, retrieve the full list of destination objects an
 | VI | Traceability | PASS | Every retrieval logged to audit trail |
 | VII | Observability | PASS | Console logs for retrieval start, object count, diff summary |
 | VIII | Modularity | PASS | Reuses SchemaSnapshot/SchemaObject; service isolated behind public API |
+| IX | Human-in-the-loop | PASS | Symétrique à 003 — rotation CURRENT→PREVIOUS sans re-binding silencieux ; refresh ne déclenche jamais d'auto-remap de destination |
 
 ## Project Structure
 
@@ -80,3 +81,7 @@ tests/
 ```
 
 **Structure Decision**: The schema retrieval service from 003 is generic (works with any connection). The only new code is the route handler (scoped to destination) and the destination schema UI page. Object list and diff components are shared with source.
+
+**Règle — chaîne complète sur tout refresh** (FR-004) : Tout trigger de refresh schema destination — bouton sur `/destination`, bouton sur `/destination/schema`, callback OAuth — DOIT exécuter la chaîne schéma → fields, jamais une étape isolée. La page `/destination/schema` NE DOIT PAS appeler directement `POST /destination-schema` sans enchaîner ensuite `POST /destination-fields`. L'orchestration peut se faire côté client (hook `useConnectionSetup` réutilisé) ou côté serveur (endpoint composite), mais une seule règle vaut : **aucun trigger de refresh ne doit produire un snapshot d'objects sans fields**. Bug constaté en test live le 2026-05-12. <!-- Added: 2026-05-12 -->
+
+**Règle — hook integrity check** (FR-005) : `retrieveSchema()` (ou la fonction qui orchestre la chaîne complète) DOIT appeler `checkMappingIntegrity(planId)` à la fin du flow, après création du nouveau CURRENT et récupération des fields. C'est la task T006 de 017. Sans ce hook, les mappings cassés par un refresh destination restent invisibles : le plan reste en DRAFT alors que des références sont mortes. Aucune remédiation automatique n'est déclenchée — l'integrity check ne fait que **marquer** et update `plan.status` (Principe IX). <!-- Added: 2026-05-12 -->

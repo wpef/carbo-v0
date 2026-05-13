@@ -10,9 +10,9 @@ Within a migration plan, the consultant selects a source adapter type (e.g., Sal
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: SQLite via Prisma (SourceConnection table linked to MigrationPlan)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (SourceConnection table linked to MigrationPlan, isolated per tenant — OAuth tokens chiffrés en colonne `pgcrypto`)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Constraints**: Connection must complete in < 30 seconds excluding external auth
 
@@ -28,6 +28,7 @@ Within a migration plan, the consultant selects a source adapter type (e.g., Sal
 | VI | Traceability | PASS | All connection events logged to audit trail |
 | VII | Observability | PASS | Console logs for connect/disconnect/error |
 | VIII | Modularity | PASS | Feature isolated behind SourceConnection service; communicates via Connector Interface types |
+| IX | Human-in-the-loop | PASS | Connexion établie explicitement par le consultant via OAuth ; déconnexion confirmée ; aucune mutation auto des credentials |
 
 ## Project Structure
 

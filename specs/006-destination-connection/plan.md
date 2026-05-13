@@ -10,9 +10,9 @@ Within a migration plan, allow the consultant to connect a destination system by
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: Next.js 14+ (App Router), Prisma ORM, @hubspot/api-client (HubSpot adapter)
-**Storage**: SQLite via Prisma — reuses `ConnectorConnection` table from 002
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js App Router, Node.js
+**Storage**: Neon Postgres via Prisma — reuses `ConnectorConnection` table from 002 (isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js 14+ (App Router) sur Vercel
 **Project Type**: Web application (unified Next.js project)
 **Performance Goals**: Connection completes in under 30 seconds
 **Constraints**: One destination per plan. Destination adapters may differ from source adapters.
@@ -30,6 +30,7 @@ Within a migration plan, allow the consultant to connect a destination system by
 | VI | Traceability | PASS | Connection events logged to audit trail |
 | VII | Observability | PASS | Console logs for connection lifecycle |
 | VIII | Modularity | PASS | Reuses ConnectorConnection + adapter interface; no cross-module internals |
+| IX | Human-in-the-loop | PASS | Connexion destination établie explicitement par le consultant ; symétrique à 002 ; aucune mutation auto |
 
 ## Project Structure
 
