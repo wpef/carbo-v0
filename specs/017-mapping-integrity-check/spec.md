@@ -93,6 +93,16 @@ This decision keeps **in scope**:
 
 - **Read-time resolution by apiName** for displaying broken mappings: `getUnmappedSourceFields(mappingId)`, `getAvailableDestFields(mappingId)`, `listFieldMappings`, etc. MUST resolve the source/destination object's fields against the current snapshot by apiName, not by stored FK. The stored FK is treated as a hint only — never authoritative. This is not "automation" because no data is mutated; it is the only way the UI can render a broken mapping at all.
 
+### UI-side apiName matching (NEW RULE, 2026-05-12)
+
+**The same apiName-over-FK rule applies to UI components.** Any UI component that asks "is this thing mapped?" or "where does this link go?" MUST match by `apiName` rather than by stored FK id. Concrete sites discovered during the live test and now codified:
+
+- `ObjectMappingView`: SVG link positions (`CardPosition` keyed on `apiName`, `data-api-name` attribute on cards, `mappedSourceApiNames` / `mappedDestApiNames` sets).
+- `FieldMappingView`: `mappedDestApiNames` (was `mappedDestIds`) for filtering the "available dest fields" dropdown — otherwise after a refresh all dest fields would appear available, including ones already used by other mappings.
+- Any future view rendering mapping connectivity, mapped/unmapped filters, "available pool" lists, etc. must follow the same pattern.
+
+**Rule of thumb**: in any UI consuming `ObjectMappingDTO` or `FieldMappingDTO`, treat `sourceObjectId` / `destObjectId` / `sourceFieldId` / `destFieldId` as **diagnostic info only**. For any presence test, set membership, lookup, or positional matching, use the corresponding `apiName` field. This makes the UI robust to snapshot rotation by construction — a single FK lookup that slips through is a regression risk identical to the one fixed in commit `219f1f9e`.
+
 ### Auto-match / auto-link only at initial connection
 
 The existing `autoLink` (object-mapping) and `autoMatchFields` (field-mapping) services run only when the plan has **zero existing mappings for that scope** (first time the consultant opens the mapping page for a fresh pair). They MUST NOT run automatically after a schema refresh that leaves mappings in place but flagged BROKEN. A refreshed plan with broken mappings is not equivalent to a fresh plan — it has consultant decisions embedded that must not be overwritten.
