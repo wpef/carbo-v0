@@ -54,11 +54,34 @@ from the adapter list, authenticates, and sees the connection status as CONNECTE
 10. **Given** a reconfiguration that invalidates downstream data, **When** it completes, **Then**
     the plan's `currentStep` is rolled back to the latest still-valid step (see FR-009 rules).
 
+**Acceptance Scenarios — Récupération automatique post-OAuth et rafraîchissement** <!-- Added: 2026-04-22 -->:
+
+11. **Given** une connexion OAuth vient de se terminer et l'URL contient `?connected=salesforce`,
+    **When** la page source se charge, **Then** la récupération schéma+fields se déclenche
+    automatiquement, sans action de l'utilisateur, et la page affiche un indicateur de chargement
+    pendant l'opération puis l'état CONNECTED avec le schéma disponible.
+12. **Given** une connexion à l'état CONNECTED avec un schéma déjà stocké, **When** le consultant
+    clique sur « Rafraîchir le schéma », **Then** la chaîne schéma→objects→fields est ré-exécutée,
+    le snapshot stocké est écrasé par le nouveau snapshot, et la page affiche l'état CONNECTED mis
+    à jour.
+13. **Given** un rafraîchissement du schéma et le nouveau schéma supprime un champ référencé dans
+    un field mapping existant, **When** le rafraîchissement se termine, **Then** le snapshot est
+    écrasé sans confirmation, le field mapping concerné passe à `linkStatus=BROKEN`, et aucun
+    dialog de confirmation n'est affiché (comportement Phase 1 ; la cascade complète est Phase 2).
+
 ## Edge Cases
 
 - **Adapter type switch** (e.g., `demo` → `salesforce`): same partial-reset logic as a
   credentials refresh — objects/fields whose name matches AND whose normalized type is
   compatible across adapters are preserved; everything else is invalidated.
+- **Échec de la récupération automatique post-OAuth** (erreur API, rate limit) : un message
+  d'erreur clair est affiché sur la page source. Le bouton « Rafraîchir le schéma » reste
+  accessible pour que le consultant puisse relancer manuellement. Aucun snapshot partiel
+  n'est persisté. <!-- Added: 2026-04-22 -->
+- **Navigation pendant la récupération automatique** : si le consultant quitte la page pendant
+  que la récupération est en cours, l'opération se poursuit côté serveur jusqu'à complétion.
+  Au prochain chargement de la page source, le snapshot est disponible et l'état CONNECTED est
+  affiché. <!-- Added: 2026-04-22 -->
 - **Authentication fails during reconfiguration**: existing connection and all downstream
   data remain untouched. Clear error message. User can retry or cancel.
 - **User navigates away mid-reconfiguration**: draft state discarded; original connection
@@ -130,6 +153,21 @@ from the adapter list, authenticates, and sees the connection status as CONNECTE
 - **FR-016**: Mapping preservation matches on **both** source object/field name AND
   destination object/field name with compatible normalized types. Rename counts as
   removal + addition; no automatic rematch (deferred).
+
+### Récupération automatique après callback OAuth <!-- Added: 2026-04-22 -->
+
+- **FR-017**: Après un callback OAuth réussi (URL contient `?connected=<adapterType>`), la
+  page source DOIT déclencher automatiquement la récupération du schéma et des champs sans
+  action supplémentaire de l'utilisateur. Aucun dialog de confirmation dans le flux MVP.
+- **FR-018**: Lorsqu'une connexion est à l'état CONNECTED, un bouton « Rafraîchir le schéma »
+  DOIT être visible sur la page source. Il déclenche la même chaîne de récupération
+  schéma→objects→fields. MVP : le snapshot stocké est écrasé silencieusement, sans diff ni
+  dialog, même si le nouveau schéma supprime des objects ou des champs.
+- **FR-019**: Le flux de déclenchement automatique (FR-017) et le bouton de rafraîchissement
+  manuel (FR-018) contournent délibérément la cascade diff/confirmation (FR-007→013) pour la
+  Phase 1. Cette divergence est explicite : la cascade complète s'appliquera en Phase 2. Dans
+  l'intervalle, les références downstream orphelines (mappings dont le champ source n'existe
+  plus) s'appuient sur le mécanisme `linkStatus=BROKEN` du data model pour signaler leur état.
 
 ## Key Entities
 

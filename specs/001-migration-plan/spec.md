@@ -58,6 +58,76 @@ then deletes it.
 - **FR-009**: The header MUST display the plan's source and destination connector types and connection statuses (green dot = connected, grey dot = not connected). The `getPlan` API MUST include `sourceConnection` and `destinationConnection` data.
   <!-- Added: 2026-04-08 -->
 
+## Plan Reopen — Drift Detection Trigger & Notification <!-- Added: 2026-05-13 -->
+
+### Trigger semantics (when to check drift)
+
+The plan-reopen drift check runs **once per "plan visit"**. A "plan visit" begins when the consultant enters a plan page (`/plans/[id]/*`) **after** having been on a non-plan page (home `/`, `/plans` list, another plan, an external site, or a fresh session). It does NOT re-trigger on every navigation between pages of the same plan.
+
+State held client-side: `sessionStorage.lastVisitedPlanId`.
+- On entering `/plans/[id]/*`: compare to `lastVisitedPlanId`.
+  - If different (or empty), this is a new visit → fire drift check, set `lastVisitedPlanId = id`.
+  - If same, this is intra-plan navigation → do nothing.
+- On leaving the plan namespace (any non-`/plans/[id]/*` route): clear `lastVisitedPlanId`.
+- On session start: cleared by default.
+
+### Drift report computation
+
+The check calls **`detectLiveDrift(sourceConnectionId, 'source')`** and **`detectLiveDrift(destinationConnectionId, 'destination')`** in parallel (defined in specs 003 + 007). The two reports are merged into a single plan-level DriftReport for rendering.
+
+If the plan has no source or no destination connection, that side is skipped (no banner notification for absent sides).
+
+### Banner UX
+
+When the merged DriftReport contains at least one change of severity `critical` or `warning`, a **persistent banner** is rendered at the top of the plan content area (below the header, above the sidebar+main split). The banner:
+
+- Shows a top-level summary line in French: `"Le schéma a évolué depuis votre dernière visite : N changement(s) critique(s), M changement(s) à surveiller."` (omits zero counts).
+- Lists the breakdown by category (using the canonical taxonomy of 003 → "Drift Detection on Plan Reopen"): grouped by severity, then by Type ID, with object/field context.
+- Shows a primary action button `[Rafraîchir le schéma]` that runs the full chain refresh (003 FR-010, 007 FR-004) for the impacted side(s), which transitively runs the integrity check (017 / 003 FR-011 / 007 FR-005). After successful refresh, the banner is dismissed automatically (drift cleared by definition).
+- Shows a secondary action `[Ignorer pour cette session]` that hides the banner until the next plan visit (set a `sessionStorage` flag scoped to plan id + drift checkedAt).
+- Is **never blocking**: the consultant can keep navigating and editing while the banner is shown. Principle IX — no forced workflow interruption.
+
+`info`-only drift may be surfaced as a smaller, less prominent variant of the banner, or omitted entirely on first iteration. Implementation can choose; spec leaves room.
+
+### Sidebar workflow badges
+
+Each step in the workflow sidebar (FR-007) carries an optional **severity badge** indicating how many drift changes impact that step. Counts are computed per step from the merged DriftReport:
+
+| Step | Counted changes |
+|---|---|
+| Source | `OBJECT_ADDED/REMOVED` on source + field-level changes on selected source objects |
+| Destination | Same, on destination side |
+| Object Mapping | Changes that affect existing `ObjectMapping` rows: `OBJECT_REMOVED` on a mapped source or dest object |
+| Field Mapping | Changes that affect existing `FieldMapping` rows: `FIELD_REMOVED`, `FIELD_TYPE_CHANGED` (incompatible), `PICKLIST_VALUE_*` on D1 logic, `FIELD_BECAME_REQUIRED` on dest |
+| Documents | Affected only if upstream changes invalidate the generated documents — flagged as `OUTDATED` (per 002 FR-013/019) |
+
+Badge visual: small red pill `N ERREURS` for critical, amber pill `N modif` for warning, neutral for info. Reuses the existing sidebar layout (FR-007); does not push the step labels around.
+
+### Contextual surfacing on action pages
+
+The DriftReport is exposed via a plan-level context (`PlanDriftContext`) so each downstream page can highlight contextually:
+
+- **Object Mapping page** (spec 011): added/removed source/dest objects highlighted with badges in the object list; rows for `OBJECT_REMOVED` mappings flagged for deletion-or-recreation.
+- **Field Mapping page** (spec 012): added/removed/modified fields highlighted; existing `BROKEN` linkStatus paradigm already covers `OBJECT_REMOVED` / `FIELD_REMOVED` / `FIELD_TYPE_CHANGED` (incompatible). Additional types (metadata changes, picklist values) carry a separate "drift" indicator on the mapping row, distinct from linkStatus.
+- **Documents page**: documents generated before the detected drift carry an `OUTDATED` badge (per 002/006 cascade).
+
+### Acceptance Scenarios (drift detection plan-level) <!-- AS-6 to AS-9 -->
+
+6. **Given** a consultant on the home page or another plan, **When** they navigate to `/plans/[id]/*` for a different plan, **Then** the drift check fires once for that plan visit and the banner appears at the top of the plan layout if the merged DriftReport contains at least one `critical` or `warning` change.
+7. **Given** a consultant already inside a plan visit, **When** they navigate between pages of the same plan, **Then** the drift check does NOT re-fire (cached for the duration of the visit). The banner state persists across in-plan navigations.
+8. **Given** a banner is shown with a `[Rafraîchir le schéma]` action, **When** the consultant clicks it, **Then** the full-chain refresh runs for both source and destination (or only the impacted side), the integrity check fires at the end, and the banner is dismissed after the refresh completes successfully.
+9. **Given** a banner is shown, **When** the consultant clicks `[Ignorer pour cette session]`, **Then** the banner is hidden until the next plan visit (re-shown on next reopen, even if drift hasn't changed).
+
+### Functional Requirements (drift detection plan-level)
+
+- **FR-010** (Trigger semantics): The plan layout MUST detect "plan visit" boundaries via `sessionStorage.lastVisitedPlanId` and fire `detectLiveDrift` for both sides exactly once per visit, in parallel. No re-fire on intra-plan navigation. <!-- Added: 2026-05-13 -->
+- **FR-011** (Non-blocking): The banner MUST NOT block the consultant from navigating or editing the plan. It is informational + actionable, never modal. Principle IX. <!-- Added: 2026-05-13 -->
+- **FR-012** (Cascade refresh): The banner's `[Rafraîchir le schéma]` action MUST run the full-chain refresh for each side that has at least one `critical` or `warning` change. If both sides have changes, both refreshes run (in parallel where safe). On success, the banner is auto-dismissed. <!-- Added: 2026-05-13 -->
+- **FR-013** (Ignore scope): The "ignore" action MUST be scoped to the current plan visit only. Re-entering the plan re-runs the drift check and re-shows the banner (if drift still present). Never persist the ignore decision across visits — a critical change that the consultant ignored today must reappear tomorrow. <!-- Added: 2026-05-13 -->
+- **FR-014** (Sidebar badges): Each workflow step in the sidebar MUST display a severity badge counting drift changes that impact that step (per the mapping table above). Counts of zero are not displayed. The badge does not affect step accessibility (consultant can still navigate normally). <!-- Added: 2026-05-13 -->
+- **FR-015** (Plan context): The merged DriftReport MUST be exposed via a `PlanDriftContext` React context (or equivalent) so action pages (011, 012, documents) can read it for contextual highlighting without re-fetching. <!-- Added: 2026-05-13 -->
+- **FR-016** (Graceful unavailable): If `detectLiveDrift` returns `status='unavailable'` for either side (per 003 FR-015), the banner MUST surface a degraded message ("Impossible de vérifier le schéma — connexion ou quota indisponible") and offer a manual refresh button. Sidebar badges fall back to none for that side. <!-- Added: 2026-05-13 -->
+
 ## Key Entities
 
 - **MigrationPlan**: Top-level container. Fields: id, name, description, status (DRAFT/READY/BROKEN),

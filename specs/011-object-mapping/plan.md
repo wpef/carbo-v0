@@ -10,9 +10,9 @@ Map source objects to destination objects within a migration plan. Provides a tw
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: SQLite via Prisma (ObjectMapping table linked to MigrationPlan)
-**Testing**: Vitest (unit + integration), Playwright (E2E for link interactions)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (ObjectMapping table linked to MigrationPlan, isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker), Playwright (E2E for link interactions)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Constraints**: Two-column view must render 100+ objects per side within 2 seconds
 
@@ -28,6 +28,7 @@ Map source objects to destination objects within a migration plan. Provides a tw
 | VI | Traceability | PASS | All link create/remove operations logged to audit trail |
 | VII | Observability | PASS | Console logs for auto-link execution, link creation, cascade deletion |
 | VIII | Modularity | PASS | Isolated behind ObjectMappingService; communicates via Connector Interface types; public API is service + API routes |
+| IX | Human-in-the-loop | PASS | Auto-link tourne uniquement à la 1ère configuration de la paire source/destination, ou sur trigger explicite (bouton "Auto-match") ; jamais re-déclenché après un refresh schema ; cascade delete sur unlink confirmée via UI |
 
 ## Project Structure
 

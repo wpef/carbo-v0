@@ -30,6 +30,7 @@ Define the abstract TypeScript types and interfaces that all connectors must imp
 | VI | Traceability | N/A | No operations to log (adapters handle their own logging) |
 | VII | Observability | N/A | No runtime code |
 | VIII | Modularity | PASS | Self-contained type package; no internal deps; public interface is `src/lib/connectors/types.ts` |
+| IX | Human-in-the-loop | N/A | Type definitions only — no runtime behavior, no automation surface |
 
 ## Project Structure
 

@@ -10,9 +10,9 @@ Allow consultants to create and modify fields and objects in the destination sys
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: @anthropic-ai/sdk (for LLM field descriptions), Connector Interface (canWriteSchema, createField, modifyField, createObject)
-**Storage**: SQLite via Prisma -- new `SchemaWriteOperation` audit entity
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js 14+ (App Router), Node.js
+**Storage**: Neon Postgres via Prisma -- new `SchemaWriteOperation` audit entity (isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js 14+ (App Router) sur Vercel
 **Project Type**: Domain service + API routes + UI components within monolithic Next.js project
 **Performance Goals**: Field creation <10s; field modification <10s; LLM description <10s
 **Constraints**: Only available for destination connections with canWriteSchema=true; adapter methods must exist
@@ -30,6 +30,7 @@ Allow consultants to create and modify fields and objects in the destination sys
 | VI | Traceability | PASS | Every write operation (success or failure) logged to SchemaWriteOperation audit entity |
 | VII | Observability | PASS | Console logs for each write attempt, result, and schema refresh |
 | VIII | Modularity | PASS | Consumes connector adapter via abstract interface; own audit entity; UI components isolated |
+| IX | Human-in-the-loop | PASS | **Opération destructive distante** — création d'objet/champ destination explicitement confirmée via UI ; LLM descriptions sont des **suggestions** modifiables avant submit ; chaque write tracée dans `SchemaWriteOperation` (Principe VI) ; aucune écriture déclenchée automatiquement par le système |
 
 ## Project Structure
 

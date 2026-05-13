@@ -10,9 +10,9 @@ After confirming object selection, the consultant retrieves field metadata for a
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: SQLite via Prisma (ObjectField table)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (ObjectField table, isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Performance Goals**: Field retrieval for 50 objects < 60 seconds
 **Constraints**: Retrieve fields only for selected objects (not full schema); handle partial failures gracefully
@@ -29,6 +29,7 @@ After confirming object selection, the consultant retrieves field metadata for a
 | VI | Traceability | PASS | Every retrieval logged with field count per object (FR-007) |
 | VII | Observability | PASS | Console logs for per-object retrieval progress, errors, total field count |
 | VIII | Modularity | PASS | Isolated FieldRetrieval service; depends on 004 via objectId/snapshotId only |
+| IX | Human-in-the-loop | PASS | Récupération déclenchée par le consultant ou par la chaîne post-OAuth (cf. 002/006) ; aucune décision auto, juste un fetch de métadonnées |
 
 ## Project Structure
 
@@ -61,3 +62,5 @@ tests/
 ```
 
 **Structure Decision**: Field retrieval is the final sub-step of the source flow. The page lives under `plans/[planId]/source/fields/`. Fields are retrieved in batch for all selected objects, with per-object progress reporting.
+
+**Règle — instanciation d'adaptateur** : Le service `field-retrieval.ts` DOIT instancier les adaptateurs exclusivement via la factory canonique `src/lib/connectors/adapter-factory.ts`. Toute factory locale est interdite : elle échoue silencieusement dès qu'un nouvel adaptateur est ajouté sans que le service soit mis à jour (incident constaté en test live SF le 2026-04-23).

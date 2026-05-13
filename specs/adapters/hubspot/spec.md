@@ -15,6 +15,9 @@ As a consultant, I can connect to HubSpot and use it as a destination system in 
 
 1. **Given** a valid HubSpot Private App access token, **When** the consultant initiates a connection, **Then** the system validates the token by calling the HubSpot account info endpoint and displays the portal name with CONNECTED status.
 2. **Given** valid HubSpot OAuth2 credentials (client ID, client secret, redirect URI), **When** the consultant initiates a connection via OAuth2, **Then** the system redirects to the HubSpot authorization page, exchanges the code for tokens on callback, and displays the portal name with CONNECTED status.
+
+   *Note: The OAuth callback does NOT automatically retrieve schema/properties. Schema retrieval is triggered by the UI layer (feature 002/006) after the callback redirect, allowing the user to confirm the connection first. A manual "Refresh schema" action is also available to re-trigger retrieval on demand when HubSpot properties have been added/removed since the last fetch.*
+
 3. **Given** a CONNECTED HubSpot connection, **When** the system retrieves the object list, **Then** it returns standard objects (contacts, companies, deals, tickets, line_items) via the CRM API v3, plus any custom objects via the Schemas API, each with label, API name, and isCustom flag.
 4. **Given** the object list, **When** a custom object query fails because the portal lacks Enterprise tier, **Then** the system reports "Custom objects require HubSpot Enterprise tier" as an informational message and continues with standard objects only — no error is thrown.
 5. **Given** a selected object (e.g., contacts), **When** the system retrieves properties, **Then** it calls the Properties API and returns all properties with: label, internal name, data type (string, number, date, datetime, enumeration, boolean, etc.), isRequired, isReadOnly, groupName, and description.

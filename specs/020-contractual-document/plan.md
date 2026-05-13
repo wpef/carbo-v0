@@ -10,9 +10,9 @@ Generate an immutable formal contractual HTML document with signature block for 
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: Feature 018 (rule-description service), Feature 016 (unmapped fields)
-**Storage**: SQLite via Prisma -- new `ContractualDocument` entity
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js 14+ (App Router), Node.js
+**Storage**: Neon Postgres via Prisma -- new `ContractualDocument` entity (isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js 14+ (App Router) sur Vercel
 **Project Type**: Domain service + API route + preview component within monolithic Next.js project
 **Performance Goals**: Generation <30s for 50-field plan (including LLM calls)
 **Constraints**: HTML template is server-side; document is immutable; reference number must be globally unique
@@ -30,6 +30,7 @@ Generate an immutable formal contractual HTML document with signature block for 
 | VI | Traceability | PASS | Generation events logged with plan ID, document type, reference number |
 | VII | Observability | PASS | Console logs for generation progress |
 | VIII | Modularity | PASS | Parallel to 019; shares 018 interface; own template/service/model |
+| IX | Human-in-the-loop | PASS | Génération déclenchée explicitement par le consultant ; document immuable, référence unique (numéro contractuel) ; aucune régénération auto |
 
 ## Project Structure
 

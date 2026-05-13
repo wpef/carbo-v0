@@ -1,35 +1,3 @@
-<!--
-  SYNC IMPACT REPORT
-  ==================
-  Version change: 1.0.0 → 1.1.0 (MINOR: tous les principes réécrits de génériques à
-  spécifiques au projet ; stack défini ; 7 principes au lieu de 5)
-
-  Principes modifiés:
-    I.   Spec-First Development           → I.   Spec-First (reformulé, allégé)
-    II.  User-Story-Driven Design         → II.  Lisibilité avant l'ingéniosité (nouveau)
-    III. Simplicity & YAGNI               → III. Fidélité de la donnée (nouveau)
-    IV.  Incremental Delivery             → IV.  Tests fonctionnels sur données réelles (nouveau)
-    V.   Quality Gates at Every Phase     → V.   Idempotence des opérations (nouveau)
-
-  Principes ajoutés:
-    VI.  Traçabilité par défaut (nouveau)
-    VII. Observabilité développeur (nouveau)
-
-  Sections modifiées:
-    - Technology Standards : stack Next.js + TypeScript défini (backend TBD)
-    - Development Workflow : adapté au contexte SaaS de migration de données
-
-  Templates requis:
-    ✅ .specify/templates/plan-template.md  — Constitution Check à mettre à jour lors du
-                                              premier /speckit.plan (pas de changement structurel)
-    ✅ .specify/templates/spec-template.md  — Aligné avec Principe I ; aucune modification requise
-    ✅ .specify/templates/tasks-template.md — Aligné avec Principes I et IV ; aucune modification requise
-    ✅ .specify/templates/agent-file-template.md — Pas de référence à la constitution ; aucune modification
-
-  TODOs différés:
-    - TODO(BACKEND_STACK): Framework backend et base de données à définir lors du premier /speckit.plan
--->
-
 # Carbo-v0 Constitution
 
 ## Core Principles
@@ -106,23 +74,94 @@ distance.
 **Rationale** : la complexité des pipelines de migration rend le suivi d'exécution non-trivial.
 Un logging explicite réduit drastiquement le temps de débogage.
 
+### VIII. Modularité et isolation
+
+Chaque feature DOIT être un module isolé avec une interface publique explicite (types + fonctions
+exportées). Aucun module NE DOIT dépendre des internals d'un autre module — toute communication
+inter-modules passe par des interfaces abstraites (types partagés dans `src/types/`).
+
+Un module validé ("DONE") NE DOIT PLUS être modifié dans son implémentation interne. Si un besoin
+émerge, on DOIT étendre l'interface publique sans modifier le code interne existant (Open/Closed).
+
+Les user stories DOIVENT être découpées en unités atomiques indépendamment testables et
+validables. Une US qui mélange plusieurs responsabilités (ex: auth + browsing + preview) DOIT
+être décomposée en sous-US. Chaque sous-US DOIT pouvoir être marquée "DONE" indépendamment.
+
+**Rationale** : l'itération sur une feature ne doit jamais casser les autres. Un consultant qui
+valide le connecteur Salesforce ne veut pas que le travail sur le mapping plan régresse cette
+validation. La granularité atomique des US permet une validation incrémentale et une priorisation
+fine.
+
+### IX. Human-in-the-loop sur opérations destructives ou ambiguës
+
+L'automation NE PEUT PAS prendre, à la place du consultant, une décision qui est soit destructive
+(supprime du travail existant), soit ambiguë (plusieurs résolutions plausibles dont la "bonne"
+dépend du contexte métier). La décision humaine prévaut toujours sur l'automation.
+
+**Déclinaisons concrètes**:
+
+- **Auto-match / auto-link** : ne tournent qu'à la **première connexion** d'une paire source/destination,
+  ou sur trigger utilisateur explicite (bouton "Auto-match"). JAMAIS automatiquement après un
+  refresh de schéma. Un plan refreshé contenant des mappings cassés n'est PAS équivalent à un plan
+  vierge — il contient des décisions consultant qui ne doivent pas être écrasées.
+- **Mappings cassés (linkStatus=BROKEN)** : le système les **marque** uniquement. Pas d'auto-suppression,
+  pas d'auto-remap par match fuzzy, pas de re-binding silencieux des FK pendant la rotation de
+  snapshot. Le consultant supprime ou recrée manuellement (cf. spec 017, section "Design Decisions").
+- **Résolutions par apiName** : lire les fields/objects par apiName contre le snapshot CURRENT est
+  permis (read-time fallback pour rendre l'UI fonctionnelle). Écrire / muter des FK par apiName
+  est interdit sans confirmation utilisateur.
+- **Opérations destructives** (écrasement, suppression, cascade) : DOIVENT être explicites,
+  réversibles ou tracées, et confirmées via UI dans le cas général.
+- **Tout effet auto-*** : DOIT être visible (banner, badge, message clair) et le consultant
+  DOIT pouvoir l'inspecter et le défaire.
+
+**Rationale** : Carbo-v0 est un outil de migration de données pour clients. Un re-binding silencieux
+de `customer_id` vers `external_id` (mêmes patterns de nom, sémantique potentiellement différente)
+peut faire passer des données dans des champs erronés sans alerter le consultant. La donnée transite
+chez le client final — un silent fail invisible casse la confiance contractuelle (Principe III) et
+la traçabilité (Principe VI). Les "automations malines" sont passives, jamais actives sur la donnée
+ou la structure du plan.
+
 ## Technology Standards
 
-**Frontend** : Next.js (App Router) + TypeScript — standard non-négociable.
+**Frontend** : Next.js 14+ (App Router) + TypeScript + Tailwind CSS + shadcn/ui.
 
-**Style** : à définir lors du premier `/speckit.plan` (ex: Tailwind CSS, shadcn/ui).
+**Backend** : Next.js Route Handlers (unified single project — no separate backend).
 
-**Backend** : TODO(BACKEND_STACK) — framework et runtime Node.js à définir lors du premier
-`/speckit.plan`.
+**Base de données** : Neon Postgres (serverless managed) via Prisma ORM. Postgres standard,
+pas de SGBD propriétaire. Le développement local PEUT utiliser une branche Neon personnelle
+ou un Postgres local (Docker) — le schéma Prisma est unique et identique en dev/prod.
 
-**Base de données** : TODO(DATABASE) — à définir lors du premier `/speckit.plan`.
+**Hosting** : Vercel (Next.js natif — App Router, Route Handlers, ISR, edge config).
 
-**Testing** : à définir lors du premier `/speckit.plan`, en cohérence avec le Principe IV
-(tests fonctionnels sur données réelles).
+**Modèle de tenancy** : DB-per-tenant. Chaque consultant inscrit possède **sa propre base
+Neon physiquement isolée**. Une seule codebase Next.js déployée ; la connection string Prisma
+est résolue à l'exécution depuis le contexte d'authentification (tenant_id → DSN Neon). Les
+fuites cross-tenant sont impossibles par construction (pas de table partagée à protéger via
+RLS). Détail Decision / Rationale / Alternatives dans `specs/roadmap.md` §Infrastructure
+& Tenancy Model.
 
-**Règle d'évolution** : une fois le stack défini, il devient contraignant. Toute déviation
-requiert une justification dans le plan (Complexity Tracking) et, si structurelle, un amendement
-de constitution.
+**Provisioning** : automatisé via l'API Neon à l'inscription d'un nouveau consultant
+(création de projet Neon + DSN stocké chiffré côté Vercel/control-plane). Scale-to-zero
+natif : les bases inactives ne facturent ~rien.
+
+**Testing** : Vitest (unit + integration) + Playwright (E2E). Les tests d'intégration
+DOIVENT cibler un Postgres réel (Neon branche éphémère ou Docker local), pas un mock —
+conformément au Principe IV.
+
+**Salesforce SDK** : jsforce v3.x (note : ne supporte pas PKCE nativement — token exchange
+via HTTP POST direct).
+
+**HubSpot SDK** : @hubspot/api-client.
+
+**LLM** : @anthropic-ai/sdk (Claude API) pour la description des règles en langage naturel.
+
+**PDF** : Puppeteer (HTML → PDF) en mode serverless-compatible (`@sparticuz/chromium` sur
+Vercel pour respecter la limite de bundle des Route Handlers).
+
+**Règle d'évolution** : ce stack est désormais contraignant. Toute déviation requiert une
+justification dans le plan (Complexity Tracking) et, si structurelle, un amendement de
+constitution.
 
 ## Development Workflow
 
@@ -164,4 +203,4 @@ conflit entre ce document et toute autre directive, cette constitution a la prio
 le `plan.md` de la feature. Toute violation DOIT être justifiée dans le Complexity Tracking du
 plan, faute de quoi la PR est bloquée.
 
-**Version**: 1.1.0 | **Ratified**: 2026-03-17 | **Last Amended**: 2026-03-17
+**Version**: 1.4.0 | **Ratified**: 2026-03-17 | **Last Amended**: 2026-05-13
