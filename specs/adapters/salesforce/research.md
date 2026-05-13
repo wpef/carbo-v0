@@ -86,5 +86,5 @@
 ### Environment variables
 - `SALESFORCE_CLIENT_ID`: Consumer Key from Connected App
 - `SALESFORCE_CLIENT_SECRET`: Consumer Secret
-- `SALESFORCE_CALLBACK_URL`: Must match Connected App callback (e.g., `http://localhost:3000/api/connectors/salesforce/callback`)
+- `SALESFORCE_CALLBACK_URL`: Must match Connected App callback (e.g., `http://localhost:3001/api/connectors/salesforce/callback`)
 - `SALESFORCE_LOGIN_URL`: Optional, defaults to `https://login.salesforce.com`

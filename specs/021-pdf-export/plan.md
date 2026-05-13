@@ -9,13 +9,13 @@ Convert generated HTML documents (text or contractual) to downloadable A4 PDFs u
 ## Technical Context
 
 **Language/Version**: TypeScript 5.x
-**Primary Dependencies**: Puppeteer (HTML to PDF)
+**Primary Dependencies**: Puppeteer (HTML to PDF) — sur Vercel, utiliser `@sparticuz/chromium` pour respecter les limites de bundle des Route Handlers serverless
 **Storage**: None (PDFs are generated on-demand, not persisted)
 **Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js 14+ (App Router), Node.js
+**Target Platform**: Next.js 14+ (App Router) sur Vercel
 **Project Type**: Utility service + API route + UI button within monolithic Next.js project
-**Performance Goals**: PDF generation <15s for a 20-page document
-**Constraints**: Puppeteer runs server-side only; HTML must be self-contained; graceful fallback if Puppeteer unavailable
+**Performance Goals**: PDF generation <15s for a 20-page document (cold start Vercel compris)
+**Constraints**: Puppeteer runs server-side only; HTML must be self-contained; graceful fallback if Puppeteer unavailable; binaire Chromium injecté via `@sparticuz/chromium` (Vercel n'embarque pas le navigateur)
 **Scale/Scope**: 1 service file, 1 API route, 1 React component (download button), unit tests
 
 ## Constitution Check
@@ -30,6 +30,7 @@ Convert generated HTML documents (text or contractual) to downloadable A4 PDFs u
 | VI | Traceability | PASS | PDF generation events logged (start, completion, error, file size) |
 | VII | Observability | PASS | Console logs for Puppeteer launch, render duration, PDF size |
 | VIII | Modularity | PASS | Stateless service; accepts HTML string, returns PDF buffer; no dependency on 019/020 internals |
+| IX | Human-in-the-loop | PASS | Conversion HTML → PDF déclenchée sur trigger explicite (bouton "Download PDF") ; aucun effet de bord, pas de persistance |
 
 ## Project Structure
 

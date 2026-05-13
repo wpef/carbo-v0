@@ -30,6 +30,7 @@ Implement the HubSpot destination adapter as a concrete implementation of the Co
 | VI | Traceability | PASS | Every operation logged to audit trail (connect, schema retrieval, property creation, errors) |
 | VII | Observability | PASS | Console logging for API calls, rate limits, auth status, schema write operations |
 | VIII | Modularity | PASS | Adapter isolated in `src/lib/connectors/hubspot/`; depends only on ConnectorAdapter interface + @hubspot/api-client |
+| IX | Human-in-the-loop | N/A | Adapter stateless ; expose des opérations CRUD + schema write sur HubSpot, mais l'orchestration et la confirmation des écritures sont assurées par 022 (côté applicatif) |
 
 ## Project Structure
 

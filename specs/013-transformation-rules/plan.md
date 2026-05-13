@@ -10,9 +10,9 @@ Define migration logic for each field mapping via a type-dependent modal: D1 (Va
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, @anthropic-ai/sdk (Claude API for D2), type-compatibility service (012)
-**Storage**: SQLite via Prisma (MigrationLogic, ValueEquivalence, ClassificationPrompt tables)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (MigrationLogic, ValueEquivalence, ClassificationPrompt tables, isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Constraints**: D2 LLM classification examples must render within 5 seconds; LLM unavailability must not block the workflow
 
@@ -28,6 +28,7 @@ Define migration logic for each field mapping via a type-dependent modal: D1 (Va
 | VI | Traceability | PASS | All migration logic create/modify/validate operations logged to audit trail |
 | VII | Observability | PASS | Console logs for LLM calls, compatibility lookups, save/validate actions |
 | VIII | Modularity | PASS | Isolated behind MigrationLogicService; uses type-compatibility from 012; D1-D4 are independent components |
+| IX | Human-in-the-loop | PASS | Toutes les règles définies explicitement par le consultant via les modaux D1-D4 ; D2 (LLM classification) propose des suggestions visibles mais jamais appliquées sans Save explicite ; D3 bloque les types incompatibles plutôt que tenter une conversion auto |
 
 ## Project Structure
 

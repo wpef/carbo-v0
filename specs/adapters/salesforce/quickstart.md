@@ -19,7 +19,7 @@ Create or update `.env.local`:
 ```env
 SALESFORCE_CLIENT_ID=your_consumer_key
 SALESFORCE_CLIENT_SECRET=your_consumer_secret
-SALESFORCE_CALLBACK_URL=http://localhost:3000/api/connectors/salesforce/callback
+SALESFORCE_CALLBACK_URL=http://localhost:3001/api/connectors/salesforce/callback
 SALESFORCE_LOGIN_URL=https://login.salesforce.com
 ```
 
@@ -34,7 +34,7 @@ npm run dev
 
 ## Test the OAuth flow
 
-1. Navigate to the auth initiation endpoint: `http://localhost:3000/api/connectors/salesforce/auth?planId=<your-plan-id>`
+1. Navigate to the auth initiation endpoint: `http://localhost:3001/api/connectors/salesforce/auth?planId=<your-plan-id>`
 2. Browser redirects to Salesforce authorization page
 3. Authorize the Connected App
 4. Callback completes, tokens are stored, connection status is CONNECTED

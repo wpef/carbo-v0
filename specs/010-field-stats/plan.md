@@ -30,6 +30,7 @@ Compute per-field data quality statistics (null count, distinct value count, sam
 | VI | Traceability | N/A | No server-side operation (client-side computation) |
 | VII | Observability | PASS | Console log for computation timing in dev mode |
 | VIII | Modularity | PASS | Self-contained utility function + component; no cross-module deps |
+| IX | Human-in-the-loop | PASS | Calcul statistique d'affichage côté client, aucune mutation ; aucune décision auto |
 
 ## Project Structure
 

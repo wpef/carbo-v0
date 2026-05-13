@@ -10,9 +10,9 @@ Define filters on source records per object mapping to control which records are
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: SQLite via Prisma (MigrationFilter table linked to ObjectMapping)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (MigrationFilter table linked to ObjectMapping, isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Constraints**: Estimated record count depends on source connector response time (up to 10 seconds)
 
@@ -28,6 +28,7 @@ Define filters on source records per object mapping to control which records are
 | VI | Traceability | PASS | All filter create/remove operations logged to audit trail |
 | VII | Observability | PASS | Console logs for filter operations and estimation queries |
 | VIII | Modularity | PASS | Isolated behind MigrationFilterService; depends on ObjectMapping via ID only |
+| IX | Human-in-the-loop | PASS | Filtres définis explicitement par le consultant ; estimated record count purement informatif (lecture seule) ; aucune décision auto |
 
 ## Project Structure
 

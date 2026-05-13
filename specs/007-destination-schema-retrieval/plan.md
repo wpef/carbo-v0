@@ -10,9 +10,9 @@ After connecting a destination, retrieve the full list of destination objects an
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: Next.js 14+ (App Router), Prisma ORM
-**Storage**: SQLite via Prisma — reuses `SchemaSnapshot` + `SchemaObject` tables from 003
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js App Router, Node.js
+**Storage**: Neon Postgres via Prisma — reuses `SchemaSnapshot` + `SchemaObject` tables from 003 (isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js 14+ (App Router) sur Vercel
 **Project Type**: Web application (unified Next.js project)
 **Performance Goals**: Schema retrieval completes in under 60 seconds for up to 2000 objects
 **Constraints**: Max 2 snapshots per connection (CURRENT + PREVIOUS). Destination objects are not selected — all are available for mapping.
@@ -30,6 +30,7 @@ After connecting a destination, retrieve the full list of destination objects an
 | VI | Traceability | PASS | Every retrieval logged to audit trail |
 | VII | Observability | PASS | Console logs for retrieval start, object count, diff summary |
 | VIII | Modularity | PASS | Reuses SchemaSnapshot/SchemaObject; service isolated behind public API |
+| IX | Human-in-the-loop | PASS | Symétrique à 003 — rotation CURRENT→PREVIOUS sans re-binding silencieux ; refresh ne déclenche jamais d'auto-remap de destination |
 
 ## Project Structure
 

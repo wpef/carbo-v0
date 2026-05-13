@@ -107,4 +107,4 @@
 - `HUBSPOT_PRIVATE_APP_TOKEN`: For Private App auth (optional if using OAuth2)
 - `HUBSPOT_CLIENT_ID`: For OAuth2 auth
 - `HUBSPOT_CLIENT_SECRET`: For OAuth2 auth
-- `HUBSPOT_CALLBACK_URL`: OAuth2 redirect URI (e.g., `http://localhost:3000/api/connectors/hubspot/callback`)
+- `HUBSPOT_CALLBACK_URL`: OAuth2 redirect URI (e.g., `http://localhost:3001/api/connectors/hubspot/callback`)

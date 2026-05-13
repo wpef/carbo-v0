@@ -10,13 +10,13 @@ Implement CRUD for Migration Plans — the top-level container for the entire mi
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: Next.js 14+ (App Router), Prisma ORM, Tailwind CSS, shadcn/ui
-**Storage**: SQLite via Prisma ORM (local-first)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js web application (localhost for v0)
+**Storage**: Neon Postgres via Prisma ORM (DB-per-tenant — one Neon database per consultant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js project)
-**Performance Goals**: Plan list loads < 1s; CRUD operations < 500ms
-**Constraints**: All features are scoped to a plan. No content exists outside a plan context.
-**Scale/Scope**: ~50 plans max in v0 (local-first, single consultant)
+**Performance Goals**: Plan list loads < 1s; CRUD operations < 500ms (after Neon cold start)
+**Constraints**: All features are scoped to a plan. No content exists outside a plan context. All plan rows are physically isolated in the tenant's own Neon database.
+**Scale/Scope**: ~50 plans per tenant in v0; horizontally scalable via tenant provisioning (cf. roadmap §Infrastructure & Tenancy Model)
 
 ## Constitution Check
 
@@ -30,6 +30,7 @@ Implement CRUD for Migration Plans — the top-level container for the entire mi
 | VI | Traceability | PASS | All plan operations (create, delete, status change) logged to AuditLog table |
 | VII | Observability | PASS | Console logs for plan operations; Prisma query logging in dev |
 | VIII | Modularity | PASS | Plan module exposes types + service; downstream features import only the plan ID |
+| IX | Human-in-the-loop | PASS | Suppression de plan confirmée via dialog ; cascade delete tracée via AuditLog ; aucune décision auto sur le contenu d'un plan |
 
 ## Project Structure
 

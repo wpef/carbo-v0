@@ -30,6 +30,7 @@ Build a stateless service that translates migration logic rules into human-reada
 | VI | Traceability | PASS | Every LLM call logged to audit trail with input, output, latency, success/failure |
 | VII | Observability | PASS | Console logs for LLM calls (start, duration, fallback), batch stats at end |
 | VIII | Modularity | PASS | Pure service with typed input/output; no UI; consumed via public function + types |
+| IX | Human-in-the-loop | PASS | Génère du texte descriptif uniquement (read-only) ; aucune mutation des règles ni des mappings ; sortie LLM affichée, jamais ré-injectée dans la donnée |
 
 ## Project Structure
 

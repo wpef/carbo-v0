@@ -10,9 +10,9 @@ After schema retrieval, the consultant selects which source objects are in scope
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: SQLite via Prisma (ObjectSelection table)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (ObjectSelection table, isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Performance Goals**: List loads < 2s for 2000 objects; search < 200ms; expand < 10s
 **Constraints**: Selection scoped to connection + snapshot; must survive schema refresh for persisting objects
@@ -29,6 +29,7 @@ After schema retrieval, the consultant selects which source objects are in scope
 | VI | Traceability | PASS | Selection changes logged to audit trail (FR-010) |
 | VII | Observability | PASS | Console logs for selection bulk operations and expand calls |
 | VIII | Modularity | PASS | Isolated ObjectSelection service; depends on 003 via snapshotId/objectId only |
+| IX | Human-in-the-loop | PASS | Smart defaults (custom + business objects pré-sélectionnés) entièrement visibles et modifiables par le consultant ; aucune sélection cachée ; migration de sélection sur refresh ne touche que les objects qui persistent par apiName |
 
 ## Project Structure
 

@@ -10,9 +10,9 @@ After connecting to a source, the consultant retrieves the full list of objects 
 
 **Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
 **Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: SQLite via Prisma (SchemaSnapshot + SchemaObject tables)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Local-first web application (localhost)
+**Storage**: Neon Postgres via Prisma (SchemaSnapshot + SchemaObject tables, isolated per tenant)
+**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
+**Target Platform**: Next.js sur Vercel (dev sur localhost)
 **Project Type**: Web application (unified Next.js)
 **Performance Goals**: Full retrieval < 60 seconds for up to 2000 objects
 **Constraints**: Max 2 snapshots per connection; no concurrent retrievals
@@ -29,6 +29,7 @@ After connecting to a source, the consultant retrieves the full list of objects 
 | VI | Traceability | PASS | Every retrieval logged with timestamp, object count, diff summary (FR-008) |
 | VII | Observability | PASS | Console logs for retrieval start/end, object count, errors |
 | VIII | Modularity | PASS | Isolated SchemaService; communicates with 002 via connectionId only |
+| IX | Human-in-the-loop | PASS | Rotation CURRENT→PREVIOUS sans re-binding silencieux des FK ; refresh ne déclenche jamais d'auto-remap ; les mappings cassés sont marqués via 017 (jamais auto-supprimés) |
 
 ## Project Structure
 
