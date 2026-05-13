@@ -47,6 +47,27 @@ npm run dev
 
 After connecting, use the adapter's getSchema method via the plan's source connection. The API will return all objects with system objects filtered out.
 
+## Test with a Developer Edition org — pre-seeded sample data <!-- Added: 2026-05-12 -->
+
+**Gotcha for live testing**: any Salesforce org of the form `orgfarm-...develop.my.salesforce.com` (free Developer Edition obtained via the SF developer signup) is **pre-seeded with sample data** by SF:
+
+- ~20-25 Leads (recurring sample names: Edna Frank, Phyllis Cotton, Carolyn Crenshaw, Andy Young, etc.)
+- ~10 sample Accounts (Burlington Textiles, Dickenson plc, Edge Communications, Express Logistics, etc.)
+- Associated Contacts and Opportunities
+- Sample Tasks and Events
+
+This is **not Carbo data** — SF inserts it the first time you provision the org. Two consequences:
+
+1. **A fresh `record-preview` on Lead/Account/Contact will return many records, not zero**, even on an "empty" org where you only created one Lead manually. The count is correct (`SELECT COUNT() FROM Lead` will match), but the records are mostly seed data. Don't interpret this as a bug.
+2. **The integrity check (017) will count the seed records as valid source data** for any mapping you create. If you intend to test broken-mapping behaviour, prefer creating/deleting a **custom field** (the seed records won't have it anyway) rather than expecting "empty" Lead.
+
+To get a truly empty org for testing, either:
+- Mass-delete the sample records in the SF UI (Leads tab → All Leads → bulk select → Delete)
+- Or use a SF Sandbox org (no auto-seeded data)
+- Or run a SOQL `DELETE` via Workbench / Developer Console
+
+This is a one-time annoyance — once you've cleaned (or accepted) the seed data, normal testing works as expected.
+
 ## Run tests
 
 ```bash
