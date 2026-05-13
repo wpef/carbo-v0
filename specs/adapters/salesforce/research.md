@@ -63,6 +63,8 @@
 
 **Limitation**: SOQL OFFSET is limited to 2000 rows. Sufficient for record preview.
 
+**Convention** (2026-05-12): `page` is **1-indexed** across the codebase. `page=1` returns the first `pageSize` records (OFFSET 0). The SF adapter originally used 0-indexed math (`offset = page * pageSize`), which caused all records to be silently skipped when the UI sent `page=1` (the API requires `page >= 1`). Fixed to `offset = (page - 1) * pageSize`. Same convention enforced on the HubSpot adapter (cursor walk starts from page 1, not page 0). Documented in `ConnectorAdapter.getRecords` JSDoc.
+
 ## Decision: Field stats calculation
 
 **Chosen**: Calculate stats from the fetched record set (not additional API calls). For each field: count nulls, count distinct values, sample up to 5 unique non-null values.

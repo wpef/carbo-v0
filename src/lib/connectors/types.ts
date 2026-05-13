@@ -91,6 +91,13 @@ export interface ConnectorAdapter {
   getFields(connectionId: string, objectApiName: string): Promise<ConnectorField[]>
 
   // Records
+  /**
+   * Fetch a paginated page of records.
+   * `page` is **1-indexed** (page=1 returns the first pageSize records).
+   * Convention: the demo and destination adapters use 1-indexed; SF and HubSpot
+   * adapters were originally 0-indexed but were corrected on 2026-05-12 after
+   * a live test showed records with index < pageSize were never returned.
+   */
   getRecords(connectionId: string, objectApiName: string, page: number, pageSize: number): Promise<PaginatedRecords>
   getRecordCount(connectionId: string, objectApiName: string): Promise<number>
   getFieldStats(connectionId: string, objectApiName: string, fieldApiName: string): Promise<FieldStats>

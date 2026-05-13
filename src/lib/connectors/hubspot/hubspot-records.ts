@@ -40,6 +40,10 @@ function cursorKey(scope: string, objectType: string, page: number): string {
  * Retrieve a page of records for a HubSpot object.
  * HubSpot's Search API uses cursors, not offsets. We adapt by storing the cursor
  * for the next page under a key identifying "scope" (e.g. connectionId), objectType and page.
+ *
+ * `page` is **1-indexed** (page=1 → first page, no cursor walk required). The
+ * convention matches the demo adapters, the SF adapter (since 2026-05-12), and
+ * the API route (page >= 1).
  */
 export async function searchRecords(
   accessToken: string,
@@ -50,17 +54,19 @@ export async function searchRecords(
   pageSize: number,
 ): Promise<PaginatedRecords> {
   const limit = Math.max(1, Math.min(100, Math.floor(pageSize))) // HubSpot Search API max is 100.
-  const pageNum = Math.max(0, Math.floor(page))
+  const pageNum = Math.max(1, Math.floor(page))
 
-  // Walk forward from page 0 using stored cursors if needed.
+  // Walk forward from page 1 using stored cursors if needed.
+  // page=1 → no walk (after=undefined → first page).
+  // page=N → use cached cursor for page N, else re-walk (N-1) times from page 1.
   const store = cursorStore()
   let after: string | undefined
-  if (pageNum > 0) {
+  if (pageNum > 1) {
     after = store.get(cursorKey(scope, objectType, pageNum))
     if (!after) {
-      // Re-walk from page 0 to rebuild cursors (rare; happens on cold cache).
+      // Re-walk from page 1 to rebuild cursors (rare; happens on cold cache).
       let cursor: string | undefined
-      for (let i = 0; i < pageNum; i++) {
+      for (let i = 1; i < pageNum; i++) {
         const r = await callSearch(accessToken, objectType, properties, limit, cursor)
         cursor = r.paging?.next?.after
         if (cursor) store.set(cursorKey(scope, objectType, i + 1), cursor)

@@ -12,6 +12,10 @@ function safeIdent(value: string): string {
 /**
  * Build a SOQL query with LIMIT/OFFSET. Caller must have sanitised `objectApiName`
  * and `fieldApiNames` (we re-check here via safeIdent).
+ *
+ * `page` is **1-indexed** (page=1 → OFFSET 0). This matches the convention used
+ * by the demo adapters and the API route (which requires page >= 1). The previous
+ * 0-indexed math caused records to be silently skipped on page 1 (live test 2026-05-12).
  */
 export function buildSoqlQuery(
   objectApiName: string,
@@ -21,9 +25,9 @@ export function buildSoqlQuery(
 ): string {
   const obj = safeIdent(objectApiName)
   const fields = fieldApiNames.length === 0 ? ['Id'] : fieldApiNames.map(safeIdent)
-  const pageNum = Math.max(0, Math.floor(page))
+  const pageNum = Math.max(1, Math.floor(page))
   const size = Math.max(1, Math.min(200, Math.floor(pageSize))) // SF SOQL LIMIT cap 2000; we keep 200 for preview.
-  const offset = pageNum * size
+  const offset = (pageNum - 1) * size
   // SOQL disallows ORDER BY on some fields without additional filters; omit for safety.
   return `SELECT ${fields.join(', ')} FROM ${obj} LIMIT ${size} OFFSET ${offset}`
 }
@@ -45,6 +49,9 @@ interface QueryResult {
  * Wrap a jsforce `conn.query()` call and shape the result as PaginatedRecords.
  * The total count is obtained via `totalSize` (accurate for small result sets;
  * for large objects the caller should run a COUNT() query separately).
+ *
+ * `page` is **1-indexed**: page=1 is the first page. `hasNextPage` is true when
+ * the consumed window (records 1..page*pageSize) does not yet cover the total.
  */
 export async function executeQuery(
   conn: { query: (soql: string) => Promise<QueryResult> },
@@ -61,7 +68,7 @@ export async function executeQuery(
     totalCount,
     pageSize,
     currentPage: page,
-    hasNextPage: (page + 1) * pageSize < totalCount,
+    hasNextPage: page * pageSize < totalCount,
   }
 }
 

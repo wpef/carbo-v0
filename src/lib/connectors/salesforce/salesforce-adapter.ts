@@ -149,6 +149,7 @@ export class SalesforceAdapter implements ConnectorAdapter {
     page: number,
     pageSize: number,
   ): Promise<PaginatedRecords> {
+    console.log(`[sf-adapter] getRecords start — object=${objectApiName}, page=${page}, pageSize=${pageSize}`)
     const conn = await this.getJsforceConn(connectionId)
 
     // Fetch the field list lazily to pick the column set for the preview query.
@@ -157,11 +158,19 @@ export class SalesforceAdapter implements ConnectorAdapter {
       .filter((f) => f.dataType !== 'reference' || f.apiName === 'Id')
       .slice(0, 20) // cap preview columns
       .map((f) => f.apiName)
+    console.log(`[sf-adapter] ${objectApiName} fields=${fields.length}, selected for query=${fieldNames.length}: [${fieldNames.join(', ')}]`)
 
     const soql = buildSoqlQuery(objectApiName, fieldNames, page, pageSize)
     const countQ = buildCountQuery(objectApiName)
-    const countResult = await conn.query(countQ).catch(() => ({ totalSize: 0, done: true, records: [] as Array<Record<string, unknown>> }))
+    console.log(`[sf-adapter] SOQL: ${soql}`)
+    console.log(`[sf-adapter] COUNT: ${countQ}`)
+
+    const countResult = await conn.query(countQ).catch((err) => {
+      console.error(`[sf-adapter] COUNT query failed for ${objectApiName}:`, err instanceof Error ? err.message : err)
+      return { totalSize: 0, done: true, records: [] as Array<Record<string, unknown>> }
+    })
     const totalCount = countResult.totalSize
+    console.log(`[sf-adapter] ${objectApiName} totalCount=${totalCount}`)
 
     const result = await executeQuery(
       conn as unknown as { query: (s: string) => Promise<{ totalSize: number; done: boolean; records: Record<string, unknown>[] }> },
@@ -170,11 +179,17 @@ export class SalesforceAdapter implements ConnectorAdapter {
       pageSize,
       totalCount,
     )
+    console.log(`[sf-adapter] ${objectApiName} query returned ${result.records.length} record(s)`)
+    if (result.records.length === 0 && totalCount > 0) {
+      console.warn(`[sf-adapter] ${objectApiName} — total reports ${totalCount} but page returned 0 (pagination/offset issue?)`)
+    }
+
     await logAudit(connectionId, 'SF_RECORDS_FETCHED', {
       object: objectApiName,
       page,
       pageSize,
       returned: result.records.length,
+      totalCount,
     })
     return result
   }

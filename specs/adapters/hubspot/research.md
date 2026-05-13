@@ -55,6 +55,8 @@
 
 **Pagination**: HubSpot Search API uses cursor-based pagination (`after` token) rather than offset. Map to PaginatedRecords by tracking page number and `hasNextPage` from response.
 
+**Convention** (2026-05-12): `page` is **1-indexed** across the codebase. `page=1` is the first page (no cursor walk required). Page N (N>1) uses a cached cursor from page N-1, or re-walks (N-1) times from page 1 if the cache is cold. The adapter originally treated page=0 as the first page (cursor walk only when pageNum > 0), which silently skipped records when the UI sent `page=1`. Same fix as the Salesforce adapter on the same date. Documented in `ConnectorAdapter.getRecords` JSDoc.
+
 ## Decision: Schema write — property creation
 
 **Chosen**: `client.crm.properties.coreApi.create(objectType, propertyCreateInput)` with:

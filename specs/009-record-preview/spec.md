@@ -39,6 +39,7 @@ As a consultant, I can preview the actual data in any selected object to underst
 - **FR-006**: Relationship fields MUST display a meaningful reference (name or ID of the related record) rather than a raw foreign key, when the connector adapter supports it.
 - **FR-007**: The system MUST handle large text values by truncating in the table view with an expand option.
 - **FR-008**: The system MUST log record preview events (object, page, record count) to the audit trail.
+- **FR-009**: `page` is **1-indexed** end-to-end: the UI sends `page=1` for the first page; the API validates `page >= 1`; every adapter MUST treat `page=1` as "return the first `pageSize` records, offset 0". A 0-indexed adapter is a bug class previously hit on SF + HubSpot (live test 2026-05-12) — every adapter is now obliged to honour the convention documented in `ConnectorAdapter.getRecords` JSDoc. <!-- Added: 2026-05-12 -->
 
 ## Key Entities
 
