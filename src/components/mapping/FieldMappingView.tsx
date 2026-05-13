@@ -105,10 +105,12 @@ export function FieldMappingView({
     destFieldType: string
   } | null>(null)
 
-  const mappedDestIds = new Set(fieldMappings.map((m) => m.destFieldId))
+  // Track which destination fields are already taken by apiName, not by FK id
+  // (FK goes stale after snapshot rotation — 017 Design Decisions).
+  const mappedDestApiNames = new Set(fieldMappings.map((m) => m.destFieldApiName))
 
   // Available dest fields not yet mapped
-  const unmappedDestFields = availableDestFields.filter((f) => !mappedDestIds.has(f.id))
+  const unmappedDestFields = availableDestFields.filter((f) => !mappedDestApiNames.has(f.apiName))
 
   const lowerSearch = fieldSearch.toLowerCase()
   const filteredMappings = fieldSearch

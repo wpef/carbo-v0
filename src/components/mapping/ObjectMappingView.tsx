@@ -66,9 +66,12 @@ interface ObjectMappingViewProps {
   error?: string
 }
 
-// Tracks the rendered card positions for drawing SVG links
+// Tracks the rendered card positions for drawing SVG links.
+// We key by apiName (stable across snapshot refreshes) rather than by FK id —
+// the FK on ObjectMapping (sourceObjectId/destObjectId) goes stale after a
+// schema refresh rotates snapshots (Constitution Principle IX, 017 Design Decisions).
 interface CardPosition {
-  objectId: string
+  apiName: string
   x: number    // rightX for source, leftX for destination
   centerY: number
 }
@@ -119,9 +122,11 @@ export function ObjectMappingView({
     height: 0,
   })
 
-  // Build full source and dest object lists
-  const mappedSourceIds = new Set(mappings.map((m) => m.sourceObjectId))
-  const mappedDestIds = new Set(mappings.map((m) => m.destObjectId))
+  // Build full source and dest object lists.
+  // "Mapped" status is determined by apiName, NOT by FK id, so it stays correct
+  // even after a schema refresh has rotated snapshots (017 Design Decisions).
+  const mappedSourceApiNames = new Set(mappings.map((m) => m.sourceObjectApiName))
+  const mappedDestApiNames = new Set(mappings.map((m) => m.destObjectApiName))
 
   const allSourceObjects = [
     ...mappings.map((m) => ({
@@ -157,8 +162,8 @@ export function ObjectMappingView({
       o.label.toLowerCase().includes(destSearch.toLowerCase()) ||
       o.apiName.toLowerCase().includes(destSearch.toLowerCase())
     if (!matchesSearch) return false
-    if (destFilter === 'mapped') return mappedDestIds.has(o.id)
-    if (destFilter === 'unmapped') return !mappedDestIds.has(o.id)
+    if (destFilter === 'mapped') return mappedDestApiNames.has(o.apiName)
+    if (destFilter === 'unmapped') return !mappedDestApiNames.has(o.apiName)
     if (destFilter === 'standard') return !o.isCustom
     if (destFilter === 'custom') return o.isCustom
     return true
@@ -177,9 +182,9 @@ export function ObjectMappingView({
 
     sourceCards.forEach((card) => {
       const rect = card.getBoundingClientRect()
-      const objectId = card.getAttribute('data-object-id') ?? ''
+      const apiName = card.getAttribute('data-api-name') ?? ''
       newSourcePositions.push({
-        objectId,
+        apiName,
         x: rect.right - containerRect.left,
         centerY: rect.top + rect.height / 2 - containerRect.top,
       })
@@ -187,9 +192,9 @@ export function ObjectMappingView({
 
     destCards.forEach((card) => {
       const rect = card.getBoundingClientRect()
-      const objectId = card.getAttribute('data-object-id') ?? ''
+      const apiName = card.getAttribute('data-api-name') ?? ''
       newDestPositions.push({
-        objectId,
+        apiName,
         x: rect.left - containerRect.left,
         centerY: rect.top + rect.height / 2 - containerRect.top,
       })
@@ -276,10 +281,11 @@ export function ObjectMappingView({
     router.push(`/plans/${planId}/field-mapping`)
   }, [router, planId])
 
-  // Build SVG links data
+  // Build SVG links data — match by apiName (stable across snapshot refreshes)
+  // rather than by FK id (goes stale after a refresh).
   const svgLinks = mappings.map((m) => {
-    const sourcePos = svgLayout.sourcePositions.find((p) => p.objectId === m.sourceObjectId)
-    const destPos = svgLayout.destPositions.find((p) => p.objectId === m.destObjectId)
+    const sourcePos = svgLayout.sourcePositions.find((p) => p.apiName === m.sourceObjectApiName)
+    const destPos = svgLayout.destPositions.find((p) => p.apiName === m.destObjectApiName)
     if (!sourcePos || !destPos) return null
     return {
       mappingId: m.id,
@@ -367,7 +373,7 @@ export function ObjectMappingView({
             <FilterTabs value={sourceFilter} onChange={setSourceFilter} />
             <div className="space-y-1 mt-2" ref={sourceColRef}>
               {filteredSourceObjects.map((obj) => (
-                <div key={obj.id} data-object-id={obj.id}>
+                <div key={obj.id} data-object-id={obj.id} data-api-name={obj.apiName}>
                   <ObjectCard
                     id={obj.id}
                     apiName={obj.apiName}
@@ -375,7 +381,7 @@ export function ObjectMappingView({
                     isCustom={obj.isCustom}
                     role="source"
                     isHighlighted={selectedSourceObjectId === obj.id}
-                    isMapped={mappedSourceIds.has(obj.id)}
+                    isMapped={mappedSourceApiNames.has(obj.apiName)}
                     onCircleClick={handleSourceCircleClick}
                     onClick={handleSourceCardClick}
                   />
@@ -403,14 +409,14 @@ export function ObjectMappingView({
             <FilterTabs value={destFilter} onChange={setDestFilter} />
             <div className="space-y-1 mt-2" ref={destColRef}>
               {filteredDestObjects.map((obj) => (
-                <div key={obj.id} data-object-id={obj.id}>
+                <div key={obj.id} data-object-id={obj.id} data-api-name={obj.apiName}>
                   <ObjectCard
                     id={obj.id}
                     apiName={obj.apiName}
                     label={obj.label}
                     isCustom={obj.isCustom}
                     role="destination"
-                    isMapped={mappedDestIds.has(obj.id)}
+                    isMapped={mappedDestApiNames.has(obj.apiName)}
                     onCircleClick={
                       linkState === LinkState.SOURCE_SELECTED ? handleDestCircleClick : undefined
                     }
