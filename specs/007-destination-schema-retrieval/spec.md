@@ -30,6 +30,24 @@ of available objects with labels, API names, and custom/standard badges.
 - **FR-004**: Every refresh trigger — refresh button on `/destination/schema`, refresh button on `/destination`, post-OAuth auto-trigger — MUST execute the **full chain** schema → fields (no partial chain). Destination has no object-selection step (all objects retrieved), but fields retrieval is still mandatory. Any divergence between trigger paths is a bug. <!-- Added: 2026-05-12 -->
 - **FR-005**: At the end of every successful refresh, the system MUST trigger the mapping integrity check (`checkMappingIntegrity`, feature 017) for the plan owning the refreshed connection. The integrity check MUST update the plan status to BROKEN if any mapping is found broken, and DRAFT/READY otherwise. No automatic remediation — Principle IX (human-in-the-loop). <!-- Added: 2026-05-12 -->
 
+## Drift Detection on Plan Reopen <!-- Added: 2026-05-13 -->
+
+The drift detection algorithm and the **canonical list of modification types** are defined in **spec 003 → "Drift Detection on Plan Reopen"** (single source of truth). Destination uses the same algorithm and the same taxonomy — do not duplicate.
+
+Destination-specific notes:
+
+- **Scope**: destination has no object-selection step (all objects available for mapping), so `detectLiveDrift(connectionId, 'destination')` inspects all objects at object-level. Field-level inspection is still restricted to objects referenced by an existing mapping (per 003 FR-016 budget rule).
+- **Severity tuning**: certain destination-side modifications carry extra weight because destination is the WRITE side:
+  - `FIELD_BECAME_REQUIRED` on destination → **warning** (was the value being supplied?)
+  - `FIELD_READONLY_CHANGED` to readOnly=true on destination → **warning** (write will fail)
+  - `FIELD_UNIQUE_CHANGED` to unique=true on destination → **warning** (duplicate writes will fail)
+- **FR-D-006** (destination drift): The system MUST call `detectLiveDrift(connectionId, 'destination')` as part of the plan-reopen drift check (driven by spec 001). The destination report MUST be merged with the source report in the plan-level banner. <!-- Added: 2026-05-13 -->
+
+## Acceptance Scenarios (drift detection — destination side) <!-- Added: 2026-05-13 -->
+
+5. **Given** a CONNECTED destination with a stored CURRENT snapshot, **When** drift detection runs as part of plan reopen, **Then** the destination side returns a DriftReport using the canonical taxonomy of spec 003, with severity tuned per destination-specific notes above.
+6. **Given** a destination drift detects `FIELD_BECAME_REQUIRED` on a field referenced by an existing field mapping, **When** the banner is rendered, **Then** the change is flagged as **warning** (not info), and the corresponding mapping row on the Field Mapping page (spec 012) highlights the new constraint with a tooltip indicating that a value must now be supplied.
+
 ## Assumptions
 
 - Destination schema retrieval follows the same pattern as source (002-schema-retrieval spec applies).
