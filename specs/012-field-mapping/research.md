@@ -7,7 +7,7 @@
 - **2D lookup table**: A `Record<string, Record<string, CompatibilityResult>>` map. Simple, declarative, easy to extend.
 - **Database-driven**: Store matrix in DB. Overkill for a fixed set of 5 base types.
 
-**Decision**: 2D lookup table as a TypeScript constant in `src/lib/services/type-compatibility.ts`. The matrix from spec.md (5 types x 5 types = 25 combinations) is small and static. Exposes `getCompatibility(sourceType, destType): { status: 'COMPATIBLE' | 'NEEDS_LOGIC' | 'INCOMPATIBLE', section: 'D1' | 'D2' | 'D3' | 'D4', message?: string }`. This service is reused by 013 (migration logic) and 017 (integrity check).
+**Decision**: 2D lookup table as a TypeScript constant in `src/lib/services/type-compatibility.ts`. The matrix from spec.md (5 types x 5 types = 25 combinations) is small and static. Exposes `getCompatibility(sourceType, destType): { status: 'COMPATIBLE' | 'WARNING' | 'INCOMPATIBLE', section: 'D1' | 'D2' | 'D3' | 'D4', message?: string }`. This service is reused by 013 (migration logic) and 017 (integrity check).
 
 ## Decision 2: Auto-Match Registry Architecture
 
@@ -27,15 +27,21 @@ The same source field CAN appear in different ObjectMappings (e.g., if Contact i
 
 ## Decision 4: Link Color Status Computation
 
-The spec defines four states: green (validated), orange (defined not validated), red solid (no logic), red dashed (incompatible).
+The spec defines five states: GREEN (validated), ORANGE (defined not validated), RED_SOLID (no logic), RED_DASHED (incompatible), BROKEN (integrity issue per 017 — referenced source/destination object or field is absent from the current snapshot, or its type became incompatible after a refresh).
 
 This is a **computed state**, not stored in the database. Derived at render time from:
-1. `typeCompatibility.status` (from the matrix)
-2. Whether MigrationLogic exists for this FieldMapping
-3. If exists, whether MigrationLogic.status is VALIDATED
+1. Integrity issue presence (from 017 IntegrityIssue records) — takes precedence over all others
+2. `typeCompatibility.status` (from the matrix)
+3. Whether MigrationLogic exists for this FieldMapping
+4. If exists, whether MigrationLogic.status is VALIDATED
 
 ```typescript
-function getLinkStatus(fieldMapping: FieldMapping, migrationLogic?: MigrationLogic): LinkStatus {
+function getLinkStatus(
+  fieldMapping: FieldMapping,
+  migrationLogic?: MigrationLogic,
+  integrityIssue?: IntegrityIssue,
+): LinkStatus {
+  if (integrityIssue) return 'BROKEN';
   if (fieldMapping.compatibilityStatus === 'INCOMPATIBLE') return 'RED_DASHED';
   if (!migrationLogic) return 'RED_SOLID';
   if (migrationLogic.status === 'VALIDATED') return 'GREEN';

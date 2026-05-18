@@ -10,7 +10,7 @@ model FieldMapping {
   destinationFieldName  String
   sourceFieldType       String
   destinationFieldType  String
-  compatibilityStatus   String   @default("COMPATIBLE")  // COMPATIBLE | NEEDS_LOGIC | INCOMPATIBLE
+  compatibilityStatus   String   @default("COMPATIBLE")  // COMPATIBLE | WARNING | INCOMPATIBLE
   autoCreated           Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

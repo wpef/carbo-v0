@@ -51,7 +51,7 @@ Create a new field mapping.
   "destinationFieldName": "industry",
   "sourceFieldType": "picklist",
   "destinationFieldType": "picklist",
-  "compatibilityStatus": "NEEDS_LOGIC",
+  "compatibilityStatus": "WARNING",
   "autoCreated": false,
   "linkStatus": "RED_SOLID"
 }

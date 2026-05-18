@@ -1,6 +1,6 @@
 # Implementation Plan: Migration Logic
 
-**Branch**: `013-migration-logic` | **Date**: 2026-04-02 | **Spec**: `specs/013-transformation-rules/spec.md`
+**Branch**: `013-migration-logic` | **Date**: 2026-04-02 | **Spec**: `specs/013-migration-logic/spec.md`
 
 ## Summary
 
@@ -35,7 +35,7 @@ Define migration logic for each field mapping via a type-dependent modal: D1 (Va
 ### Documentation
 
 ```text
-specs/013-transformation-rules/
+specs/013-migration-logic/
 ├── plan.md
 ├── research.md
 ├── data-model.md

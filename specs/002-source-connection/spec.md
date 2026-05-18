@@ -128,8 +128,8 @@ from the adapter list, authenticates, and sees the connection status as CONNECTE
   - Object mappings to be deleted (their source object was removed)
   - Field mappings to be deleted (their source field was removed)
   - Field mappings to be flagged `BROKEN` (type became incompatible)
-  - Transformation/validation rules to be deleted (referenced field was removed)
-  - Transformation/validation rules to be flagged `needs-review` (referenced field's type changed)
+  - Migration logic rules (013) to be deleted (referenced field was removed)
+  - Migration logic rules (013) to be flagged `needs-review` (referenced field's type changed)
   - Migration filters to be deleted (referenced field was removed)
   - Documents to be marked `outdated` (any of the above occurred)
 - **FR-011**: If the impact report is non-empty, the system MUST display a confirmation dialog
@@ -176,7 +176,7 @@ No new entities. Uses existing `ConnectorConnection` (from 000) linked to
 features:
 - `SchemaSnapshot` (003) — replaced atomically
 - `ObjectMapping` (011), `FieldMapping` (012) — deleted or flagged
-- `TransformationRule` (013), `ValidationRule` (014), `MigrationFilter` (015) — deleted or flagged
+- `MigrationLogic` (013), `MigrationFilter` (015) — deleted or flagged
 - `GeneratedDocument` (019, 020) — `status` may become `OUTDATED` (enum value to be added in
   19/20 data-model when implementing reconfiguration)
 

@@ -9,6 +9,7 @@ model ObjectMapping {
   sourceObjectName      String
   destinationObjectName String
   autoCreated           Boolean  @default(false)
+  fieldAutoMatchedAt    DateTime?  // Set once when 012 auto-match runs; gates re-triggering (Principle IX)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

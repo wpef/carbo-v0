@@ -10,15 +10,15 @@
 
 ### User Story 1 - View object correspondence (Priority: P1)
 
-As a consultant, I open a mapping plan and see a two-column layout: source objects on the left, destination objects on the right. Visual links connect objects that are already paired (e.g., Account to Company). Each object appears as a card showing its name, with a connection point (circle) on the appropriate side (right for source, left for destination).
+As a consultant, I open a migration plan and see a two-column layout: source objects on the left, destination objects on the right. Visual links connect objects that are already paired (e.g., Account to Company). Each object appears as a card showing its name, with a connection point (circle) on the appropriate side (right for source, left for destination).
 
 **Why this priority**: The two-column view is the entry point for all mapping work. Without it, no object pairing or downstream field mapping can happen.
 
-**Independent Test**: A consultant opens a mapping plan connected to Salesforce (source) and HubSpot (destination). The left column shows source objects (Account, Contact, Lead, Opportunity...), the right column shows destination objects (Company, Contact, Deal...). Each card displays the object name and a connection circle.
+**Independent Test**: A consultant opens a migration plan connected to Salesforce (source) and HubSpot (destination). The left column shows source objects (Account, Contact, Lead, Opportunity...), the right column shows destination objects (Company, Contact, Deal...). Each card displays the object name and a connection circle.
 
 **Acceptance Scenarios**:
 
-1. **Given** a mapping plan with source and destination connections, **When** the consultant opens the object mapping view, **Then** a two-column layout displays source objects on the left and destination objects on the right.
+1. **Given** a migration plan with source and destination connections, **When** the consultant opens the object mapping view, **Then** a two-column layout displays source objects on the left and destination objects on the right.
 2. **Given** object mappings already exist in the plan, **When** the view loads, **Then** visual links are drawn between paired source and destination objects.
 3. **Given** a source object card, **When** the consultant looks at it, **Then** a connection circle is visible on the right side of the card. For destination cards, the circle is on the left side.
 
@@ -26,17 +26,17 @@ As a consultant, I open a mapping plan and see a two-column layout: source objec
 
 ### User Story 2 - Auto-link predictable object pairs (Priority: P1)
 
-When two objects are connected for the first time in a mapping plan, the system automatically creates links for predictable pairs based on well-known correspondences between source and destination systems (e.g., Account SF to Company HS, Contact SF to Contact HS). The consultant can remove any auto-created link.
+When two objects are connected for the first time in a migration plan, the system automatically creates links for predictable pairs based on well-known correspondences between source and destination systems (e.g., Account SF to Company HS, Contact SF to Contact HS). The consultant can remove any auto-created link.
 
 **Why this priority**: Auto-linking saves significant time and reduces errors on obvious mappings. It is a core differentiator for a migration tool aimed at consultants.
 
-**Independent Test**: A consultant creates a new mapping plan with Salesforce as source and HubSpot as destination. Upon opening the object mapping view, links are automatically created for Account-Company and Contact-Contact. The consultant removes the Contact-Contact link and confirms it disappears.
+**Independent Test**: A consultant creates a new migration plan with Salesforce as source and HubSpot as destination. Upon opening the object mapping view, links are automatically created for Account-Company and Contact-Contact. The consultant removes the Contact-Contact link and confirms it disappears.
 
 **Acceptance Scenarios**:
 
-1. **Given** a mapping plan with no existing object mappings, **When** the consultant opens the object mapping view for the first time, **Then** the system automatically creates links for predictable object pairs (e.g., Account to Company, Contact to Contact).
+1. **Given** a migration plan with no existing object mappings, **When** the consultant opens the object mapping view for the first time, **Then** the system automatically creates links for predictable object pairs (e.g., Account to Company, Contact to Contact).
 2. **Given** an auto-created object link, **When** the consultant removes it, **Then** the link is deleted and no longer displayed.
-3. **Given** a mapping plan where auto-links have already been created, **When** the consultant re-opens the view, **Then** no duplicate auto-links are created.
+3. **Given** a migration plan where auto-link has already run once (`objectAutoLinkedAt IS NOT NULL`), **When** the consultant re-opens the view — even after manually deleting every existing object mapping — **Then** auto-link MUST NOT re-fire. The view opens with whatever mappings the consultant has chosen to keep (possibly zero).
 
 ---
 
@@ -78,7 +78,7 @@ A consultant clicks on an object card to open a detail modal. The modal shows th
 
 A consultant can remove an existing link between a source object and a destination object. Removing a link triggers a confirmation dialog, and upon confirmation, the link and all its child data (field mappings, migration logic, filters) are cascade-deleted.
 
-**Why this priority**: Correcting mistakes or changing the mapping plan requires the ability to cleanly remove object links.
+**Why this priority**: Correcting mistakes or changing the migration plan requires the ability to cleanly remove object links.
 
 **Independent Test**: A consultant right-clicks (or uses a delete action) on the link between Account and Company. A confirmation dialog warns that all field mappings, migration logic, and filters will be deleted. The consultant confirms, and the link disappears.
 
@@ -107,7 +107,7 @@ A consultant can remove an existing link between a source object and a destinati
 - **FR-001**: The system MUST display a two-column layout with source objects on the left and destination objects on the right.
 - **FR-002**: Each object MUST be displayed as a card showing the object name and a connection circle (right side for source, left side for destination).
 - **FR-003**: Visual links MUST be drawn between paired source and destination objects.
-- **FR-004**: The system MUST automatically create links for predictable object pairs when a mapping plan's object mapping view is first opened. Auto-linking MUST NOT create duplicates on subsequent visits.
+- **FR-004**: The system MUST automatically create links for predictable object pairs **exactly once per migration plan**, gated on `MigrationPlan.objectAutoLinkedAt` (defined in 001 data-model). Auto-link runs only when `objectAutoLinkedAt IS NULL`; on run it MUST set `objectAutoLinkedAt = NOW()` in the same transaction that creates the links. Subsequent opens of the view MUST NOT re-trigger auto-linking, even if the consultant has manually deleted every existing ObjectMapping for this plan (Principle IX — auto-link is a one-shot bootstrap, not a recurring assist; re-running it would overwrite consultant decisions).
 - **FR-005**: The system MUST allow the consultant to create a link by clicking the connection circle on a source card, then clicking the connection circle on a destination card.
 - **FR-006**: The system MUST prevent duplicate object mappings (same source + same destination) within a single plan.
 - **FR-007**: The system MUST allow multiple links per source object (fan-out) and multiple links per destination object (fan-in), with a warning for fan-in about potential record conflicts.
@@ -131,7 +131,7 @@ A consultant can remove an existing link between a source object and a destinati
 
 ### Key Entities
 
-- **ObjectMapping**: Belongs to a MappingPlan. Has an id, mappingPlanId, sourceObjectName, destinationObjectName, autoCreated (boolean), createdAt, updatedAt. Owns zero or more FieldMappings and MigrationFilters.
+- **ObjectMapping**: Belongs to a MigrationPlan. Has an id, migrationPlanId, sourceObjectName, destinationObjectName, autoCreated (boolean), fieldAutoMatchedAt (nullable timestamp — set exactly once when 012's field-level auto-match runs for this object mapping; gates re-triggering per Principle IX), createdAt, updatedAt. Owns zero or more FieldMappings and MigrationFilters.
 
 ## Drift Highlighting on Object Mapping Page <!-- Added: 2026-05-13 -->
 

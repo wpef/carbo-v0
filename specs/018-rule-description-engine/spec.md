@@ -14,7 +14,7 @@ As a consultant, I get human-readable descriptions of all migration logic rules 
 
 **Why this priority**: Human-readable descriptions are required for client-facing documents (features 019 and 020). Without them, the documents cannot be generated.
 
-**Independent Test**: Given a mapping plan with 10 field mappings -- 3 with value equivalences, 2 with classification prompts, 3 with informational logic, and 2 with error logic -- the engine produces a description for each. Value equivalence descriptions list the mappings (e.g., "Web becomes Online, Referral becomes Partner"). Classification prompts produce an explanation of the prompt. Informational logic produces the pre-defined message. Error logic produces the incompatibility explanation.
+**Independent Test**: Given a migration plan with 10 field mappings -- 3 with value equivalences, 2 with classification prompts, 3 with informational logic, and 2 with error logic -- the engine produces a description for each. Value equivalence descriptions list the mappings (e.g., "Web becomes Online, Referral becomes Partner"). Classification prompts produce an explanation of the prompt. Informational logic produces the pre-defined message. Error logic produces the incompatibility explanation.
 
 **Acceptance Scenarios**:
 
@@ -23,7 +23,7 @@ As a consultant, I get human-readable descriptions of all migration logic rules 
 3. **Given** a migration logic of type INFORMATIONAL with message "The value will be copied as-is", **When** the engine generates a description, **Then** the output is "The value will be copied as-is" and no LLM API call is made.
 4. **Given** a migration logic of type ERROR, **When** the engine generates a description, **Then** the output explains the incompatibility and the CSV fallback, and no LLM API call is made.
 5. **Given** no ANTHROPIC_API_KEY configured, **When** the engine encounters a PROMPT rule, **Then** the output is the raw prompt text followed by "(requires review)" and no API call is attempted.
-6. **Given** a batch of 15 rules across an entire mapping plan, **When** the engine generates descriptions for all, **Then** it returns a complete list in the same order, with template rules resolved locally and PROMPT rules batched to minimize API calls.
+6. **Given** a batch of 15 rules across an entire migration plan, **When** the engine generates descriptions for all, **Then** it returns a complete list in the same order, with template rules resolved locally and PROMPT rules batched to minimize API calls.
 
 ---
 

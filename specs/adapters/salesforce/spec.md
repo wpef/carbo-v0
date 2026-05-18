@@ -7,7 +7,7 @@
 
 ## User Story (atomic)
 
-As a consultant, I can connect to Salesforce and use it as a source system in Carbo-v0, so that I can authenticate via OAuth2, retrieve the full object and field schema, select relevant objects, preview records with field-level statistics, and use Salesforce data as the source for my mapping plans.
+As a consultant, I can connect to Salesforce and use it as a source system in Carbo-v0, so that I can authenticate via OAuth2, retrieve the full object and field schema, select relevant objects, preview records with field-level statistics, and use Salesforce data as the source for my migration plans.
 
 **Independent Test**: A consultant configures the Salesforce Connected App credentials, initiates a connection via OAuth2 with PKCE, sees the org name confirmed, browses the object selection step with custom objects and common CRM objects pre-selected (system objects hidden by default), confirms the selection, views fields for "Contact" with types and constraints, previews 25 records with field stats (null count, distinct values, sample values), and disconnects cleanly.
 

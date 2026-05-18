@@ -64,8 +64,7 @@ first creating a plan. The home page is a list of plans.
 |---|---------|-------|------------|
 | 011 | Object Mapping | Map source object to destination object | 005, 008 |
 | 012 | Field Mapping | Map source field to destination property, type compatibility | 011 |
-| 013 | Transformation Rules | Define transformation rules (fixed, reference, JS function) | 012 |
-| 014 | Validation Rules | Define validation rules (type check, regex) | 012 |
+| 013 | Migration Logic | Define migration logic rules (value equivalence, classification prompt, informational, error) | 012 |
 | 015 | Migration Filters | Define filters on source records per object | 011 |
 | 016 | Unmapped Fields Detection | Explicit warnings for unmapped fields (Principle III) | 012 |
 | 017 | Mapping Integrity Check | Detect broken mappings after schema changes | 012 |
@@ -74,7 +73,7 @@ first creating a plan. The home page is a list of plans.
 
 | # | Feature | Scope | Depends on |
 |---|---------|-------|------------|
-| 018 | Rule Description Engine | Translate rules to natural language (templates + LLM) | 013, 014 |
+| 018 | Rule Description Engine | Translate rules to natural language (templates + LLM) | 013 |
 | 019 | Text Document Generation | Readable document for the client | 018, 016 |
 | 020 | Contractual Document Generation | Formal contractual document with signature block | 018, 016 |
 | 021 | PDF Export | HTML to PDF conversion | 019 or 020 |

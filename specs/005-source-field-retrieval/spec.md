@@ -61,5 +61,5 @@ As a consultant, I can see all fields for my selected objects with their types a
 
 After field retrieval completes, the UI MUST display:
 - If this is a source system and destination is not yet connected: "Source schema ready. Next: [Connect Destination →]"
-- If this is a source system and destination is already connected: "Source schema ready. Next: [Create Mapping Plan →]"
-- If this is a destination system: "Destination schema ready. Next: [Create Mapping Plan →]"
+- If this is a source system and destination is already connected: "Source schema ready. Next: [Create Migration Plan →]"
+- If this is a destination system: "Destination schema ready. Next: [Create Migration Plan →]"

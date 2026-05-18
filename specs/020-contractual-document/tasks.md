@@ -18,9 +18,9 @@
 **Independent Test**: Generate 3 references on the same day -- get XXXX=0001, 0002, 0003. Build HTML from structured data -- all sections present.
 
 - [ ] T004 [P] [US1] Implement reference generator in `src/lib/services/contractual-document/reference-generator.ts`: `generateReferenceNumber()` queries DB for today's count, returns `CARBO-YYYYMMDD-XXXX`. Uses transaction for uniqueness.
-- [ ] T005 [P] [US1] Implement template builder in `src/lib/services/contractual-document/template-builder.ts`: functions for `buildHeader()` (reference, plan name, systems, date, consultant), `buildTableOfContents()` (if 3+ objects), `buildScopeSection()`, `buildCorrespondenceTable()` (per object), `buildTransformationRulesSection()`, `buildValidationRulesSection()`, `buildExclusionsSection()`, `buildFilterTable()`, `buildSignatureBlock()`, `buildFullDocument()`. Formal inline CSS (serif, borders, numbered sections). All sections always present.
+- [ ] T005 [P] [US1] Implement template builder in `src/lib/services/contractual-document/template-builder.ts`: functions for `buildHeader()` (reference, plan name, systems, date, consultant), `buildTableOfContents()` (if 3+ objects), `buildScopeSection()`, `buildCorrespondenceTable()` (per object), `buildMigrationLogicRulesSection()` (covers all rule kinds defined in 013), `buildExclusionsSection()`, `buildFilterTable()`, `buildSignatureBlock()`, `buildFullDocument()`. Formal inline CSS (serif, borders, numbered sections). All sections always present.
 - [ ] T006 [P] [US1] Write unit tests in `tests/unit/services/contractual-document/reference-generator.test.ts`: format validation, sequential numbering, uniqueness.
-- [ ] T007 [US1] Write unit tests in `tests/unit/services/contractual-document/template-builder.test.ts`: test all sections present, TOC at 3+ objects, empty states ("No transformation rules defined", "All source fields are mapped -- no exclusions"), signature block fields, formal styling.
+- [ ] T007 [US1] Write unit tests in `tests/unit/services/contractual-document/template-builder.test.ts`: test all sections present, TOC at 3+ objects, empty states ("No migration logic rules defined", "All source fields are mapped -- no exclusions"), signature block fields, formal styling.
 
 **Checkpoint**: Reference generation and HTML building work in isolation.
 
