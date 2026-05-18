@@ -1,0 +1,349 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── 001: Migration Plan ───
+
+enum PlanStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+enum PlanStep {
+  SOURCE
+  DESTINATION
+  OBJECT_MAPPING
+  FIELD_MAPPING
+  DOCUMENTS
+}
+
+model MigrationPlan {
+  id                   String    @id @default(uuid())
+  name                 String
+  description          String?
+  status               PlanStatus @default(DRAFT)
+  currentStep          PlanStep   @default(SOURCE)
+  objectAutoLinkedAt   DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  sourceConnectionId      String?   @unique
+  destinationConnectionId String?   @unique
+  sourceConnection        ConnectorConnection? @relation("SourceConnection", fields: [sourceConnectionId], references: [id])
+  destinationConnection   ConnectorConnection? @relation("DestinationConnection", fields: [destinationConnectionId], references: [id])
+
+  objectMappings       ObjectMapping[]
+  integrityIssues      IntegrityIssue[]
+  textDocuments        TextDocument[]
+  contractualDocuments ContractualDocument[]
+  auditLogs            AuditLog[]
+}
+
+// ─── 002/006: Connector Connection ───
+
+enum ConnectionStatus {
+  CONNECTED
+  EXPIRED
+  ERROR
+}
+
+model ConnectorConnection {
+  id           String           @id @default(uuid())
+  adapterType  String
+  name         String
+  status       ConnectionStatus @default(CONNECTED)
+  config       String           @default("{}")
+  secretsRef   String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  sourcePlan      MigrationPlan? @relation("SourceConnection")
+  destinationPlan MigrationPlan? @relation("DestinationConnection")
+  schemaSnapshots SchemaSnapshot[]
+}
+
+// ─── 003/007: Schema Snapshot ───
+
+enum SnapshotSide {
+  SOURCE
+  DESTINATION
+}
+
+enum SnapshotStatus {
+  CURRENT
+  PREVIOUS
+}
+
+model SchemaSnapshot {
+  id           String         @id @default(uuid())
+  connectionId String
+  side         SnapshotSide
+  status       SnapshotStatus @default(CURRENT)
+  fetchedAt    DateTime       @default(now())
+
+  connection ConnectorConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  objects    SchemaObject[]
+
+  @@unique([connectionId, side, status])
+}
+
+// ─── 003/007: Schema Object ───
+
+model SchemaObject {
+  id          String  @id @default(uuid())
+  snapshotId  String
+  apiName     String
+  label       String
+  description String?
+  isCustom    Boolean @default(false)
+
+  snapshot SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  fields   ObjectField[]
+
+  @@unique([snapshotId, apiName])
+}
+
+// ─── 004: Object Selection ───
+
+model ObjectSelection {
+  id           String  @id @default(uuid())
+  connectionId String
+  snapshotId   String
+  objectApiName String
+  isSelected   Boolean @default(true)
+
+  @@unique([connectionId, snapshotId, objectApiName])
+}
+
+// ─── 005/008: Object Field ───
+
+model ObjectField {
+  id               String  @id @default(uuid())
+  objectId         String
+  snapshotId       String
+  apiName          String
+  label            String
+  dataType         String
+  isRequired       Boolean @default(false)
+  isReadOnly       Boolean @default(false)
+  isUnique         Boolean @default(false)
+  isAccessible     Boolean @default(true)
+  referenceTo      String?
+  relationshipType String?
+
+  object SchemaObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  @@unique([objectId, apiName])
+}
+
+// ─── 011: Object Mapping ───
+
+model ObjectMapping {
+  id                    String  @id @default(uuid())
+  planId                String
+  sourceObjectName      String
+  destinationObjectName String
+  fieldAutoMatchedAt    DateTime?
+
+  plan          MigrationPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  fieldMappings FieldMapping[]
+  filters       MigrationFilter[]
+  exclusions    FieldExclusion[]
+
+  @@unique([planId, sourceObjectName, destinationObjectName])
+}
+
+// ─── 012: Field Mapping ───
+
+enum CompatibilityStatus {
+  COMPATIBLE
+  WARNING
+  INCOMPATIBLE
+}
+
+model FieldMapping {
+  id                  String              @id @default(uuid())
+  objectMappingId     String
+  sourceFieldName     String
+  destinationFieldName String
+  compatibilityStatus CompatibilityStatus @default(COMPATIBLE)
+
+  objectMapping  ObjectMapping   @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
+  migrationLogic MigrationLogic?
+
+  @@unique([objectMappingId, sourceFieldName])
+  @@unique([objectMappingId, destinationFieldName])
+}
+
+// ─── 013: Migration Logic ───
+
+enum LogicStatus {
+  DRAFT
+  DEFINED
+  VALIDATED
+}
+
+model MigrationLogic {
+  id             String      @id @default(uuid())
+  fieldMappingId String      @unique
+  status         LogicStatus @default(DRAFT)
+  config         String      @default("{}")
+  description    String?
+
+  fieldMapping       FieldMapping       @relation(fields: [fieldMappingId], references: [id], onDelete: Cascade)
+  valueEquivalences  ValueEquivalence[]
+}
+
+model ValueEquivalence {
+  id               String @id @default(uuid())
+  migrationLogicId String
+  sourceValue      String
+  destinationValue String
+
+  migrationLogic MigrationLogic @relation(fields: [migrationLogicId], references: [id], onDelete: Cascade)
+}
+
+// ─── 015: Migration Filters ───
+
+enum FilterOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  NOT_CONTAINS
+  STARTS_WITH
+  ENDS_WITH
+  GREATER_THAN
+  LESS_THAN
+  IS_NULL
+}
+
+model MigrationFilter {
+  id              String         @id @default(uuid())
+  objectMappingId String
+  fieldApiName    String
+  operator        FilterOperator
+  value           String?
+
+  objectMapping ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
+}
+
+// ─── 016: Field Exclusion ───
+
+model FieldExclusion {
+  id              String @id @default(uuid())
+  objectMappingId String
+  sourceFieldName String
+  reason          String?
+
+  objectMapping ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
+
+  @@unique([objectMappingId, sourceFieldName])
+}
+
+// ─── 017: Integrity Issues ───
+
+enum IntegrityEntityType {
+  OBJECT_MAPPING
+  FIELD_MAPPING
+  MIGRATION_LOGIC
+  MIGRATION_FILTER
+}
+
+enum IntegrityIssueType {
+  UNMAPPED_REQUIRED_FIELD
+  INCOMPATIBLE_TYPE
+  MISSING_LOGIC
+  INVALID_FILTER
+  BROKEN_REFERENCE
+  MISSING_EQUIVALENCE
+}
+
+model IntegrityIssue {
+  id         String              @id @default(uuid())
+  planId     String
+  entityType IntegrityEntityType
+  entityId   String
+  issueType  IntegrityIssueType
+  severity   String              @default("ERROR")
+  message    String
+  resolved   Boolean             @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime            @default(now())
+
+  plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, entityType, entityId, issueType])
+}
+
+// ─── 019: Text Document ───
+
+enum DocumentStatus {
+  CURRENT
+  OUTDATED
+}
+
+model TextDocument {
+  id          String         @id @default(uuid())
+  planId      String
+  version     Int            @default(1)
+  status      DocumentStatus @default(CURRENT)
+  htmlContent String
+  objectCount Int            @default(0)
+  fieldCount  Int            @default(0)
+  ruleCount   Int            @default(0)
+  generatedAt DateTime       @default(now())
+
+  plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+// ─── 020: Contractual Document ───
+
+model ContractualDocument {
+  id              String         @id @default(uuid())
+  planId          String
+  referenceNumber String         @unique
+  version         Int            @default(1)
+  status          DocumentStatus @default(CURRENT)
+  htmlContent     String
+  objectCount     Int            @default(0)
+  fieldCount      Int            @default(0)
+  ruleCount       Int            @default(0)
+  filterCount     Int            @default(0)
+  generatedAt     DateTime       @default(now())
+
+  plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+// ─── 022: Schema Write Operation (audit) ───
+
+model SchemaWriteOperation {
+  id           String   @id @default(uuid())
+  connectionId String
+  operationType String
+  objectApiName String
+  fieldApiName  String?
+  status        String   @default("SUCCESS")
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+}
+
+// ─── Audit Trail ───
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  planId    String?
+  action    String
+  entity    String
+  entityId  String?
+  details   String   @default("{}")
+  createdAt DateTime @default(now())
+
+  plan MigrationPlan? @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
