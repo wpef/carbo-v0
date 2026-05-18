@@ -131,7 +131,9 @@ The DriftReport is exposed via a plan-level context (`PlanDriftContext`) so each
 ## Key Entities
 
 - **MigrationPlan**: Top-level container. Fields: id, name, description, status (DRAFT/READY/BROKEN),
-  sourceConnectionId (nullable), destinationConnectionId (nullable), currentStep, createdAt, updatedAt.
+  sourceConnectionId (nullable), destinationConnectionId (nullable), currentStep, objectAutoLinkedAt
+  (nullable timestamp — set exactly once when 011 auto-link runs for this plan; gates re-triggering
+  per Principle IX), createdAt, updatedAt.
 
 ## Success Criteria
 

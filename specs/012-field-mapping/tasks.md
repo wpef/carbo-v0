@@ -7,7 +7,7 @@
 
 - [ ] T001 [P] Add FieldMapping model to `prisma/schema.prisma` with unique constraints on (objectMappingId, sourceFieldName) and (objectMappingId, destinationFieldName), index on objectMappingId, relation to ObjectMapping. Run `npx prisma migrate dev --name add-field-mapping`.
 - [ ] T002 [P] Create type compatibility matrix in `src/lib/services/type-compatibility.ts`: 2D lookup table for 5x5 type combinations (Text, Number, Date, Picklist, Checkbox). Export `getCompatibility(sourceType, destType)` returning `{ status, section, message }`. Include all 25 combinations from spec's Type Compatibility Matrix.
-- [ ] T003 [P] Extend mapping types in `src/lib/types/mapping.ts`: FieldMappingDTO, CreateFieldMappingInput, CompatibilityStatus enum, LinkStatus enum (GREEN, ORANGE, RED_SOLID, RED_DASHED), AutoMatchResult.
+- [ ] T003 [P] Extend mapping types in `src/lib/types/mapping.ts`: FieldMappingDTO, CreateFieldMappingInput, CompatibilityStatus enum, LinkStatus enum (GREEN, ORANGE, RED_SOLID, RED_DASHED, BROKEN), AutoMatchResult.
 
 ---
 
@@ -32,7 +32,7 @@
 - [ ] T009 [P] Create API route handler in `src/app/api/plans/[planId]/object-mappings/[mappingId]/fields/auto-match/route.ts`: POST (trigger auto-matching).
 - [ ] T010 Create React hook in `src/hooks/use-field-mapping.ts`: manages link state machine, fetches field mappings, provides createLink/deleteLink/autoMatch actions, computes linkStatus for each mapping.
 - [ ] T011 [P] Create FieldCard component in `src/components/mapping/FieldCard.tsx`: displays field name, type badge, fill rate (source only, "--" if unavailable), connection circle (right for source, left for destination), click handler on circle.
-- [ ] T012 [P] Create FieldLink component in `src/components/mapping/FieldLink.tsx`: SVG bezier path between two field cards. Color-coded by LinkStatus: green (#22c55e), orange (#f97316), red solid (#ef4444), red dashed (#ef4444 + dasharray). Click handler opens migration logic modal (013).
+- [ ] T012 [P] Create FieldLink component in `src/components/mapping/FieldLink.tsx`: SVG bezier path between two field cards. Color-coded by LinkStatus: green (#22c55e), orange (#f97316), red solid (#ef4444), red dashed (#ef4444 + dasharray), broken (red #ef4444 + "Cassé" badge — takes precedence over the others; click handler disabled). Click handler opens migration logic modal (013) for non-broken states.
 - [ ] T013 [P] Create FieldSearchFilter component in `src/components/mapping/FieldSearchFilter.tsx`: text input filtering fields by name or type.
 - [ ] T014 Create FieldMappingView component in `src/components/mapping/FieldMappingView.tsx`: two-column layout, renders FieldCards + FieldLinks via SVG overlay, search filters per column. Triggers auto-match on first mount.
 - [ ] T015 Create field mapping page in `src/app/plans/[planId]/mapping/[mappingId]/page.tsx`: fetches source fields, destination fields, existing field mappings; renders FieldMappingView. Navigation from object mapping view.
@@ -53,7 +53,7 @@
 
 **Goal**: Color-coded links visible at a glance; clean field link removal.
 
-- [ ] T017 Add `getLinkStatus()` utility to `src/lib/services/field-mapping.ts`: derives LinkStatus from FieldMapping.compatibilityStatus + MigrationLogic existence + MigrationLogic.status. Used by GET endpoint and FieldLink component.
+- [ ] T017 Add `getLinkStatus()` utility to `src/lib/services/field-mapping.ts`: derives LinkStatus from FieldMapping.compatibilityStatus + MigrationLogic existence + MigrationLogic.status + integrity (017). Precedence: BROKEN (if 017's integrity check flagged the mapping) > RED_DASHED (incompatible) > RED_SOLID (no logic) > ORANGE (logic not validated) > GREEN. Used by GET endpoint and FieldLink component.
 - [ ] T018 Add removal confirmation to FieldMappingView: on delete, show field name pair being removed, warn about migration logic cascade, update parent ObjectMapping progress.
 
 **Checkpoint**: All user stories complete. Full field mapping workflow functional.

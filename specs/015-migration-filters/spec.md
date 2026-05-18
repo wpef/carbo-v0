@@ -53,7 +53,7 @@ As a consultant, I can define filters to control which source records are includ
 ## Assumptions
 
 - Estimated record counts are obtained by querying the source connection via the Connector Interface. The exact query mechanism depends on the source connector's capabilities (e.g., SOQL COUNT for Salesforce).
-- Filters are defined at plan time and applied at migration execution time (feature 006). This feature covers definition and estimation only.
+- Filters are defined at plan time and applied at migration execution time (feature 024, Phase 2). This feature covers definition and estimation only.
 - Filters apply to source records only -- there is no filtering on destination records.
 - The estimated count is approximate and may not reflect real-time source data changes.
 - OR logic between filters is out of scope for this feature. All filters are ANDed.

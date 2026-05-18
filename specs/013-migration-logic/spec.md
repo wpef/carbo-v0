@@ -1,6 +1,6 @@
 # Feature Specification: Migration Logic
 
-**Feature**: 013-migration-logic (formerly 013-transformation-rules)
+**Feature**: 013-migration-logic
 **Created**: 2026-03-25
 **Updated**: 2026-04-01
 **Status**: Draft
@@ -199,9 +199,9 @@ The section displayed in the migration logic modal is determined by the followin
 
 ## Assumptions
 
-- Migration logic is defined at plan time but executed at migration time (feature 006). This feature covers definition, validation workflow, and LLM-powered classification preview only.
+- Migration logic is defined at plan time but executed at migration time (feature 024, Phase 2). This feature covers definition, validation workflow, and LLM-powered classification preview only.
 - The LLM for D2 classification is accessed via the Claude API (@anthropic-ai/sdk). If the API key is not configured, D2 sections show a fallback message but the prompt can still be saved.
 - The Type Compatibility Matrix is defined at the application level and applies to all connector pairs. Connectors normalize their field types to the common set (Text, Number, Date, Picklist, Checkbox).
 - "Equivalent names" for D1 auto-linking means case-insensitive string match or a known synonym table (e.g., "Web" = "Online" is NOT automatic -- only exact case-insensitive matches).
-- The CSV fallback for D3 (Error) is a promise communicated to the user. The actual CSV generation is handled by feature 006 (migration execution).
+- The CSV fallback for D3 (Error) is a promise communicated to the user. The actual CSV generation is handled by feature 024 (migration execution, Phase 2).
 - Real source record values for D2 examples are fetched on-demand from the source connector via the existing record preview capability (feature 009).

@@ -4,7 +4,7 @@
 
 ## Summary
 
-Generate an immutable HTML document that describes an entire mapping plan in plain language for client review. The document is assembled server-side from a plan's object mappings, field mappings, migration logic descriptions (via 018), unmapped fields (via 016), and migration filters. Each generation creates a new immutable version stored in the database. The HTML is previewed in-app via an iframe.
+Generate an immutable HTML document that describes an entire migration plan in plain language for client review. The document is assembled server-side from a plan's object mappings, field mappings, migration logic descriptions (via 018), unmapped fields (via 016), and migration filters. Each generation creates a new immutable version stored in the database. The HTML is previewed in-app via an iframe.
 
 ## Technical Context
 

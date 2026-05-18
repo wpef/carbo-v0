@@ -40,7 +40,7 @@
 
 ## Phase 5: Page Integration
 
-- [ ] T014 [US1] Create `src/app/plans/[planId]/source/fields/page.tsx`: field retrieval step page. Shows "Retrieve Fields" button (triggers POST). After retrieval, shows ObjectFieldAccordion. Shows workflow navigation: "Source schema ready. Next: Connect Destination / Create Mapping Plan" based on destination status.
+- [ ] T014 [US1] Create `src/app/plans/[planId]/source/fields/page.tsx`: field retrieval step page. Shows "Retrieve Fields" button (triggers POST). After retrieval, shows ObjectFieldAccordion. Shows workflow navigation: "Source schema ready. Next: Connect Destination / Create Migration Plan" based on destination status.
 - [ ] T015 [US1] Create `src/hooks/use-fields.ts`: React hook wrapping field retrieval API calls (trigger retrieval, get fields, get fields for object) with loading/error/progress states.
 
 ---

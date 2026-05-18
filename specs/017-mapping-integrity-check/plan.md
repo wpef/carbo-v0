@@ -4,7 +4,7 @@
 
 ## Summary
 
-Detect broken mappings after schema changes. When a source or destination schema is refreshed, the system checks all mapping plans referencing that connection for: deleted objects, deleted fields, and type changes that break compatibility. Broken entities are flagged with persistent IntegrityIssue records, and the plan status transitions to BROKEN. Issues are resolved when the consultant fixes (remaps or removes) the affected mappings.
+Detect broken mappings after schema changes. When a source or destination schema is refreshed, the system checks all migration plans referencing that connection for: deleted objects, deleted fields, and type changes that break compatibility. Broken entities are flagged with persistent IntegrityIssue records, and the plan status transitions to BROKEN. Issues are resolved when the consultant fixes (remaps or removes) the affected mappings.
 
 ## Technical Context
 
@@ -22,7 +22,7 @@ Detect broken mappings after schema changes. When a source or destination schema
 |---|-----------|--------|-------|
 | I | Spec-First | PASS | spec.md approved |
 | II | Readability | PASS | Straightforward comparison logic; each check type is a separate function |
-| III | Data fidelity | PASS | **Core feature**: ensures mapping plan stays consistent with actual schemas |
+| III | Data fidelity | PASS | **Core feature**: ensures migration plan stays consistent with actual schemas |
 | IV | Tests on real data | PASS | Tests with realistic schema diffs (field deletions, type changes, object removals) |
 | V | Idempotence | PASS | Running integrity check twice produces same results; issues are not duplicated |
 | VI | Traceability | PASS | All integrity check results and plan status transitions logged to audit trail |

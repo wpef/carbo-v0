@@ -1,6 +1,6 @@
 # Tasks: Migration Logic
 
-**Input**: Design documents from `specs/013-transformation-rules/`
+**Input**: Design documents from `specs/013-migration-logic/`
 **Prerequisites**: Features 011 (Object Mapping) and 012 (Field Mapping) implemented, including type-compatibility service
 
 ## Phase 1: Setup

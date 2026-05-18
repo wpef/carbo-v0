@@ -7,17 +7,17 @@
 
 ## User Story (atomic)
 
-As a consultant, I am notified when schema changes break my existing mappings so I can fix them before attempting a migration. After a schema refresh on either the source or destination connection, the system checks all mapping plans referencing that connection and identifies broken mappings: source fields that no longer exist, destination properties that no longer exist, source or destination objects that no longer exist, and type changes that break compatibility. Broken field mappings and object mappings are clearly marked, and the parent plan status transitions to BROKEN if any issues are found.
+As a consultant, I am notified when schema changes break my existing mappings so I can fix them before attempting a migration. After a schema refresh on either the source or destination connection, the system checks all migration plans referencing that connection and identifies broken mappings: source fields that no longer exist, destination properties that no longer exist, source or destination objects that no longer exist, and type changes that break compatibility. Broken field mappings and object mappings are clearly marked, and the parent plan status transitions to BROKEN if any issues are found.
 
-**Independent Test**: A consultant has a mapping plan with Contact mapped to Contacts, including a field mapping "CustomField__c to custom_field". The source schema is refreshed and "CustomField__c" no longer exists. The system marks that field mapping as broken (reason: "source field deleted"), the object mapping shows a broken indicator, and the plan status transitions to BROKEN.
+**Independent Test**: A consultant has a migration plan with Contact mapped to Contacts, including a field mapping "CustomField__c to custom_field". The source schema is refreshed and "CustomField__c" no longer exists. The system marks that field mapping as broken (reason: "source field deleted"), the object mapping shows a broken indicator, and the plan status transitions to BROKEN.
 
 **Acceptance Scenarios**:
 
-1. **Given** a mapping plan with field mappings, **When** the source schema is refreshed and a mapped source field no longer exists, **Then** the affected field mapping is marked as broken with reason "source field deleted".
-2. **Given** a mapping plan with field mappings, **When** the destination schema is refreshed and a mapped destination property no longer exists, **Then** the affected field mapping is marked as broken with reason "destination property deleted".
-3. **Given** a mapping plan with object mappings, **When** the source schema is refreshed and a mapped source object no longer exists, **Then** the affected object mapping is marked as broken with reason "source object deleted", and all its field mappings are also marked as broken.
-4. **Given** a mapping plan with field mappings, **When** a schema refresh reveals a type change on a mapped field that breaks compatibility (e.g., string changed to boolean), **Then** the affected field mapping is marked as broken with reason "type change: [old type] to [new type]".
-5. **Given** any broken mappings are detected, **When** the integrity check completes, **Then** the parent mapping plan status transitions to BROKEN.
+1. **Given** a migration plan with field mappings, **When** the source schema is refreshed and a mapped source field no longer exists, **Then** the affected field mapping is marked as broken with reason "source field deleted".
+2. **Given** a migration plan with field mappings, **When** the destination schema is refreshed and a mapped destination property no longer exists, **Then** the affected field mapping is marked as broken with reason "destination property deleted".
+3. **Given** a migration plan with object mappings, **When** the source schema is refreshed and a mapped source object no longer exists, **Then** the affected object mapping is marked as broken with reason "source object deleted", and all its field mappings are also marked as broken.
+4. **Given** a migration plan with field mappings, **When** a schema refresh reveals a type change on a mapped field that breaks compatibility (e.g., string changed to boolean), **Then** the affected field mapping is marked as broken with reason "type change: [old type] to [new type]".
+5. **Given** any broken mappings are detected, **When** the integrity check completes, **Then** the parent migration plan status transitions to BROKEN.
 6. **Given** a BROKEN plan, **When** the consultant fixes all broken mappings (remaps or removes them), **Then** the plan status transitions back to DRAFT or COMPLETE as appropriate.
 
 ## Edge Cases
@@ -28,19 +28,19 @@ As a consultant, I am notified when schema changes break my existing mappings so
 - Multiple plans reference the same connection: all plans are checked after a schema refresh on that connection.
 - A plan is already BROKEN and a new schema refresh introduces additional breaks: the new issues are added to the existing list of broken mappings.
 - The consultant has migration filters referencing a deleted source field: the filter is marked as broken with reason "source field deleted".
-- Transformation rules referencing a deleted source field (FIELD_REFERENCE type): the rule is marked as broken with reason "referenced field deleted".
+- Migration logic rules referencing a deleted source field (FIELD_REFERENCE type): the rule is marked as broken with reason "referenced field deleted".
 
 ## Functional Requirements
 
-- **FR-001**: The system MUST perform an integrity check on all mapping plans referencing a connection after that connection's schema is refreshed.
+- **FR-001**: The system MUST perform an integrity check on all migration plans referencing a connection after that connection's schema is refreshed.
 - **FR-002**: The system MUST detect and flag field mappings where the source field no longer exists in the refreshed source schema.
 - **FR-003**: The system MUST detect and flag field mappings where the destination property no longer exists in the refreshed destination schema.
 - **FR-004**: The system MUST detect and flag object mappings where the source object no longer exists in the refreshed source schema.
 - **FR-005**: The system MUST detect and flag object mappings where the destination object no longer exists in the refreshed destination schema.
-- **FR-006**: The system MUST detect and flag field mappings where a type change breaks compatibility according to the type compatibility matrix (feature 010).
+- **FR-006**: The system MUST detect and flag field mappings where a type change breaks compatibility according to the type compatibility matrix (feature 012).
 - **FR-007**: The system MUST detect and flag migration filters referencing source fields that no longer exist.
-- **FR-008**: The system MUST detect and flag FIELD_REFERENCE transformation rules referencing source fields that no longer exist.
-- **FR-009**: The system MUST transition the parent mapping plan status to BROKEN when any integrity issues are found.
+- **FR-008**: The system MUST detect and flag FIELD_REFERENCE migration logic rules referencing source fields that no longer exist.
+- **FR-009**: The system MUST transition the parent migration plan status to BROKEN when any integrity issues are found.
 - **FR-010**: The system MUST transition the plan status back to DRAFT or COMPLETE when all integrity issues are resolved (broken mappings removed or remapped).
 - **FR-011**: The system MUST log all integrity check results (issues found, status transitions) to the audit trail (Constitution Principle VI).
 
@@ -59,8 +59,8 @@ As a consultant, I am notified when schema changes break my existing mappings so
 ## Assumptions
 
 - Schema refresh is triggered by the connector features (001, 002). The integrity check is triggered as a consequence of a schema refresh, not independently.
-- The integrity check compares the current schema snapshot with the mapping plan's references. It does not require the previous schema snapshot.
-- The type compatibility matrix used for type change detection is the same matrix defined in feature 010.
+- The integrity check compares the current schema snapshot with the migration plan's references. It does not require the previous schema snapshot.
+- The type compatibility matrix used for type change detection is the same matrix defined in feature 012 (Field Mapping).
 - Integrity issues are persisted so the consultant can view them across sessions without requiring a re-check.
 - The integrity check is a synchronous operation that runs after schema refresh completes.
 
@@ -103,8 +103,13 @@ This decision keeps **in scope**:
 
 **Rule of thumb**: in any UI consuming `ObjectMappingDTO` or `FieldMappingDTO`, treat `sourceObjectId` / `destObjectId` / `sourceFieldId` / `destFieldId` as **diagnostic info only**. For any presence test, set membership, lookup, or positional matching, use the corresponding `apiName` field. This makes the UI robust to snapshot rotation by construction — a single FK lookup that slips through is a regression risk identical to the one fixed in commit `219f1f9e`.
 
-### Auto-match / auto-link only at initial connection
+### Auto-match / auto-link gated by persisted timestamps (canonical in 011 FR-004 + 012 FR-006)
 
-The existing `autoLink` (object-mapping) and `autoMatchFields` (field-mapping) services run only when the plan has **zero existing mappings for that scope** (first time the consultant opens the mapping page for a fresh pair). They MUST NOT run automatically after a schema refresh that leaves mappings in place but flagged BROKEN. A refreshed plan with broken mappings is not equivalent to a fresh plan — it has consultant decisions embedded that must not be overwritten.
+The existing `autoLink` (object-mapping) and `autoMatchFields` (field-mapping) services run **exactly once** per scope, gated on persisted timestamps:
 
-The hook `useFieldMapping` already guards this (`if (!hasMappings && !autoMatchedRef.current)`). The corresponding rule must be enforced everywhere auto-match could be triggered.
+- Object-level auto-link: gated on `MigrationPlan.objectAutoLinkedAt` (see 011 FR-004 and 001 data-model).
+- Field-level auto-match: gated on `ObjectMapping.fieldAutoMatchedAt` (see 012 FR-006 and 011 Key Entities).
+
+The "zero existing mappings" heuristic that earlier prototypes used (`if (!hasMappings && !autoMatchedRef.current)` in `useFieldMapping`) is too brittle: after the consultant manually deletes every mapping for a pair, the heuristic would re-fire auto-link and silently overwrite that deletion. The persisted timestamp survives manual deletion and guarantees one-shot semantics across sessions (Principle IX).
+
+After a schema refresh that leaves mappings in place but flagged BROKEN, neither service runs — refreshed plans with consultant decisions embedded are NOT equivalent to fresh plans.

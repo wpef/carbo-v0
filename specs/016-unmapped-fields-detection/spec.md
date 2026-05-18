@@ -52,7 +52,7 @@ As a consultant, I am explicitly warned about unmapped fields to ensure nothing 
 ## Assumptions
 
 - Field metadata (names, types, required/optional) is provided by the Connector Interface via schema snapshots.
-- "Required" destination properties are those marked as required in the destination schema -- the definition comes from the connector, not from the mapping plan.
+- "Required" destination properties are those marked as required in the destination schema -- the definition comes from the connector, not from the migration plan.
 - Unmapped fields detection is a read-time computation based on the current set of field mappings and exclusions -- it does not require a separate background process.
 - Unmapped fields detection applies per object mapping, not across the entire plan.
 - The "fields remaining to validate" count displayed in the object detail modal (011-object-mapping, component A3) is derived from unmapped fields detection. This feature provides the data; the UI integration is owned by feature 011.

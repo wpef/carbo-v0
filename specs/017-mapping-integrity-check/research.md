@@ -31,7 +31,7 @@ When the consultant fixes a broken mapping (remaps the field or removes the mapp
 
 ## Decision 4: Check Scope
 
-The integrity check compares the **current schema snapshot** against the **mapping plan's references**. It does NOT diff two schema versions. This means:
+The integrity check compares the **current schema snapshot** against the **migration plan's references**. It does NOT diff two schema versions. This means:
 
 1. For each ObjectMapping: check if sourceObjectName exists in source schema and destinationObjectName exists in dest schema.
 2. For each FieldMapping: check if sourceFieldName exists in source object's fields and destinationFieldName exists in dest object's fields.

@@ -15,6 +15,7 @@ model MigrationPlan {
   currentStep            String    @default("SOURCE_CONNECTION")
   sourceConnectionId     String?
   destinationConnectionId String?
+  objectAutoLinkedAt     DateTime?  // Set once when 011 auto-link runs; gates re-triggering (Principle IX)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -30,6 +31,7 @@ model MigrationPlan {
 - `currentStep`: Tracks progress — one of: SOURCE_CONNECTION, OBJECT_SELECTION, DESTINATION_CONNECTION, MAPPING, DOCUMENTS, RUN
 - `sourceConnectionId`: Nullable FK to future connection entity (set by feature 002)
 - `destinationConnectionId`: Nullable FK to future connection entity (set by feature 006)
+- `objectAutoLinkedAt`: Nullable timestamp set exactly once when feature 011's auto-link runs for this plan. Acts as a persistent guard so re-opening the Object Mapping page never re-triggers auto-link, even if the consultant has manually deleted every ObjectMapping (Principle IX — auto-link is a one-shot bootstrap, not a recurring assist).
 - `createdAt`, `updatedAt`: Timestamps
 
 ### AuditLog

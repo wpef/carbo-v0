@@ -32,7 +32,7 @@ As a consultant, I can add a new field to the destination directly from the fiel
 
 As a consultant, I click on a destination field card to open a detail modal. From this modal, I can modify the field's name, type, picklist values (if applicable), description, and group (property group on HubSpot, field group on Salesforce). I save the changes and they are applied to the destination system.
 
-**Why this priority**: Destination fields often need adjustments (updated picklist values, corrected types, better descriptions) as the mapping plan evolves. This must be possible in-place.
+**Why this priority**: Destination fields often need adjustments (updated picklist values, corrected types, better descriptions) as the migration plan evolves. This must be possible in-place.
 
 **Independent Test**: A consultant clicks on destination field "industry" (picklist). The detail modal shows current values. The consultant adds a new picklist value "SaaS", changes the description, and clicks Save. The changes are applied to HubSpot.
 

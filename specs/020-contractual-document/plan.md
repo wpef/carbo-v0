@@ -4,7 +4,7 @@
 
 ## Summary
 
-Generate an immutable formal contractual HTML document with signature block for client sign-off. Structurally similar to 019 (text document) but with distinct formal styling, dedicated sections for scope/correspondence/transformation rules/validation rules/exclusions/filters/signature, and a unique document reference number. Shares the same Rule Description Engine (018) and unmapped fields data (016) as dependencies.
+Generate an immutable formal contractual HTML document with signature block for client sign-off. Structurally similar to 019 (text document) but with distinct formal styling, dedicated sections for scope/correspondence/migration logic rules/exclusions/filters/signature, and a unique document reference number. Shares the same Rule Description Engine (018) and unmapped fields data (016) as dependencies.
 
 ## Technical Context
 
@@ -94,4 +94,4 @@ tests/
     └── contractual-document.test.ts              # Seeded plan -> generate -> verify
 ```
 
-**Structure Decision**: Mirrors 019 structure. Separate `reference-generator.ts` for the unique document reference logic. Template builder has more sections than 019 (scope, correspondence, transformation rules, validation rules, exclusions, filters, signature).
+**Structure Decision**: Mirrors 019 structure. Separate `reference-generator.ts` for the unique document reference logic. Template builder has more sections than 019 (scope, correspondence, migration logic rules, exclusions, filters, signature).

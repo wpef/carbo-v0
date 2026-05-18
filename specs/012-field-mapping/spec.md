@@ -29,7 +29,7 @@ As a consultant, I open an object mapping (e.g., Contact to Contacts) and see a 
 
 A consultant creates a field mapping by clicking the connection circle on a source field card, then clicking the connection circle on a destination field card. The link appears visually between the two fields. Each source field maps to at most one destination field, and each destination field receives at most one source field, within a given object mapping.
 
-**Why this priority**: Manual field linking is the core operation of the mapping plan. Without it, no migration rules can be defined.
+**Why this priority**: Manual field linking is the core operation of the migration plan. Without it, no migration rules can be defined.
 
 **Independent Test**: A consultant clicks the circle on source field "FirstName" (string), then clicks the circle on destination field "firstname" (string). A link appears between the two cards. The consultant then tries to map "FirstName" to another destination field -- the system rejects it.
 
@@ -54,7 +54,7 @@ When two objects are connected, the system automatically identifies and links na
 
 1. **Given** an object mapping is created (or auto-created), **When** the field mapping view loads for the first time, **Then** the system automatically creates links for native field correspondences.
 2. **Given** auto-matched field links exist, **When** the consultant removes one, **Then** the link is deleted normally.
-3. **Given** auto-matching has already run for an object mapping, **When** the consultant re-opens the field mapping view, **Then** no duplicate auto-matches are created.
+3. **Given** auto-matching has already run for an object mapping (`fieldAutoMatchedAt IS NOT NULL`), **When** the consultant re-opens the field mapping view — even after manually deleting every existing field mapping — **Then** auto-match MUST NOT re-fire. The view opens with whatever mappings the consultant has chosen to keep (possibly zero).
 4. **Given** no known native correspondences exist between two objects, **When** the field mapping view loads, **Then** no auto-matches are created and the view opens with no links.
 
 ---
@@ -93,7 +93,7 @@ Each link between a source and destination field displays a color-coded status:
 - **Red (solid)**: fields are linked but no migration logic is defined.
 - **Red (dashed)**: fields are linked but the types are incompatible (e.g., text to number) -- migration logic cannot resolve this.
 
-**Why this priority**: Color-coded links give the consultant an at-a-glance view of the mapping plan's completeness, enabling quick identification of what needs attention.
+**Why this priority**: Color-coded links give the consultant an at-a-glance view of the migration plan's completeness, enabling quick identification of what needs attention.
 
 **Independent Test**: A consultant views a field mapping with 10 links. 3 are green (complete), 4 are orange (pending validation), 2 are solid red (no logic defined), and 1 is dashed red (text to number incompatibility).
 
@@ -161,8 +161,8 @@ A consultant views a permanent sidebar showing what a real source record would l
 - **FR-003**: Source field cards MUST additionally display the field's fill rate (percentage of records with a value).
 - **FR-004**: The system MUST allow the consultant to create a field mapping by clicking the connection circle on a source field then the connection circle on a destination field.
 - **FR-005**: The system MUST enforce one-to-one mapping: each source field maps to at most one destination field, and each destination field receives at most one source field, within a given object mapping.
-- **FR-006**: The system MUST automatically create field links for native correspondences when an object mapping's field view is first opened. Auto-matching MUST NOT create duplicates on subsequent visits.
-- **FR-007**: Visual links between mapped fields MUST be color-coded: green (logic validated), orange (logic defined, not validated), red solid (no logic), red dashed (incompatible types).
+- **FR-006**: The system MUST automatically create field links for native correspondences **exactly once per object mapping**, gated on `ObjectMapping.fieldAutoMatchedAt` (defined in 011 Key Entities). Auto-match runs only when `fieldAutoMatchedAt IS NULL`; on run it MUST set `fieldAutoMatchedAt = NOW()` in the same transaction that creates the field mappings. Subsequent opens of the field view MUST NOT re-trigger auto-match, even if the consultant has manually deleted every existing FieldMapping for this object mapping (Principle IX — auto-match is a one-shot bootstrap, not a recurring assist).
+- **FR-007**: Visual links between mapped fields MUST be color-coded by `LinkStatus` enum, with five possible values: `GREEN` (logic validated), `ORANGE` (logic defined, not validated), `RED_SOLID` (no logic), `RED_DASHED` (incompatible types), `BROKEN` (referenced source object/field or destination object/field is absent from the current schema snapshot, or its type became incompatible after a refresh — see 017 FR-002..006). The `BROKEN` state takes precedence over the others: a mapping that is BROKEN MUST render as such (e.g., red badge "Cassé") regardless of whether logic is defined.
 - **FR-008**: Clicking a field card MUST open a detail modal showing: field name (title), type (subtitle), description (editable for destination), and type-specific details.
 - **FR-009**: Source field detail modals MUST show fill rate and, for picklist fields, the list of values with equivalence status counts.
 - **FR-010**: Source field detail modals for text fields mapped to destination picklists MUST show the classification prompt and example results.
@@ -231,7 +231,7 @@ When the plan-reopen drift check (spec 001) has detected schema changes, the Fie
 
 ### Key Entities
 
-- **FieldMapping**: Belongs to an ObjectMapping. Has an id, objectMappingId, sourceFieldName, destinationFieldName, sourceFieldType, destinationFieldType, compatibilityStatus (COMPATIBLE | NEEDS_LOGIC | INCOMPATIBLE), autoCreated (boolean), createdAt, updatedAt. Owns zero or more MigrationLogicRules.
+- **FieldMapping**: Belongs to an ObjectMapping. Has an id, objectMappingId, sourceFieldName, destinationFieldName, sourceFieldType, destinationFieldType, compatibilityStatus (COMPATIBLE | WARNING | INCOMPATIBLE), autoCreated (boolean), createdAt, updatedAt. Owns zero or more MigrationLogicRules.
 
 ## Success Criteria
 
@@ -240,7 +240,7 @@ When the plan-reopen drift check (spec 001) has detected schema changes, the Fie
 - **SC-001**: A consultant can view the field mapping layout and identify all links within 2 seconds of opening an object mapping.
 - **SC-002**: Auto-matching creates native field correspondences in under 2 seconds when the view first loads.
 - **SC-003**: A consultant can manually create a field link in under 3 clicks.
-- **SC-004**: Link color-coding is immediately visible and distinguishable at a glance (green, orange, red solid, red dashed).
+- **SC-004**: Link color-coding is immediately visible and distinguishable at a glance (green, orange, red solid, red dashed, broken).
 - **SC-005**: The field detail modal displays all relevant information within 2 seconds of clicking a card.
 - **SC-006**: Field lists remain responsive with 200+ fields per side.
 - **SC-007**: 100% of field link operations are traceable in the audit trail.
@@ -251,7 +251,6 @@ When the plan-reopen drift check (spec 001) has detected schema changes, the Fie
 - Fill rates are pre-computed by the source connector or computed on-demand from a sample of records.
 - Native field correspondences are defined per connector pair (e.g., Salesforce-to-HubSpot has a known mapping table). This table is maintained at the application level. **A name-based fallback (case-insensitive apiName match) complements the registry for fields not covered by explicit pairs.**
 - The compatibility status is determined by a type compatibility matrix that maps source type + destination type pairs to COMPATIBLE, WARNING, or INCOMPATIBLE (5×5 matrix: text, number, date, picklist, boolean).
-  <!-- Updated: 2026-04-07 — NEEDS_LOGIC renamed to WARNING in implementation. -->
 - One-to-one mapping is enforced within a single object mapping. The same source field can appear in different object mappings (e.g., if Contact is mapped to both Contacts and Leads).
 - Link color status is derived from: (1) type compatibility, (2) whether migration logic exists, and (3) whether that logic is validated. This is a computed state, not stored separately.
 

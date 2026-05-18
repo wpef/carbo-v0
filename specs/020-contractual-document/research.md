@@ -4,7 +4,7 @@
 
 **Chosen**: Separate template builder, not shared with 019.
 
-**Rationale**: The text document (019) and contractual document (020) have fundamentally different structures. The text document is narrative-style with per-object sections containing embedded field tables. The contractual document has formal sections: scope, correspondence tables, dedicated rules sections (transformation + validation separately), exclusions, filters, signature block. Attempting to share a template would require heavy conditional logic that hurts readability (Principle II).
+**Rationale**: The text document (019) and contractual document (020) have fundamentally different structures. The text document is narrative-style with per-object sections containing embedded field tables. The contractual document has formal sections: scope, correspondence tables, a dedicated migration logic rules section (covers all rule kinds defined in 013), exclusions, filters, signature block. Attempting to share a template would require heavy conditional logic that hurts readability (Principle II).
 
 **Rejected**: Shared template with mode flag. Would create a complex branching template that serves neither format well.
 
@@ -28,9 +28,9 @@
 
 ## Decision: Section presence policy
 
-**Chosen**: All sections are always present, even when empty. Empty sections show an explicit message (e.g., "No transformation rules defined", "All source fields are mapped -- no exclusions").
+**Chosen**: All sections are always present, even when empty. Empty sections show an explicit message (e.g., "No migration logic rules defined", "All source fields are mapped -- no exclusions").
 
-**Rationale**: Per FR-015, no section is conditionally omitted. This ensures the contractual document is always complete and the client knows every aspect was considered.
+**Rationale**: Per FR-014, no section is conditionally omitted. This ensures the contractual document is always complete and the client knows every aspect was considered.
 
 ## Decision: Consultant identifier
 

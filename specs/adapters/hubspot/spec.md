@@ -88,6 +88,6 @@ Additionally, for schema write operations:
 - The HubSpot CRM API v3 is the integration mechanism for objects and properties.
 - Custom object creation requires Enterprise tier — this is detected and reported gracefully.
 - Property creation supports common types: string, number, date, datetime, enumeration, boolean. Uncommon types (calculation, score, rich_text) are displayed in schema but not creatable from Carbo-v0.
-- Record reading is for preview purposes — the adapter reads but does not write records (record writing is part of feature 021 — migration execution).
+- Record reading is for preview purposes — the adapter reads but does not write records (record writing is part of feature 024 — migration execution, Phase 2).
 - A single adapter instance targets one HubSpot portal at a time.
 - Private App authentication does not support token refresh — a new token must be entered if the old one is revoked or rotated.
