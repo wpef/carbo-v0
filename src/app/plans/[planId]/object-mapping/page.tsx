@@ -1,8 +1,11 @@
-export default function ObjectMappingPage() {
+import { ObjectMappingPage as ObjectMappingView } from '@/features/object-mapping/components/object-mapping-page'
+
+export default async function ObjectMappingPage({ params }: { params: Promise<{ planId: string }> }) {
+  const { planId } = await params
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4">Object Mapping</h2>
-      <p className="text-muted-foreground">Map source objects to destination objects.</p>
+      <ObjectMappingView planId={planId} />
     </div>
   )
 }
