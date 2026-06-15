@@ -43,14 +43,12 @@ Cible : **Netlify** (hébergement) + **Neon** (Postgres managé).
 
 Détails dans `.env.example`.
 
-## Migration initiale (côté dev, une fois `DIRECT_URL` connu)
+## Schéma de la base (phase démo)
 
-```bash
-npx prisma migrate dev --name init   # crée prisma/migrations/ + applique sur Neon
-git add prisma/migrations && git commit -m "chore(db): initial Postgres migration"
-```
-
-Ensuite chaque déploiement Netlify rejoue `prisma migrate deploy` automatiquement.
+Le build Netlify exécute `prisma db push` : il synchronise directement le schéma Prisma vers
+Neon (création des tables au 1er déploiement, no-op ensuite si inchangé). Pas de fichiers de
+migration à gérer pendant que le schéma évolue (ajout des adapters). On formalisera de vraies
+migrations Prisma (`migrate deploy`) avant la mise en production.
 
 ## Notes Prisma sur Netlify
 

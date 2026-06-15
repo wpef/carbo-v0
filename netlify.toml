@@ -1,9 +1,10 @@
 # Netlify — hébergement Carbo
 # Le runtime Next.js (OpenNext) est auto-détecté et installé par Netlify.
-# On surcharge juste la commande de build pour jouer les migrations Prisma avant.
+# Phase démo : `prisma db push` synchronise le schéma vers Neon (crée les tables au 1er
+# déploiement, no-op ensuite). On passera à `prisma migrate deploy` avant la prod.
 
 [build]
-  command = "npx prisma migrate deploy && npm run build"
+  command = "npx prisma db push && npm run build"
   publish = ".next"
 
 [build.environment]
