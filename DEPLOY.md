@@ -22,7 +22,7 @@ Cible : **Netlify** (hébergement) + **Neon** (Postgres managé).
 
 ## 2. Hébergement — Netlify  ⟵ *ton intervention #1b*
 
-1. https://app.netlify.com → **Add new site → Import an existing project** → GitHub → `wpef/carbo-v0`.
+1. https://app.netlify.com → **Add new site → Import an existing project** → GitHub → `Fils-de-Projet/carbo-v0`.
 2. **Branch to deploy** : `implement/phase-1-v4`.
 3. Build : rien à configurer à la main — `netlify.toml` (committé) fournit la commande
    (`npx prisma migrate deploy && npm run build`) et fixe Node 20. Le runtime Next.js s'installe seul.
