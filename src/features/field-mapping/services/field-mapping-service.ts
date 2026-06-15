@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit'
+import { computeAutoMatchPairs } from '../lib/auto-match-registry'
 import type { CompatibilityStatus } from '@prisma/client'
 
 const TYPE_COMPATIBILITY: Record<string, Record<string, CompatibilityStatus>> = {
@@ -45,7 +46,10 @@ export async function createFieldMapping(
       objectMappingId,
       sourceFieldName,
       destinationFieldName,
+      sourceFieldType: sourceType,
+      destinationFieldType: destType,
       compatibilityStatus: compatibility,
+      autoCreated: false,
     },
   })
 
@@ -107,32 +111,47 @@ export async function autoMatchFields(planId: string, objectMappingId: string) {
   const destObj = destSnapshot?.objects.find((o) => o.apiName === mapping.destinationObjectName)
   if (!sourceObj || !destObj) throw new Error('Objects not found in snapshots')
 
-  const destFieldMap = new Map(destObj.fields.map((f) => [f.apiName.toLowerCase(), f]))
+  const [sourceConn, destConn] = await Promise.all([
+    prisma.connectorConnection.findUnique({ where: { id: mapping.plan.sourceConnectionId }, select: { adapterType: true } }),
+    prisma.connectorConnection.findUnique({ where: { id: mapping.plan.destinationConnectionId }, select: { adapterType: true } }),
+  ])
+  if (!sourceConn || !destConn) throw new Error('Connections not found')
+
+  const srcByName = new Map(sourceObj.fields.map((f) => [f.apiName, f]))
+  const dstByName = new Map(destObj.fields.map((f) => [f.apiName, f]))
 
   const existingMappings = await prisma.fieldMapping.findMany({
     where: { objectMappingId },
     select: { sourceFieldName: true, destinationFieldName: true },
   })
-  const mappedSource = new Set(existingMappings.map((m) => m.sourceFieldName))
-  const mappedDest = new Set(existingMappings.map((m) => m.destinationFieldName))
 
-  let created = 0
-  for (const srcField of sourceObj.fields) {
-    if (mappedSource.has(srcField.apiName)) continue
-    const destField = destFieldMap.get(srcField.apiName.toLowerCase())
-    if (!destField || mappedDest.has(destField.apiName)) continue
+  // Union of registry pairs (Title→jobtitle) and case-insensitive name matches
+  // (Email→email) — replaces the registry-blind same-name-only matching (012 US3).
+  const pairs = computeAutoMatchPairs(
+    sourceConn.adapterType,
+    destConn.adapterType,
+    mapping.sourceObjectName,
+    mapping.destinationObjectName,
+    sourceObj.fields.map((f) => f.apiName),
+    destObj.fields.map((f) => f.apiName),
+    existingMappings.map((m) => m.sourceFieldName),
+    existingMappings.map((m) => m.destinationFieldName),
+  )
 
-    const compatibility = checkTypeCompatibility(srcField.dataType, destField.dataType)
+  for (const pair of pairs) {
+    const srcType = srcByName.get(pair.sourceFieldName)?.dataType ?? ''
+    const dstType = dstByName.get(pair.destinationFieldName)?.dataType ?? ''
     await prisma.fieldMapping.create({
       data: {
         objectMappingId,
-        sourceFieldName: srcField.apiName,
-        destinationFieldName: destField.apiName,
-        compatibilityStatus: compatibility,
+        sourceFieldName: pair.sourceFieldName,
+        destinationFieldName: pair.destinationFieldName,
+        sourceFieldType: srcType,
+        destinationFieldType: dstType,
+        compatibilityStatus: checkTypeCompatibility(srcType, dstType),
+        autoCreated: true,
       },
     })
-    mappedDest.add(destField.apiName)
-    created++
   }
 
   await prisma.objectMapping.update({
@@ -144,11 +163,11 @@ export async function autoMatchFields(planId: string, objectMappingId: string) {
     planId,
     action: 'AUTO_MATCH_FIELDS',
     entity: 'FieldMapping',
-    details: { objectMappingId, created },
+    details: { objectMappingId, created: pairs.length },
   })
 
-  console.log(`[FieldMapping] Auto-matched ${created} fields for mapping ${objectMappingId}`)
-  return { created }
+  console.log(`[FieldMapping] Auto-matched ${pairs.length} fields for mapping ${objectMappingId}`)
+  return { created: pairs.length }
 }
 
 export async function getUnmappedFields(objectMappingId: string) {

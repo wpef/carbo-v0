@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit'
+import { computeAutoLinkPairs } from '../lib/auto-link-registry'
 
 export async function listObjectMappings(planId: string) {
   return prisma.objectMapping.findMany({
@@ -69,28 +70,37 @@ export async function autoLinkObjects(planId: string) {
 
   if (!sourceSnapshot || !destSnapshot) throw new Error('Schema snapshots required')
 
-  const destNames = new Map(destSnapshot.objects.map((o) => [o.apiName.toLowerCase(), o.apiName]))
+  // Resolve adapter types so the predictable-pair registry can be keyed (011 US2).
+  const [sourceConn, destConn] = await Promise.all([
+    prisma.connectorConnection.findUnique({ where: { id: plan.sourceConnectionId }, select: { adapterType: true } }),
+    prisma.connectorConnection.findUnique({ where: { id: plan.destinationConnectionId }, select: { adapterType: true } }),
+  ])
+  if (!sourceConn || !destConn) throw new Error('Connections not found')
 
-  let created = 0
-  for (const srcObj of sourceSnapshot.objects) {
-    const destMatch = destNames.get(srcObj.apiName.toLowerCase())
-    if (!destMatch) continue
+  const existing = await prisma.objectMapping.findMany({
+    where: { planId },
+    select: { sourceObjectName: true },
+  })
 
-    const existing = await prisma.objectMapping.findUnique({
-      where: {
-        planId_sourceObjectName_destinationObjectName: {
-          planId,
-          sourceObjectName: srcObj.apiName,
-          destinationObjectName: destMatch,
-        },
+  // Registry-driven resolution (replaces the naive case-folded equality that missed
+  // every Salesforce→HubSpot rename, e.g. Account→companies, Contact→contacts).
+  const pairs = computeAutoLinkPairs(
+    sourceConn.adapterType,
+    destConn.adapterType,
+    sourceSnapshot.objects.map((o) => o.apiName),
+    destSnapshot.objects.map((o) => o.apiName),
+    existing.map((m) => m.sourceObjectName),
+  )
+
+  for (const pair of pairs) {
+    await prisma.objectMapping.create({
+      data: {
+        planId,
+        sourceObjectName: pair.sourceObjectName,
+        destinationObjectName: pair.destinationObjectName,
+        autoCreated: true,
       },
     })
-    if (existing) continue
-
-    await prisma.objectMapping.create({
-      data: { planId, sourceObjectName: srcObj.apiName, destinationObjectName: destMatch },
-    })
-    created++
   }
 
   await prisma.migrationPlan.update({
@@ -102,9 +112,9 @@ export async function autoLinkObjects(planId: string) {
     planId,
     action: 'AUTO_LINK_OBJECTS',
     entity: 'ObjectMapping',
-    details: { created },
+    details: { created: pairs.length },
   })
 
-  console.log(`[ObjectMapping] Auto-linked ${created} pairs for plan ${planId}`)
-  return { created }
+  console.log(`[ObjectMapping] Auto-linked ${pairs.length} pairs for plan ${planId}`)
+  return { created: pairs.length }
 }
