@@ -1,6 +1,11 @@
 # Déploiement — Carbo (Phase 1, démo testable)
 
-Cible : **Vercel** (hébergement) + **Neon** (Postgres managé). Aligné constitution v1.3.0.
+Cible : **Netlify** (hébergement) + **Neon** (Postgres managé).
+
+> Bascule Vercel → Netlify (2026-06-15) : compte Netlify payant déjà en place, et le tier
+> gratuit Vercel interdit l'usage commercial sur repo privé. Next 16 est pleinement supporté
+> sur Netlify via l'adaptateur OpenNext officiel. La base reste **Neon en direct** (pas
+> Netlify DB, qui n'est qu'un wrapper Neon).
 
 ## Prérequis local (optionnel — pour lancer en local)
 
@@ -13,14 +18,16 @@ Cible : **Vercel** (hébergement) + **Neon** (Postgres managé). Aligné constit
 2. Dans **Connection Details**, copie deux URLs :
    - **Pooled** (host en `-pooler`) → `DATABASE_URL`
    - **Direct** (sans `-pooler`) → `DIRECT_URL`
-3. Transmets-les (ou colle-les dans Vercel à l'étape 2). Elles servent à créer la migration initiale.
+3. Transmets-les (ou colle-les dans Netlify à l'étape 2). Elles servent à créer la migration initiale.
 
-## 2. Hébergement — Vercel  ⟵ *ton intervention #1b*
+## 2. Hébergement — Netlify  ⟵ *ton intervention #1b*
 
-1. Compte https://vercel.com → **Add New → Project** → importe le repo GitHub.
-2. Branche de déploiement : `implement/phase-1-v4` (poussée par l'équipe de dev).
-3. **Environment Variables** → ajoute `DATABASE_URL` et `DIRECT_URL` (valeurs Neon).
-4. **Deploy.** Le build exécute automatiquement `prisma migrate deploy` (script `vercel-build`).
+1. https://app.netlify.com → **Add new site → Import an existing project** → GitHub → `wpef/carbo-v0`.
+2. **Branch to deploy** : `implement/phase-1-v4`.
+3. Build : rien à configurer à la main — `netlify.toml` (committé) fournit la commande
+   (`npx prisma migrate deploy && npm run build`) et fixe Node 20. Le runtime Next.js s'installe seul.
+4. **Environment variables** → ajoute `DATABASE_URL` et `DIRECT_URL` (valeurs Neon).
+5. **Deploy.** Le build applique les migrations puis build l'app.
 
 ## Variables d'environnement
 
@@ -29,8 +36,9 @@ Cible : **Vercel** (hébergement) + **Neon** (Postgres managé). Aligné constit
 | `DATABASE_URL` | 0 | Connexion Postgres *poolée* (runtime app) |
 | `DIRECT_URL` | 0 | Connexion Postgres *directe* (migrations Prisma) |
 | `SALESFORCE_CLIENT_ID` / `_SECRET` | 1 | Connected App OAuth Salesforce |
+| `SALESFORCE_CALLBACK_URL` | 1 | `https://<ton-site>.netlify.app/api/connectors/salesforce/callback` |
 | `HUBSPOT_CLIENT_ID` / `_SECRET` | 2 | App OAuth HubSpot |
-| `APP_URL` | 1-2 | Base URL des callbacks OAuth (ex : `https://carbo.vercel.app`) |
+| `APP_URL` | 1-2 | Base URL des callbacks OAuth (ex : `https://<ton-site>.netlify.app`) |
 | `ENCRYPTION_KEY` | 1-2 | Clé 32 octets (base64) chiffrant les tokens stockés |
 
 Détails dans `.env.example`.
@@ -42,4 +50,12 @@ npx prisma migrate dev --name init   # crée prisma/migrations/ + applique sur N
 git add prisma/migrations && git commit -m "chore(db): initial Postgres migration"
 ```
 
-Ensuite chaque déploiement Vercel rejoue `prisma migrate deploy` automatiquement.
+Ensuite chaque déploiement Netlify rejoue `prisma migrate deploy` automatiquement.
+
+## Notes Prisma sur Netlify
+
+- Le client Prisma est généré avec `binaryTargets = ["native", "rhel-openssl-3.0.x"]`
+  (cf. `prisma/schema.prisma`) — indispensable pour que le moteur de requête soit trouvé
+  dans les fonctions Netlify en Node 20.
+- Si une fonction ne trouve pas le moteur au runtime, ajouter dans `netlify.toml` un bloc
+  `[functions] included_files = ["node_modules/.prisma/client/**"]`.

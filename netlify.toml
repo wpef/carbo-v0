@@ -1,0 +1,10 @@
+# Netlify — hébergement Carbo
+# Le runtime Next.js (OpenNext) est auto-détecté et installé par Netlify.
+# On surcharge juste la commande de build pour jouer les migrations Prisma avant.
+
+[build]
+  command = "npx prisma migrate deploy && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
