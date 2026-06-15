@@ -58,7 +58,8 @@ export async function advanceStep(planId: string, targetStep: PlanStepValue) {
   }
   const updated = await prisma.migrationPlan.update({
     where: { id: planId },
-    data: { currentStep: targetStep, status: 'IN_PROGRESS' },
+    // 001 FR/T007: plan stays DRAFT through the workflow, becomes READY at the final step
+    data: { currentStep: targetStep, ...(targetStep === 'DOCUMENTS' ? { status: 'READY' as const } : {}) },
   })
   await logAuditEvent({
     planId,

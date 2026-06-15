@@ -14,9 +14,8 @@ datasource db {
 
 enum PlanStatus {
   DRAFT
-  IN_PROGRESS
-  COMPLETED
-  ARCHIVED
+  READY
+  BROKEN
 }
 
 enum PlanStep {
@@ -140,6 +139,7 @@ model ObjectField {
   isAccessible     Boolean @default(true)
   referenceTo      String?
   relationshipType String?
+  picklistValues   String?  // JSON array of picklist values, e.g. '["a","b","c"]' (005/013 — value equivalence)
 
   object SchemaObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
 
@@ -153,6 +153,7 @@ model ObjectMapping {
   planId                String
   sourceObjectName      String
   destinationObjectName String
+  autoCreated           Boolean   @default(false) // true if created by auto-link (011 FR-004)
   fieldAutoMatchedAt    DateTime?
 
   plan          MigrationPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
@@ -176,7 +177,10 @@ model FieldMapping {
   objectMappingId     String
   sourceFieldName     String
   destinationFieldName String
+  sourceFieldType     String              @default("") // raw connector dataType (012)
+  destinationFieldType String             @default("") // raw connector dataType (012)
   compatibilityStatus CompatibilityStatus @default(COMPATIBLE)
+  autoCreated         Boolean             @default(false) // true if created by auto-match (012 FR-006)
 
   objectMapping  ObjectMapping   @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
   migrationLogic MigrationLogic?
@@ -200,8 +204,9 @@ model MigrationLogic {
   config         String      @default("{}")
   description    String?
 
-  fieldMapping       FieldMapping       @relation(fields: [fieldMappingId], references: [id], onDelete: Cascade)
-  valueEquivalences  ValueEquivalence[]
+  fieldMapping         FieldMapping         @relation(fields: [fieldMappingId], references: [id], onDelete: Cascade)
+  valueEquivalences    ValueEquivalence[]
+  classificationPrompt ClassificationPrompt?
 }
 
 model ValueEquivalence {
@@ -209,6 +214,16 @@ model ValueEquivalence {
   migrationLogicId String
   sourceValue      String
   destinationValue String
+
+  migrationLogic MigrationLogic @relation(fields: [migrationLogicId], references: [id], onDelete: Cascade)
+}
+
+// ─── 013: Classification Prompt (D2 — text→picklist via LLM) ───
+
+model ClassificationPrompt {
+  id               String @id @default(uuid())
+  migrationLogicId String @unique
+  promptText       String
 
   migrationLogic MigrationLogic @relation(fields: [migrationLogicId], references: [id], onDelete: Cascade)
 }
@@ -225,6 +240,8 @@ enum FilterOperator {
   GREATER_THAN
   LESS_THAN
   IS_NULL
+  DATE_AFTER
+  DATE_BEFORE
 }
 
 model MigrationFilter {
@@ -233,6 +250,7 @@ model MigrationFilter {
   fieldApiName    String
   operator        FilterOperator
   value           String?
+  isActive        Boolean        @default(true) // toggle filter on/off (015)
 
   objectMapping ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
 }
@@ -301,6 +319,8 @@ model TextDocument {
   objectCount Int            @default(0)
   fieldCount  Int            @default(0)
   ruleCount   Int            @default(0)
+  unmappedCount Int          @default(0) // 019 FR-009
+  llmCallCount  Int          @default(0) // 019 FR-009
   generatedAt DateTime       @default(now())
 
   plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
@@ -319,6 +339,8 @@ model ContractualDocument {
   fieldCount      Int            @default(0)
   ruleCount       Int            @default(0)
   filterCount     Int            @default(0)
+  unmappedCount   Int            @default(0) // 020
+  llmCallCount    Int            @default(0) // 020
   generatedAt     DateTime       @default(now())
 
   plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)

@@ -18,6 +18,7 @@ model ObjectField {
   isAccessible     Boolean  @default(true)   // FR-004: false for field-level security restricted fields
   referenceTo      String?                   // FR-003: target object apiName for relationships
   relationshipType String?                   // FR-003: "lookup" | "master-detail" | "external"
+  picklistValues   String?                   // JSON array of picklist values; consumed by 013 D1 value-equivalence
   createdAt        DateTime @default(now())
 
   // Relations

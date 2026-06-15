@@ -25,6 +25,7 @@ model MigrationFilter {
   sourceFieldName String
   operator        FilterOperator
   value           String
+  isActive        Boolean         @default(true)  // FR: toggle a filter on/off without deleting it
 
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
