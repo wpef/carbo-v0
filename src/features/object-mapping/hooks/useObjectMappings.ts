@@ -68,7 +68,11 @@ export function useObjectMappings(planId: string) {
       ])
 
       const [srcData, dstData, mapData, planData] = await Promise.all([
-        srcRes.ok ? (srcRes.json() as Promise<SchemaObjectItem[]>) : Promise.resolve([]),
+        srcRes.ok
+          ? (srcRes.json() as Promise<{ objects?: SchemaObjectItem[] } | SchemaObjectItem[]>).then((d) =>
+              Array.isArray(d) ? d : (d.objects ?? []),
+            )
+          : Promise.resolve<SchemaObjectItem[]>([]),
         dstRes.ok ? (dstRes.json() as Promise<DestSchemaSnapshot | null>) : Promise.resolve(null),
         mapRes.ok ? (mapRes.json() as Promise<ObjectMappingItem[]>) : Promise.resolve([]),
         planRes.ok ? (planRes.json() as Promise<{ objectAutoLinkedAt: string | null }>) : Promise.resolve({ objectAutoLinkedAt: null }),
