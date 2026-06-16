@@ -203,6 +203,8 @@ model MigrationLogic {
   status         LogicStatus @default(DRAFT)
   config         String      @default("{}")
   description    String?
+  createdAt      DateTime    @default(now()) // 013 data-model
+  updatedAt      DateTime    @updatedAt       // 013 data-model
 
   fieldMapping         FieldMapping         @relation(fields: [fieldMappingId], references: [id], onDelete: Cascade)
   valueEquivalences    ValueEquivalence[]

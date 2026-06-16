@@ -37,13 +37,24 @@ export async function getPlan(planId: string) {
   return prisma.migrationPlan.findUnique({
     where: { id: planId },
     include: {
-      sourceConnection: true,
-      destinationConnection: true,
+      // FR-009: include adapterType + status for header connector dots
+      sourceConnection: { select: { id: true, adapterType: true, status: true } },
+      destinationConnection: { select: { id: true, adapterType: true, status: true } },
     },
   })
 }
 
 export async function deletePlan(planId: string) {
+  const plan = await prisma.migrationPlan.findUnique({ where: { id: planId }, select: { name: true } })
+  if (!plan) throw new Error(`Plan not found: ${planId}`)
+  // Audit before delete — log is cascade-deleted with the plan (acceptable per spec contracts)
+  await logAuditEvent({
+    planId,
+    action: 'PLAN_DELETED',
+    entity: 'MigrationPlan',
+    entityId: planId,
+    details: { name: plan.name },
+  })
   await prisma.migrationPlan.delete({ where: { id: planId } })
   console.log(`[PlanService] Deleted plan: ${planId} (cascade)`)
 }

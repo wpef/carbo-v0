@@ -9,6 +9,8 @@ import { checkTypeCompatibility } from '../lib/type-compatibility'
 import { computeLinkStatus } from '../lib/link-status'
 import type { MigrationLogicSnapshot } from '../lib/link-status'
 import type { CompatibilityStatus } from '@prisma/client'
+// 017 — trigger integrity check after field mapping CRUD
+import { checkAndUpdatePlanStatus } from '@/features/integrity/services/integrity-service'
 
 // ─── Errors ────────────────────────────────────────────────────────────────────
 
@@ -346,6 +348,9 @@ export async function createFieldMapping(
     },
   })
 
+  // 017 — re-evaluate plan integrity + status after every field mapping creation
+  await checkAndUpdatePlanStatus(planId)
+
   return toDTO(mapping, sourceField, destField)
 }
 
@@ -371,6 +376,9 @@ export async function deleteFieldMapping(planId: string, fieldMappingId: string)
       destinationFieldName: mapping.destinationFieldName,
     },
   })
+
+  // 017 — re-evaluate plan integrity + status after every field mapping deletion
+  await checkAndUpdatePlanStatus(planId)
 }
 
 // ─── autoMatchFields ───────────────────────────────────────────────────────────

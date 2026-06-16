@@ -5,6 +5,8 @@
 import { prisma } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit'
 import { computeAutoLinkPairs, getAutoLinkPairs } from '../lib/auto-link-registry'
+// 017 — trigger integrity check after object mapping CRUD
+import { checkAndUpdatePlanStatus } from '@/features/integrity/services/integrity-service'
 
 // ─── List ─────────────────────────────────────────────────────────────────────
 
@@ -46,6 +48,9 @@ export async function createObjectMapping(
     details: { sourceObjectName, destinationObjectName, manual: true },
   })
 
+  // 017 — re-evaluate plan integrity + status after every object mapping creation
+  await checkAndUpdatePlanStatus(planId)
+
   return { mapping, warnings }
 }
 
@@ -70,6 +75,9 @@ export async function deleteObjectMapping(
     entityId: mappingId,
     details: { cascadedFieldMappings: fieldMappingsCount, cascadedFilters: filtersCount },
   })
+
+  // 017 — re-evaluate plan integrity + status after every object mapping deletion
+  await checkAndUpdatePlanStatus(planId)
 
   return { fieldMappingsCount, filtersCount }
 }

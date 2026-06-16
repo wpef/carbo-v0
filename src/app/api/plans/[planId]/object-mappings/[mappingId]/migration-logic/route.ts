@@ -1,5 +1,14 @@
+// Legacy route: /api/plans/[planId]/object-mappings/[mappingId]/migration-logic?fieldMappingId=xxx
+// Kept for backward compatibility with any existing callers.
+// New route: /api/plans/.../field-mappings/[fieldMappingId]/migration-logic
+//
+// Delegates to the canonical migration-logic service.
+
 import { NextResponse } from 'next/server'
-import { getMigrationLogic, saveMigrationLogic } from '@/features/field-mapping/services/migration-logic-service'
+import { getMigrationLogic, saveMigrationLogic } from '@/features/migration-logic/services/migration-logic-service'
+import { getSectionType } from '@/features/field-mapping/lib/type-compatibility'
+import { prisma } from '@/lib/prisma'
+import type { LogicStatus } from '@prisma/client'
 
 export async function GET(
   request: Request,
@@ -13,7 +22,7 @@ export async function GET(
   }
 
   const logic = await getMigrationLogic(fieldMappingId)
-  return NextResponse.json(logic)
+  return NextResponse.json(logic ?? { fieldMappingId, migrationLogic: null })
 }
 
 export async function PUT(
@@ -21,18 +30,31 @@ export async function PUT(
   { params }: { params: Promise<{ planId: string; mappingId: string }> },
 ) {
   const { planId } = await params
-  const body = await request.json()
-
-  if (!body.fieldMappingId || !body.status) {
-    return NextResponse.json({ error: 'fieldMappingId and status required' }, { status: 400 })
+  const body = await request.json() as {
+    fieldMappingId?: string
+    action?: string
+    valueEquivalences?: Array<{ sourceValue: string; destinationValue: string }>
+    classificationPrompt?: string
   }
+
+  if (!body.fieldMappingId) {
+    return NextResponse.json({ error: 'fieldMappingId required' }, { status: 400 })
+  }
+
+  const fieldMapping = await prisma.fieldMapping.findUnique({ where: { id: body.fieldMappingId } })
+  if (!fieldMapping) {
+    return NextResponse.json({ error: 'Field mapping introuvable.' }, { status: 404 })
+  }
+
+  const sectionType = getSectionType(fieldMapping.sourceFieldType, fieldMapping.destinationFieldType)
+  const targetStatus: LogicStatus = body.action === 'VALIDATE' ? 'VALIDATED' : 'DEFINED'
 
   try {
     const logic = await saveMigrationLogic(planId, body.fieldMappingId, {
-      status: body.status,
-      config: body.config,
-      description: body.description,
-      equivalences: body.equivalences,
+      sectionType,
+      status: targetStatus,
+      valueEquivalences: sectionType === 'VALUE_EQUIVALENCE' ? (body.valueEquivalences ?? []) : undefined,
+      promptText: sectionType === 'PROMPT' ? (body.classificationPrompt ?? '') : undefined,
     })
     return NextResponse.json(logic)
   } catch (e) {

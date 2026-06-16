@@ -1,11 +1,14 @@
 // 012-field-mapping / Cluster 16 — FieldMappingView
 // Table of mapped fields with linkStatus badge, search filter, and unmapped source section.
 // Cluster 3: renders linkStatus colors/icons from enriched DTOs.
+// 013-migration-logic: "Configurer la logique" button opens MigrationLogicModal per row.
 
 'use client'
 
 import { useState, useCallback } from 'react'
 import type { FieldMappingDTO, UnmappedSourceField, AvailableDestField, CreateFieldMappingInput } from '../types'
+import { MigrationLogicModal } from '@/features/migration-logic/components/MigrationLogicModal'
+import { useMigrationLogic } from '@/features/migration-logic/hooks/use-migration-logic'
 
 // ─── LinkStatus badge config ──────────────────────────────────────────────────
 
@@ -86,6 +89,7 @@ interface FieldMappingViewProps {
   onDeleteLink: (fieldMappingId: string) => Promise<{ error?: string }>
   onAutoMatch: () => Promise<unknown>
   onSearch: (query: string) => void
+  /** Called after migration logic is saved/validated so parent can refresh link statuses */
   onMigrationLogicChanged?: () => void
   error?: string
 }
@@ -93,6 +97,8 @@ interface FieldMappingViewProps {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function FieldMappingView({
+  planId,
+  objectMappingId,
   sourceObjectLabel,
   destObjectLabel,
   fieldMappings,
@@ -106,11 +112,15 @@ export function FieldMappingView({
   onDeleteLink,
   onAutoMatch,
   onSearch,
+  onMigrationLogicChanged,
   error,
 }: FieldMappingViewProps) {
   const [actionError, setActionError] = useState('')
   const [autoMatching, setAutoMatching] = useState(false)
   const [connectingFieldName, setConnectingFieldName] = useState<string | null>(null)
+
+  // 013-migration-logic: modal state + actions
+  const ml = useMigrationLogic()
 
   // Destination fields not yet taken by any existing mapping
   const mappedDestNames = new Set(fieldMappings.map((m) => m.destinationFieldName))
@@ -249,14 +259,37 @@ export function FieldMappingView({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(m.id)}
-                        className="text-xs text-muted-foreground hover:text-destructive px-1"
-                        title="Supprimer le mapping"
-                      >
-                        &times;
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        {/* 013-migration-logic: configure logic button (hidden for BROKEN) */}
+                        {!isBroken && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              ml.openModal({
+                                planId,
+                                objectMappingId,
+                                fieldMappingId: m.id,
+                                sourceFieldLabel: m.sourceFieldLabel,
+                                sourceFieldType: m.sourceFieldType,
+                                destFieldLabel: m.destFieldLabel,
+                                destFieldType: m.destFieldType,
+                              })
+                            }
+                            className="text-xs text-primary hover:underline px-1"
+                            title="Configurer la logique de migration"
+                          >
+                            Configurer la logique
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(m.id)}
+                          className="text-xs text-muted-foreground hover:text-destructive px-1"
+                          title="Supprimer le mapping"
+                        >
+                          &times;
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -330,6 +363,41 @@ export function FieldMappingView({
         <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">
           Aucun champ disponible. Vérifiez que les schémas source et destination ont été récupérés.
         </div>
+      )}
+
+      {/* 013-migration-logic: modal — rendered once, driven by useMigrationLogic hook */}
+      {ml.sectionType && (
+        <MigrationLogicModal
+          open={ml.open}
+          onClose={() => {
+            ml.closeModal()
+            onMigrationLogicChanged?.()
+          }}
+          sourceFieldLabel={ml.sourceFieldLabel}
+          sourceFieldType={ml.sourceFieldType}
+          destFieldLabel={ml.destFieldLabel}
+          destFieldType={ml.destFieldType}
+          sectionType={ml.sectionType}
+          informationalMessage={ml.informationalMessage}
+          migrationLogic={ml.migrationLogic}
+          sourcePicklistValues={ml.sourcePicklistValues}
+          destPicklistValues={ml.destPicklistValues}
+          sampleSourceValues={ml.sampleSourceValues}
+          loading={ml.loading}
+          saving={ml.saving}
+          error={ml.error}
+          onSave={async (input) => {
+            const result = await ml.onSave(input)
+            if (!result.error) onMigrationLogicChanged?.()
+            return result
+          }}
+          onValidate={async (input) => {
+            const result = await ml.onValidate(input)
+            if (!result.error) onMigrationLogicChanged?.()
+            return result
+          }}
+          onClassify={ml.onClassify}
+        />
       )}
     </div>
   )
