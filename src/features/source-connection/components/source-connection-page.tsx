@@ -69,7 +69,8 @@ export function SourceConnectionPage({ planId }: { planId: string }) {
       setSchemaReady(true)
       const objRes = await fetch(`/api/plans/${planId}/source/objects`)
       const objs = await objRes.json()
-      setObjects(objs)
+      // The /source/objects route returns { objects, summary, ... } (009); tolerate a bare array too.
+      setObjects(Array.isArray(objs) ? objs : (objs.objects ?? []))
 
       const fieldsRes = await fetch(`/api/plans/${planId}/source/fields`)
       const fieldsData = await fieldsRes.json()
@@ -116,7 +117,8 @@ export function SourceConnectionPage({ planId }: { planId: string }) {
       if (res.ok) {
         setSchemaReady(true)
         const objRes = await fetch(`/api/plans/${planId}/source/objects`)
-        setObjects(await objRes.json())
+        const objsData = await objRes.json()
+        setObjects(Array.isArray(objsData) ? objsData : (objsData.objects ?? []))
       }
     } finally {
       setFetchingSchema(false)
