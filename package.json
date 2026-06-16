@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
+    "@hubspot/api-client": "^13.5.0",
+    "jsforce": "^3.10.14",
     "@prisma/client": "^6.19.3",
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",

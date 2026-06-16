@@ -1,8 +1,12 @@
 import type { ConnectorAdapter } from '@/lib/types/connector'
 import { demoAdapter } from './demo/demo-adapter'
+import { salesforceAdapter } from './salesforce'
+import { hubspotAdapter } from './hubspot'
 
 const adapters = new Map<string, ConnectorAdapter>([
   ['demo', demoAdapter],
+  ['salesforce', salesforceAdapter],
+  ['hubspot', hubspotAdapter],
 ])
 
 export function getAdapter(type: string): ConnectorAdapter {
