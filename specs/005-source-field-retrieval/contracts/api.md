@@ -43,7 +43,7 @@
 
 **Behavior**:
 1. Resolve the source connection for the plan
-2. Load all `SchemaObject` where `isSelected=true` for the CURRENT snapshot
+2. Load all `ObjectSelection` rows where `isSelected=true` for the CURRENT snapshot (not a column on `SchemaObject` — selection is tracked in the separate `ObjectSelection` table)
 3. For each selected object, call `adapter.getFields(connectionId, objectApiName)` with bounded concurrency (5)
 4. Persist results as `ObjectField` rows (upsert: delete existing fields for the object, then insert)
 5. Log the retrieval event to the audit trail (FR-007)

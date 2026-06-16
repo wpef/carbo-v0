@@ -6,80 +6,93 @@
 
 ```prisma
 model ObjectField {
-  id               String   @id @default(cuid())
+  id               String  @id @default(uuid())
   objectId         String
-  snapshotId       String
+  snapshotId       String                     // denormalized for query efficiency (derived from object.snapshotId)
   apiName          String
   label            String
-  dataType         String          // System-specific type, preserved as-is (e.g., "string", "reference", "picklist")
-  isRequired       Boolean  @default(false)
-  isReadOnly       Boolean  @default(false)
-  isUnique         Boolean  @default(false)
-  isAccessible     Boolean  @default(true)   // FR-004: false for field-level security restricted fields
-  referenceTo      String?                   // FR-003: target object apiName for relationships
-  relationshipType String?                   // FR-003: "lookup" | "master-detail" | "external"
-  picklistValues   String?                   // JSON array of picklist values; consumed by 013 D1 value-equivalence
-  createdAt        DateTime @default(now())
+  dataType         String                     // system-specific type, preserved as-is (e.g., "string", "reference", "picklist")
+  isRequired       Boolean @default(false)
+  isReadOnly       Boolean @default(false)
+  isUnique         Boolean @default(false)
+  isAccessible     Boolean @default(true)     // FR-004: false for field-level security restricted fields
+  referenceTo      String?                    // FR-003: target object apiName for relationships
+  relationshipType String?                    // FR-003: "lookup" | "master-detail" | "external"
+  picklistValues   String?                    // JSON array of picklist values; consumed by 013 D1 value-equivalence
 
   // Relations
-  object           SchemaObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  snapshot         SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  object   SchemaObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
 
-  @@unique([objectId, apiName])              // One field per apiName per object
-  @@index([snapshotId])
-  @@index([objectId])
+  @@unique([objectId, apiName])               // one field per apiName per object
 }
 ```
 
-### SchemaObject (existing, from 003 — relation added)
+> `createdAt` is NOT stored on `ObjectField` — fields are recreated wholesale on each retrieval (upsert pattern). The `snapshot` relation to `SchemaSnapshot` is intentionally omitted: cascade comes from `SchemaObject`; `snapshotId` is a plain denormalised column only.
+
+### SchemaObject (existing, from 003 — referenced for context)
 
 ```prisma
 model SchemaObject {
-  id          String   @id @default(cuid())
+  id          String  @id @default(uuid())
   snapshotId  String
   apiName     String
   label       String
   description String?
-  isCustom    Boolean  @default(false)
-  isSelected  Boolean  @default(false)      // From 004
+  isCustom    Boolean @default(false)
 
   // Relations
   snapshot    SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  fields      ObjectField[]                 // NEW: added by 005
+  fields      ObjectField[]  // populated by this feature (005)
 
   @@unique([snapshotId, apiName])
-  @@index([snapshotId])
 }
 ```
 
-### SchemaSnapshot (existing, from 003 — relation added)
+> `isSelected` is NOT a column on `SchemaObject`. Object selection is tracked in the separate `ObjectSelection` table (feature 004). No `@@index` directives — the `@@unique` constraint already covers the primary lookup patterns.
+
+### ObjectSelection (feature 004 — separate table, not a column on SchemaObject)
+
+```prisma
+model ObjectSelection {
+  id            String  @id @default(uuid())
+  connectionId  String
+  snapshotId    String
+  objectApiName String
+  isSelected    Boolean @default(true)
+
+  @@unique([connectionId, snapshotId, objectApiName])
+}
+```
+
+> This is the source of truth for which objects are selected. The POST field-retrieval route reads `ObjectSelection` rows (not a hypothetical `SchemaObject.isSelected` column) to determine which objects to describe.
+
+### SchemaSnapshot (existing, from 003 — referenced for context)
 
 ```prisma
 model SchemaSnapshot {
-  id           String   @id @default(cuid())
+  id           String         @id @default(uuid())
   connectionId String
-  status       String                       // "CURRENT" | "PREVIOUS"
-  retrievedAt  DateTime @default(now())
-  objectCount  Int      @default(0)
+  side         SnapshotSide
+  status       SnapshotStatus @default(CURRENT)
+  fetchedAt    DateTime       @default(now())
 
-  // Relations
   connection   ConnectorConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   objects      SchemaObject[]
-  fields       ObjectField[]                // NEW: added by 005 (direct access for queries)
 
-  @@index([connectionId, status])
+  @@unique([connectionId, side, status])
 }
 ```
+
+> No direct `fields ObjectField[]` relation on `SchemaSnapshot` — fields are reached via `snapshot.objects[n].fields`. `objectCount` and `retrievedAt` are not stored columns; use `_count.objects` and `fetchedAt` respectively.
 
 ## Relationships
 
 ```
 SchemaSnapshot (1) ──► (N) SchemaObject ──► (N) ObjectField
-                  └──────────────────────────► (N) ObjectField (denormalized snapshotId for direct queries)
 ```
 
 - `ObjectField.objectId` → `SchemaObject.id` (cascade delete: removing an object removes its fields)
-- `ObjectField.snapshotId` → `SchemaSnapshot.id` (cascade delete: removing a snapshot removes all fields)
+- `ObjectField.snapshotId` is a denormalized column for efficient snapshot-scoped queries; there is no Prisma relation from `ObjectField` to `SchemaSnapshot`
 - `@@unique([objectId, apiName])` ensures no duplicate fields per object
 
 ## Type Mapping: ConnectorField → ObjectField
@@ -103,6 +116,9 @@ function toObjectFieldData(
     isAccessible: connectorField.isAccessible ?? true,      // Defaults to true if not provided
     referenceTo: connectorField.referenceTo ?? null,
     relationshipType: connectorField.relationshipType ?? null,
+    picklistValues: connectorField.picklistValues           // JSON-serialized string array, or null
+      ? JSON.stringify(connectorField.picklistValues)
+      : null,
   }
 }
 ```

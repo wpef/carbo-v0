@@ -14,13 +14,13 @@ enum PlanStatus {
 enum PlanStep {
   SOURCE
   DESTINATION
-  MAPPING
+  OBJECT_MAPPING
   FIELD_MAPPING
   DOCUMENTS
 }
 
 model MigrationPlan {
-  id                      String      @id @default(cuid())
+  id                      String      @id @default(uuid())
   name                    String
   description             String?
   status                  PlanStatus  @default(DRAFT)
@@ -36,37 +36,33 @@ model MigrationPlan {
   createdAt               DateTime    @default(now())
   updatedAt               DateTime    @updatedAt
 
-  // Relations (defined by downstream features, listed here for cascade awareness)
-  // sourceConnection      Connection?  @relation("SourcePlan", fields: [sourceConnectionId], references: [id], onDelete: SetNull)
-  // destinationConnection Connection?  @relation("DestPlan", fields: [destinationConnectionId], references: [id], onDelete: SetNull)
-  // objectMappings        ObjectMapping[]   // onDelete: Cascade
-  // fieldMappings         FieldMapping[]    // onDelete: Cascade (via ObjectMapping)
-  // documents             Document[]        // onDelete: Cascade
+  // Relations (defined by downstream features)
+  sourceConnection        ConnectorConnection? @relation("SourceConnection", fields: [sourceConnectionId], references: [id])
+  destinationConnection   ConnectorConnection? @relation("DestinationConnection", fields: [destinationConnectionId], references: [id])
+  objectMappings          ObjectMapping[]       // onDelete: Cascade
+  integrityIssues         IntegrityIssue[]      // onDelete: Cascade (defined by 017)
+  textDocuments           TextDocument[]        // onDelete: Cascade (defined by 019)
+  contractualDocuments    ContractualDocument[] // onDelete: Cascade (defined by 020)
   auditLogs               AuditLog[]
-
-  @@map("migration_plans")
 }
 ```
+
+> Convention : `id = String @id @default(uuid())` — pas de `@@map` (noms de tables PascalCase par défaut).
 
 ### AuditLog (FR-006, Constitution Principle VI)
 
 ```prisma
 model AuditLog {
-  id          String          @id @default(cuid())
-  planId      String?
-  plan        MigrationPlan?  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  id        String          @id @default(uuid())
+  planId    String?
+  plan      MigrationPlan?  @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  action      String          // e.g. "PLAN_CREATED", "PLAN_DELETED", "STEP_ADVANCED"
-  entityType  String          // e.g. "MigrationPlan", "Connection", "ObjectMapping"
-  entityId    String          // ID of the affected entity
-  details     Json?           // Arbitrary context (old values, new values, error details)
+  action    String          // e.g. "PLAN_CREATED", "PLAN_DELETED", "STEP_ADVANCED"
+  entity    String          // type of the affected entity (e.g. "MigrationPlan", "ObjectMapping")
+  entityId  String?         // ID of the affected entity (nullable for plan-level events)
+  details   String          @default("{}") // JSON-serialized context (stored as String, not Json)
 
-  createdAt   DateTime        @default(now())
-
-  @@index([planId])
-  @@index([entityType, entityId])
-  @@index([createdAt])
-  @@map("audit_logs")
+  createdAt DateTime        @default(now())
 }
 ```
 
@@ -76,13 +72,13 @@ model AuditLog {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String (cuid)` | Unique identifier. Plans are identified by UUID, not name (edge case: duplicate names allowed). |
+| `id` | `String (uuid)` | Unique identifier. Plans are identified by UUID, not name (edge case: duplicate names allowed). |
 | `name` | `String` | Plan name, required. No uniqueness constraint. |
 | `description` | `String?` | Optional description provided at creation. |
 | `status` | `PlanStatus` | Overall plan status: DRAFT (in progress), READY (all steps complete), BROKEN (schema drift broke mappings). |
-| `currentStep` | `PlanStep` | Current max step reached in the workflow. Forward-only. |
-| `sourceConnectionId` | `String?` | FK to the source connection. Set by feature 002. Nullable until source is connected. |
-| `destinationConnectionId` | `String?` | FK to the destination connection. Set by feature 006. Nullable until destination is connected. |
+| `currentStep` | `PlanStep` | Current max step reached in the workflow. Forward-only. Values: SOURCE, DESTINATION, OBJECT_MAPPING, FIELD_MAPPING, DOCUMENTS. |
+| `sourceConnectionId` | `String?` | FK to the source ConnectorConnection. Set by feature 002. Nullable until source is connected. @unique. |
+| `destinationConnectionId` | `String?` | FK to the destination ConnectorConnection. Set by feature 006. Nullable until destination is connected. @unique. |
 | `objectAutoLinkedAt` | `DateTime?` | Timestamp of when auto-link ran for this plan. Set exactly once by feature 011. When non-null, auto-link is gated and will not re-fire (Principle IX). |
 | `createdAt` | `DateTime` | Plan creation timestamp. |
 | `updatedAt` | `DateTime` | Last modification timestamp. Auto-managed by Prisma. |
@@ -91,22 +87,24 @@ model AuditLog {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String (cuid)` | Unique identifier. |
+| `id` | `String (uuid)` | Unique identifier. |
 | `planId` | `String?` | FK to the parent plan. Nullable for system-level events. Cascade-deleted with the plan. |
 | `action` | `String` | Semantic action name (e.g. `PLAN_CREATED`, `PLAN_DELETED`, `STEP_ADVANCED`, `DRIFT_DETECTED`). |
-| `entityType` | `String` | Type of the affected entity (e.g. `MigrationPlan`, `Connection`). |
-| `entityId` | `String` | ID of the affected entity. |
-| `details` | `Json?` | Arbitrary JSON payload with context-specific data (old/new values, error info, drift summary). |
+| `entity` | `String` | Type of the affected entity (e.g. `MigrationPlan`, `ObjectMapping`). Note: field is named `entity`, not `entityType`. |
+| `entityId` | `String?` | ID of the affected entity. Nullable for plan-level events. |
+| `details` | `String` | JSON-serialized context payload (stored as String, default `"{}"`). Contains old/new values, error info, drift summary, etc. |
 | `createdAt` | `DateTime` | Event timestamp. |
 
 ## Relationships
 
 ```
-MigrationPlan (1) ──► (N) AuditLog         (cascade delete)
-MigrationPlan (1) ──► (0..1) Connection     (source, via sourceConnectionId)
-MigrationPlan (1) ──► (0..1) Connection     (destination, via destinationConnectionId)
-MigrationPlan (1) ──► (N) ObjectMapping     (cascade delete — defined by feature 011)
-MigrationPlan (1) ──► (N) Document          (cascade delete — defined by feature 019/020)
+MigrationPlan (1) ──► (N) AuditLog              (cascade delete)
+MigrationPlan (1) ──► (0..1) ConnectorConnection (source, via sourceConnectionId)
+MigrationPlan (1) ──► (0..1) ConnectorConnection (destination, via destinationConnectionId)
+MigrationPlan (1) ──► (N) ObjectMapping          (cascade delete — defined by feature 011)
+MigrationPlan (1) ──► (N) IntegrityIssue         (cascade delete — defined by feature 017)
+MigrationPlan (1) ──► (N) TextDocument           (cascade delete — defined by feature 019)
+MigrationPlan (1) ──► (N) ContractualDocument    (cascade delete — defined by feature 020)
 ```
 
 ## Constraints
@@ -120,6 +118,4 @@ MigrationPlan (1) ──► (N) Document          (cascade delete — defined by
 
 ## Indexes
 
-- `AuditLog.planId` — query all events for a plan (document generation, audit trail display).
-- `AuditLog(entityType, entityId)` — query events for a specific entity across plans.
-- `AuditLog.createdAt` — chronological ordering of events.
+AuditLog has no explicit `@@index` declarations in the implemented schema. Queries are done via `planId` through the Prisma relation.

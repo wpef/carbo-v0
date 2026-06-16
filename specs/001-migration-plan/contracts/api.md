@@ -14,11 +14,11 @@ All routes are Next.js Route Handlers under `/api/plans`.
 ```json
 [
   {
-    "id": "string (cuid)",
+    "id": "string (uuid)",
     "name": "string",
     "description": "string | null",
     "status": "DRAFT | READY | BROKEN",
-    "currentStep": "SOURCE | DESTINATION | MAPPING | FIELD_MAPPING | DOCUMENTS",
+    "currentStep": "SOURCE | DESTINATION | OBJECT_MAPPING | FIELD_MAPPING | DOCUMENTS",
     "createdAt": "ISO 8601",
     "updatedAt": "ISO 8601"
   }
@@ -46,7 +46,7 @@ All routes are Next.js Route Handlers under `/api/plans`.
 **Response** `201 Created`:
 ```json
 {
-  "id": "string (cuid)",
+  "id": "string (uuid)",
   "name": "string",
   "description": "string | null",
   "status": "DRAFT",
@@ -62,7 +62,7 @@ All routes are Next.js Route Handlers under `/api/plans`.
 **Errors**:
 - `400 Bad Request`: `name` is missing or empty. Body: `{ "error": "Name is required" }`.
 
-**Audit**: Logs `PLAN_CREATED` with `entityType: "MigrationPlan"`, `entityId: <new plan id>`, `details: { name, description }`.
+**Audit**: Logs `PLAN_CREATED` with `entity: "MigrationPlan"`, `entityId: <new plan id>`, `details: { name, description }`.
 
 ---
 
@@ -73,11 +73,11 @@ All routes are Next.js Route Handlers under `/api/plans`.
 **Response** `200 OK`:
 ```json
 {
-  "id": "string (cuid)",
+  "id": "string (uuid)",
   "name": "string",
   "description": "string | null",
   "status": "DRAFT | READY | BROKEN",
-  "currentStep": "SOURCE | DESTINATION | MAPPING | FIELD_MAPPING | DOCUMENTS",
+  "currentStep": "SOURCE | DESTINATION | OBJECT_MAPPING | FIELD_MAPPING | DOCUMENTS",
   "sourceConnectionId": "string | null",
   "destinationConnectionId": "string | null",
   "objectAutoLinkedAt": "ISO 8601 | null",
@@ -116,7 +116,7 @@ All routes are Next.js Route Handlers under `/api/plans`.
 
 **Cascade**: Deleting a plan removes all associated connections, schemas, snapshots, object selections, object mappings, field mappings, rules, filters, documents, and audit logs. This is enforced at the database level via `onDelete: Cascade` on all FK relations pointing to `MigrationPlan.id`.
 
-**Audit**: Logs `PLAN_DELETED` with `entityType: "MigrationPlan"`, `entityId: <plan id>`, `details: { name }` **before** the delete operation (since audit logs are cascade-deleted with the plan, this log is written then immediately deleted — acceptable for v0; if persistent audit is needed, log to an external system).
+**Audit**: Logs `PLAN_DELETED` with `entity: "MigrationPlan"`, `entityId: <plan id>`, `details: { name }` **before** the delete operation (since audit logs are cascade-deleted with the plan, this log is written then immediately deleted — acceptable for v0; if persistent audit is needed, log to an external system).
 
 ---
 
@@ -127,14 +127,14 @@ All routes are Next.js Route Handlers under `/api/plans`.
 **Request Body**:
 ```json
 {
-  "targetStep": "DESTINATION | MAPPING | FIELD_MAPPING | DOCUMENTS"
+  "targetStep": "DESTINATION | OBJECT_MAPPING | FIELD_MAPPING | DOCUMENTS"
 }
 ```
 
 **Response** `200 OK`:
 ```json
 {
-  "id": "string (cuid)",
+  "id": "string (uuid)",
   "currentStep": "string (the new step)",
   "status": "DRAFT | READY | BROKEN",
   "updatedAt": "ISO 8601"
@@ -150,7 +150,7 @@ All routes are Next.js Route Handlers under `/api/plans`.
 - `400 Bad Request`: Invalid step name or not strictly forward. Body: `{ "error": "Target step must be after current step" }`.
 - `404 Not Found`: Plan does not exist.
 
-**Audit**: Logs `STEP_ADVANCED` with `entityType: "MigrationPlan"`, `entityId: <plan id>`, `details: { from: <old step>, to: <new step> }`.
+**Audit**: Logs `STEP_ADVANCED` with `entity: "MigrationPlan"`, `entityId: <plan id>`, `details: { from: <old step>, to: <new step> }`.
 
 ---
 
@@ -178,7 +178,7 @@ interface PlanListItem {
   name: string
   description: string | null
   status: 'DRAFT' | 'READY' | 'BROKEN'
-  currentStep: 'SOURCE' | 'DESTINATION' | 'MAPPING' | 'FIELD_MAPPING' | 'DOCUMENTS'
+  currentStep: 'SOURCE' | 'DESTINATION' | 'OBJECT_MAPPING' | 'FIELD_MAPPING' | 'DOCUMENTS'
   createdAt: string
   updatedAt: string
 }
@@ -205,7 +205,7 @@ interface CreatePlanInput {
 }
 
 interface AdvanceStepInput {
-  targetStep: 'DESTINATION' | 'MAPPING' | 'FIELD_MAPPING' | 'DOCUMENTS'
+  targetStep: 'DESTINATION' | 'OBJECT_MAPPING' | 'FIELD_MAPPING' | 'DOCUMENTS'
 }
 
 interface AdvanceStepResponse {

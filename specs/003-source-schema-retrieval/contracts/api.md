@@ -140,7 +140,7 @@ Run live drift detection without writing to the DB. Compares CURRENT snapshot to
 ```json
 {
   "connectionId": "clx...",
-  "role": "source",
+  "side": "source",
   "checkedAt": "2026-05-18T14:35:00.000Z",
   "status": "drift",
   "changes": [
@@ -180,14 +180,14 @@ When live re-fetch fails (FR-015): `{ "status": "unavailable", "reason": "RATE_L
 
 These are imported by other features (001, 002, 005, 007, 017). Not exposed as HTTP routes.
 
-### `retrieveSchema(planId: string, role: 'source' | 'destination'): Promise<RetrievalResult>`
+### `retrieveSchema(planId: string, side: SnapshotSide): Promise<RetrievalResult>`
 
-Full chain: fetch objects via adapter -> rotate snapshots -> compute diff -> trigger integrity check (FR-010, FR-011). Used by the POST route and by the source/destination page refresh buttons.
+Full chain: fetch objects via adapter -> rotate snapshots (old CURRENT becomes PREVIOUS) -> compute diff -> trigger integrity check (FR-010, FR-011). Used by the POST route and by the source/destination page refresh buttons.
 
 ### `computeSchemaDiff(current: SchemaObject[], previous: SchemaObject[]): SchemaDiffResult`
 
 Pure function. Compares two object lists by `apiName`. Returns added/removed/modified. Used by `retrieveSchema` and by the GET diff route.
 
-### `detectLiveDrift(connectionId: string, role: 'source' | 'destination', planId?: string): Promise<DriftReport>`
+### `detectLiveDrift(connectionId: string, side: SnapshotSide, planId?: string): Promise<DriftReport>`
 
-Read-only. Fetches live schema via adapter, compares to CURRENT snapshot, categorizes changes per canonical taxonomy. When `planId` is provided, field-level inspection is scoped to mapped objects (FR-016). Returns `{ status: 'unavailable', reason }` on failure (FR-015).
+Read-only. Fetches live schema via adapter, compares to CURRENT snapshot (matching `connectionId` + `side`), categorizes changes per canonical taxonomy. When `planId` is provided, field-level inspection is scoped to mapped objects (FR-016). Returns `{ status: 'unavailable', reason }` on failure (FR-015).

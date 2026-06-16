@@ -10,46 +10,48 @@ Feature 002 does not create new entities. It operates on `ConnectorConnection` (
 
 ```prisma
 model ConnectorConnection {
-  id          String   @id @default(cuid())
-  adapterType String                          // e.g. "salesforce", "hubspot", "demo"
-  status      ConnectionStatus @default(PENDING)
-  config      Json     @default("{}")         // non-secret config (instanceUrl, sandbox flag, etc.)
-  secretsRef  String?                         // reference to encrypted secrets store (not inline)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id          String           @id @default(uuid())
+  adapterType String                                // e.g. "salesforce", "hubspot", "demo"
+  name        String                                // display name of the connection
+  status      ConnectionStatus @default(CONNECTED)
+  config      String           @default("{}")       // non-secret config as JSON string
+  secretsRef  String?                               // reference to encrypted secrets store (not inline)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
-  // Reverse relations
-  sourcePlans      MigrationPlan[] @relation("SourceConnection")
-  destinationPlans MigrationPlan[] @relation("DestinationConnection")
-  schemaSnapshots  SchemaSnapshot[]
+  // Reverse relations (each plan can have at most one source and one destination connection — @unique FKs)
+  sourcePlan      MigrationPlan? @relation("SourceConnection")
+  destinationPlan MigrationPlan? @relation("DestinationConnection")
+  schemaSnapshots SchemaSnapshot[]
 }
 
 enum ConnectionStatus {
-  PENDING
   CONNECTED
   EXPIRED
   ERROR
 }
 ```
 
+> Note: `PENDING` was removed from `ConnectionStatus` — the code only persists a connection after it is confirmed as `CONNECTED`. No pending state is stored in the database.
+
 ### MigrationPlan (relevant fields)
 
 ```prisma
 model MigrationPlan {
-  id                     String    @id @default(cuid())
-  name                   String
-  description            String?
-  status                 PlanStatus @default(DRAFT)
-  currentStep            PlanStep   @default(SOURCE)
-  sourceConnectionId     String?
-  destinationConnectionId String?
-  objectAutoLinkedAt     DateTime?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  id                      String     @id @default(uuid())
+  name                    String
+  description             String?
+  status                  PlanStatus @default(DRAFT)
+  currentStep             PlanStep   @default(SOURCE)
+  sourceConnectionId      String?    @unique
+  destinationConnectionId String?    @unique
+  objectAutoLinkedAt      DateTime?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
 
-  sourceConnection      ConnectorConnection? @relation("SourceConnection", fields: [sourceConnectionId], references: [id], onDelete: SetNull)
-  destinationConnection ConnectorConnection? @relation("DestinationConnection", fields: [destinationConnectionId], references: [id], onDelete: SetNull)
-  // ... other relations (objectMappings, fieldMappings, etc.)
+  sourceConnection      ConnectorConnection? @relation("SourceConnection", fields: [sourceConnectionId], references: [id])
+  destinationConnection ConnectorConnection? @relation("DestinationConnection", fields: [destinationConnectionId], references: [id])
+  // ... other relations (objectMappings, integrityIssues, textDocuments, contractualDocuments, auditLogs)
 }
 
 enum PlanStatus {
@@ -61,32 +63,42 @@ enum PlanStatus {
 enum PlanStep {
   SOURCE
   DESTINATION
-  MAPPING
+  OBJECT_MAPPING
   FIELD_MAPPING
   DOCUMENTS
 }
 ```
 
+> Convention: `id = String @id @default(uuid())` throughout the schema (not `cuid()`). No `@@map` directives — table names are PascalCase (Prisma default).
+
 ### SchemaSnapshot (owned by 003, written by 002)
 
 ```prisma
 model SchemaSnapshot {
-  id           String   @id @default(cuid())
+  id           String         @id @default(uuid())
   connectionId String
-  side         SnapshotSide            // SOURCE or DESTINATION
-  data         Json                    // Full ConnectorSchema as JSON
-  fetchedAt    DateTime @default(now())
+  side         SnapshotSide                         // SOURCE or DESTINATION
+  status       SnapshotStatus @default(CURRENT)     // CURRENT or PREVIOUS
+  fetchedAt    DateTime       @default(now())
 
   connection   ConnectorConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  objects      SchemaObject[]
 
-  @@unique([connectionId, side])
+  @@unique([connectionId, side, status])            // at most one CURRENT and one PREVIOUS per connection+side
 }
 
 enum SnapshotSide {
   SOURCE
   DESTINATION
 }
+
+enum SnapshotStatus {
+  CURRENT
+  PREVIOUS
+}
 ```
+
+> The schema is **normalised**: objects are persisted as `SchemaObject` rows (not stored as a `data Json` blob). `objectCount` is computed at query time from the objects relation.
 
 ## TypeScript Types (service layer)
 
@@ -144,9 +156,10 @@ interface ReconfigurationPayload {
 ## Relationships
 
 ```
-MigrationPlan (1) ──► (0..1) ConnectorConnection  [sourceConnectionId]
-MigrationPlan (1) ──► (0..1) ConnectorConnection  [destinationConnectionId]
-ConnectorConnection (1) ──► (0..1) SchemaSnapshot  [per side, unique constraint]
+MigrationPlan (1) ──► (0..1) ConnectorConnection  [sourceConnectionId @unique]
+MigrationPlan (1) ──► (0..1) ConnectorConnection  [destinationConnectionId @unique]
+ConnectorConnection (1) ──► (0..2) SchemaSnapshot  [CURRENT + PREVIOUS, per side]
+SchemaSnapshot      (1) ──► (N)    SchemaObject
 ```
 
 ## Cascade Rules
@@ -154,6 +167,6 @@ ConnectorConnection (1) ──► (0..1) SchemaSnapshot  [per side, unique const
 | Trigger | Action |
 |---------|--------|
 | Disconnect source | Delete `SchemaSnapshot` where connectionId + side=SOURCE; set `MigrationPlan.sourceConnectionId = null`; cascade-delete downstream selections |
-| Reconfiguration (confirmed) | Replace `SchemaSnapshot.data`; delete/flag mappings per impact report; update `MigrationPlan.currentStep` per FR-015 |
+| Reconfiguration (confirmed) | Rotate snapshots (old CURRENT → PREVIOUS, new objects inserted as CURRENT); delete/flag mappings per impact report; update `MigrationPlan.currentStep` per FR-015 |
 | Delete `ConnectorConnection` | `SchemaSnapshot` cascade-deleted (Prisma `onDelete: Cascade`) |
-| Delete `MigrationPlan` | `ConnectorConnection` set null (not deleted -- connection may be reusable) |
+| Delete `MigrationPlan` | `ConnectorConnection` FK set null (not deleted — connection may be reusable) |

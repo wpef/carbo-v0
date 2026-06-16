@@ -24,7 +24,7 @@ All routes are Next.js Route Handlers nested under the object mapping resource:
   ],
   "excludedSourceFields": [
     {
-      "id": "string (cuid)",
+      "id": "string (uuid)",
       "sourceFieldName": "string",
       "reason": "string | null",
       "createdAt": "ISO 8601"
@@ -64,7 +64,7 @@ All routes are Next.js Route Handlers nested under the object mapping resource:
 {
   "exclusions": [
     {
-      "id": "string (cuid)",
+      "id": "string (uuid)",
       "objectMappingId": "string",
       "sourceFieldName": "string",
       "reason": "string | null",
@@ -108,7 +108,7 @@ All routes are Next.js Route Handlers nested under the object mapping resource:
 **Response** `201 Created` (single):
 ```json
 {
-  "id": "string (cuid)",
+  "id": "string (uuid)",
   "objectMappingId": "string",
   "sourceFieldName": "string",
   "reason": "string | null",
@@ -121,7 +121,7 @@ All routes are Next.js Route Handlers nested under the object mapping resource:
 {
   "exclusions": [
     {
-      "id": "string (cuid)",
+      "id": "string (uuid)",
       "objectMappingId": "string",
       "sourceFieldName": "string",
       "reason": "string | null",

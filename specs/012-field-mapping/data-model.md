@@ -5,44 +5,43 @@
 ### FieldMapping (FR-004, FR-005, FR-006, FR-011)
 
 ```prisma
-model FieldMapping {
-  id                    String    @id @default(cuid())
-  objectMappingId       String
-  sourceFieldName       String                    // apiName of the source field
-  destinationFieldName  String                    // apiName of the destination field
-  sourceFieldType       String                    // raw dataType from source connector
-  destinationFieldType  String                    // raw dataType from destination connector
-  compatibilityStatus   CompatibilityStatus       // computed at creation time from type matrix
-  autoCreated           Boolean   @default(false) // true if created by auto-match
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-
-  // Relations
-  objectMapping         ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
-  migrationLogic        MigrationLogic?           // 0..1, defined by 013 (onDelete: Cascade)
-
-  @@unique([objectMappingId, sourceFieldName])      // FR-005: one source field per destination
-  @@unique([objectMappingId, destinationFieldName])  // FR-005: one destination per source field
-  @@index([objectMappingId])
-  @@map("field_mappings")
-}
-
 enum CompatibilityStatus {
   COMPATIBLE
   WARNING
   INCOMPATIBLE
 }
+
+model FieldMapping {
+  id                   String              @id @default(uuid())
+  objectMappingId      String
+  sourceFieldName      String                    // apiName of the source field
+  destinationFieldName String                    // apiName of the destination field
+  sourceFieldType      String              @default("") // raw dataType from source connector
+  destinationFieldType String              @default("") // raw dataType from destination connector
+  compatibilityStatus  CompatibilityStatus @default(COMPATIBLE) // computed at creation from type matrix
+  autoCreated          Boolean             @default(false) // true if created by auto-match (FR-006)
+
+  // Relations
+  objectMapping  ObjectMapping   @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
+  migrationLogic MigrationLogic?  // 0..1, defined by 013 (onDelete: Cascade)
+
+  @@unique([objectMappingId, sourceFieldName])      // FR-005: one source field per object mapping
+  @@unique([objectMappingId, destinationFieldName])  // FR-005: one destination per object mapping
+}
 ```
+
+> Convention : `id = String @id @default(uuid())` — pas de `@@map`. Pas de `createdAt`/`updatedAt` sur `FieldMapping`.
+> `linkStatus` (5 états : GREEN/ORANGE/RED_SOLID/RED_DASHED/BROKEN) est **calculé** côté service via `computeLinkStatus()`, il n'est **pas stocké** en base.
 
 ### ObjectMapping (updated — relation added from 011)
 
 ```prisma
 model ObjectMapping {
   // ... existing fields from 011 data-model ...
-  fieldAutoMatchedAt    DateTime?                 // FR-006: set once by auto-match, gates re-triggering
+  fieldAutoMatchedAt    DateTime?  // FR-006: set once by auto-match, gates re-triggering
 
   // Relations (added/updated by this feature)
-  fieldMappings         FieldMapping[]            // onDelete: Cascade
+  fieldMappings         FieldMapping[]  // onDelete: Cascade
 }
 ```
 
@@ -52,16 +51,17 @@ model ObjectMapping {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String (cuid)` | Unique identifier for the field mapping. |
+| `id` | `String (uuid)` | Unique identifier for the field mapping. |
 | `objectMappingId` | `String` | FK to the parent ObjectMapping. Cascade-deleted with the object mapping. |
 | `sourceFieldName` | `String` | apiName of the source field (e.g., "FirstName", "Email"). Matches `ObjectField.apiName` from the source snapshot. |
 | `destinationFieldName` | `String` | apiName of the destination field (e.g., "firstname", "email"). Matches `ObjectField.apiName` from the destination snapshot. |
-| `sourceFieldType` | `String` | Raw dataType from the source connector (e.g., "string", "picklist", "double"). Preserved as-is for display and audit. |
-| `destinationFieldType` | `String` | Raw dataType from the destination connector. Preserved as-is. |
-| `compatibilityStatus` | `CompatibilityStatus` | Computed at creation time from the type compatibility matrix. COMPATIBLE (direct copy), WARNING (needs migration logic), INCOMPATIBLE (types cannot be linked — CSV fallback). |
+| `sourceFieldType` | `String` | Raw dataType from the source connector (e.g., "string", "picklist", "double"). Preserved as-is for display and audit. Defaults to `""` if not yet resolved. |
+| `destinationFieldType` | `String` | Raw dataType from the destination connector. Preserved as-is. Defaults to `""` if not yet resolved. |
+| `compatibilityStatus` | `CompatibilityStatus` | Computed at creation time from the type compatibility matrix. COMPATIBLE (direct copy), WARNING (needs migration logic), INCOMPATIBLE (types cannot be linked). Default: COMPATIBLE. |
 | `autoCreated` | `Boolean` | Whether this mapping was created by auto-match (true) or manually (false). Informational only. |
-| `createdAt` | `DateTime` | Creation timestamp. |
-| `updatedAt` | `DateTime` | Last modification timestamp. |
+
+> Note: `FieldMapping` has no `createdAt`/`updatedAt` columns.
+> `linkStatus` is **not stored**. It is computed by `computeLinkStatus()` in the service layer and returned in enriched API responses as `FieldMappingWithStatus.linkStatus`.
 
 ## TypeScript Types
 
@@ -77,8 +77,6 @@ interface FieldMappingRow {
   destinationFieldType: string
   compatibilityStatus: 'COMPATIBLE' | 'WARNING' | 'INCOMPATIBLE'
   autoCreated: boolean
-  createdAt: string
-  updatedAt: string
 }
 ```
 
@@ -226,7 +224,6 @@ const TYPE_NORMALIZATION: Record<string, NormalizedType> = {
 
 ## Indexes
 
-- `FieldMapping.objectMappingId` — list all field mappings for an object pair.
 - `@@unique([objectMappingId, sourceFieldName])` — also serves as a lookup index.
 - `@@unique([objectMappingId, destinationFieldName])` — also serves as a lookup index.
 

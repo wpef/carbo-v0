@@ -21,9 +21,9 @@ Run the integrity check for a plan and return all issues. Idempotent -- re-runni
   planId: string
   planStatus: 'DRAFT' | 'READY' | 'BROKEN'
   checkedAt: string                        // ISO 8601
-  totalIssues: number                      // All issues (resolved + unresolved)
-  unresolvedIssues: number                 // Only unresolved
-  issues: IntegrityIssueDTO[]              // All unresolved issues
+  totalIssues: number                      // All issues ever recorded (resolved + unresolved)
+  unresolvedIssues: number                 // Only unresolved after this check
+  issues: IntegrityIssueDTO[]              // All currently unresolved issues
 }
 ```
 
@@ -32,16 +32,16 @@ Run the integrity check for a plan and return all issues. Idempotent -- re-runni
 **Response 500**: Internal error (logged to console per Principle VII).
 
 **Behavior**:
-1. Loads the plan with all ObjectMappings, FieldMappings, MigrationFilters, MigrationLogic rules.
-2. Loads the CURRENT schema snapshot for the plan's source and destination connections.
-3. For each ObjectMapping: resolves `sourceObjectApiName` and `destObjectApiName` against the current snapshot.
-4. For each FieldMapping: resolves `sourceFieldApiName` and `destFieldApiName` against the current snapshot. Also checks type compatibility using the 012 matrix.
-5. For each MigrationFilter: resolves the referenced source field apiName.
-6. For each FIELD_REFERENCE MigrationLogic rule: resolves the referenced source field apiName.
-7. Creates new `IntegrityIssue` records for newly detected problems (upsert to avoid duplicates).
-8. Auto-resolves any previously detected issues that are no longer present (sets `resolvedAt`).
-9. Transitions plan status to BROKEN if unresolved issues > 0, or back to DRAFT/READY if all resolved.
-10. Logs the check result to AuditLog.
+1. Loads the plan with all ObjectMappings (including their FieldMappings and MigrationFilters) from the DB.
+2. Loads the CURRENT SchemaSnapshot for the plan's source and destination connections (side=SOURCE/DESTINATION, status=CURRENT).
+3. For each ObjectMapping: checks that `sourceObjectName` and `destinationObjectName` exist in the respective CURRENT snapshot. Emits `BROKEN_REFERENCE` if missing.
+4. For each FieldMapping under an intact ObjectMapping: checks that `sourceFieldName` and `destinationFieldName` exist in their snapshot object. Emits `BROKEN_REFERENCE` if missing. Also checks type compatibility using the 012 matrix; emits `INCOMPATIBLE_TYPE` if INCOMPATIBLE.
+5. For each ObjectMapping: checks that all required (non-read-only) destination fields have at least one FieldMapping. Emits `UNMAPPED_REQUIRED_FIELD` on the ObjectMapping entity if any are missing.
+6. For each MigrationFilter: checks that `fieldApiName` exists in the source snapshot object. Emits `INVALID_FILTER` if missing.
+7. Upserts all detected issues (idempotent via `@@unique([planId, entityType, entityId, issueType])`).
+8. Auto-resolves stale issues (previously active but no longer detected in this run): sets `resolved = true, resolvedAt = NOW()`.
+9. Updates `MigrationPlan.status` to BROKEN / DRAFT / READY.
+10. Logs the check result to AuditLog (`RUN_INTEGRITY_CHECK`).
 
 ---
 
@@ -75,9 +75,9 @@ Manually resolve or dismiss a single integrity issue.
 **Response 409**: Issue already resolved.
 
 **Behavior**:
-1. Sets `resolvedAt = NOW()` on the issue.
+1. Sets `resolved = true, resolvedAt = NOW()` on the issue.
 2. Counts remaining unresolved issues for the plan.
-3. If zero remain, transitions plan status from BROKEN to DRAFT (or READY if all steps complete).
+3. If zero remain, transitions plan status from BROKEN to DRAFT (or READY if `currentStep === DOCUMENTS` and previous status was READY).
 4. Logs the resolution to AuditLog.
 
 ---
@@ -102,7 +102,7 @@ Bulk-resolve all unresolved integrity issues for a plan.
 **Response 404**: Plan not found.
 
 **Behavior**:
-1. Updates all unresolved issues for the plan: `SET resolvedAt = NOW() WHERE resolvedAt IS NULL`.
+1. Updates all unresolved issues for the plan: `SET resolved = true, resolvedAt = NOW() WHERE resolved = false`.
 2. Transitions plan status from BROKEN to DRAFT (or READY).
 3. Logs the bulk resolution to AuditLog.
 
@@ -112,29 +112,37 @@ Bulk-resolve all unresolved integrity issues for a plan.
 
 ## Internal Service API
 
-These functions are called by the schema refresh handlers (003/007) and by the API routes above.
+These functions live in `src/features/integrity/services/integrity-service.ts`. They are called by the route handlers and by trigger hooks elsewhere in the codebase.
 
-### checkEngine.runIntegrityCheck(planId: string): Promise<IntegrityCheckResult>
+### checkIntegrity(planId: string): Promise<IntegrityCheckResult>
 
-Core engine function. Performs the full integrity check as described in the GET route behavior. Called by:
+Core engine function. Performs the full integrity check. Upserts detected issues, auto-resolves stale ones, updates `MigrationPlan.status`. Called by:
 - The GET route handler (on-demand check)
 - The schema refresh post-hook (automatic check after refresh)
 
-### issueResolver.resolveIssue(issueId: string): Promise<{ issue: IntegrityIssue; planStatus: PlanStatus }>
+### checkAndUpdatePlanStatus(planId: string): Promise<void>
 
-Resolves a single issue. Called by the PATCH route.
+Lightweight wrapper around `checkIntegrity`. Non-fatal (errors are caught and logged). Called after every CRUD on ObjectMapping or FieldMapping.
 
-### issueResolver.resolveAllForPlan(planId: string): Promise<{ resolvedCount: number; planStatus: PlanStatus }>
+### resolveIssue(planId: string, issueId: string): Promise<{ issue: IntegrityIssueDTO; planStatus: PlanStatus }>
+
+Resolves a single issue. Throws `IssueNotFoundError` (404) or `IssueAlreadyResolvedError` (409). Called by the PATCH route.
+
+### resolveAllForPlan(planId: string): Promise<{ resolvedCount: number; planStatus: PlanStatus }>
 
 Bulk-resolves all issues for a plan. Called by the POST route.
 
-### checkEngine.getUnresolvedIssues(planId: string): Promise<IntegrityIssueDTO[]>
+### getUnresolvedIssues(planId: string): Promise<IntegrityIssueDTO[]>
 
 Returns unresolved issues without re-running the check. Used by UI components that need to display current issues without triggering a new scan.
 
-### checkEngine.getIssuesForEntity(entityId: string): Promise<IntegrityIssueDTO[]>
+### getIssuesForEntity(entityId: string): Promise<IntegrityIssueDTO[]>
 
 Returns unresolved issues for a specific entity (object mapping, field mapping, etc.). Used by per-mapping UI badges.
+
+### repairBrokenMappings(planId: string): Promise<RepairResult>
+
+Deletes all ObjectMappings and FieldMappings flagged with `BROKEN_REFERENCE`. Explicit user action only (Principle IX — never automatic). Re-runs `checkIntegrity` afterward.
 
 ---
 

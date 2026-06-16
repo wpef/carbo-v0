@@ -6,20 +6,19 @@
 
 ```prisma
 model FieldExclusion {
-  id              String          @id @default(cuid())
+  id              String        @id @default(uuid())
   objectMappingId String
-  objectMapping   ObjectMapping   @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
-
   sourceFieldName String
   reason          String?
+  createdAt       DateTime      @default(now())
 
-  createdAt       DateTime        @default(now())
+  objectMapping   ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
 
   @@unique([objectMappingId, sourceFieldName])
-  @@index([objectMappingId])
-  @@map("field_exclusions")
 }
 ```
+
+> Convention: `id = String @id @default(uuid())` (not `cuid()`). No `@@map` directive — the table name is `FieldExclusion` (PascalCase, Prisma default). No separate `@@index([objectMappingId])` — the `@@unique` constraint already covers that lookup.
 
 ## Field Descriptions
 
@@ -27,7 +26,7 @@ model FieldExclusion {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String (cuid)` | Unique identifier. |
+| `id` | `String (uuid)` | Unique identifier. |
 | `objectMappingId` | `String` | FK to the parent ObjectMapping. Cascade-deleted when the object mapping is removed. |
 | `sourceFieldName` | `String` | The API name of the source field that the consultant has intentionally excluded from mapping. |
 | `reason` | `String?` | Optional text explaining why the field was excluded (e.g., "System field, not relevant for migration"). |

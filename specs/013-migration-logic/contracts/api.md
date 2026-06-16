@@ -14,7 +14,7 @@ All routes are Next.js Route Handlers nested under the field mapping resource:
 **Response** `200 OK`:
 ```json
 {
-  "id": "string (cuid)",
+  "id": "string (uuid)",
   "fieldMappingId": "string",
   "status": "DRAFT | DEFINED | VALIDATED",
   "sectionType": "VALUE_EQUIVALENCE | PROMPT | ERROR | INFORMATIONAL",
@@ -107,7 +107,7 @@ All routes are Next.js Route Handlers nested under the field mapping resource:
 **Response** `200 OK`:
 ```json
 {
-  "id": "string (cuid)",
+  "id": "string (uuid)",
   "fieldMappingId": "string",
   "status": "DEFINED | VALIDATED",
   "createdAt": "ISO 8601",
@@ -158,11 +158,11 @@ All routes are Next.js Route Handlers nested under the field mapping resource:
 }
 ```
 
-**Notes**: The LLM is called server-side via `@anthropic-ai/sdk`. The system prompt constrains the output to one of the `destinationValues`. Each source value is classified independently. This endpoint is stateless -- it does not persist anything. The client debounces calls (500ms after last keystroke).
+**Notes**: The `/classify` endpoint is currently a **stub** — when `ANTHROPIC_API_KEY` is absent or the real LLM call is not yet wired, it falls back to a deterministic substring-match classifier (maps each source value to the first destination value whose label contains it, otherwise `destValues[0]`). A `error` field is included in each classification result when the stub is used. The real LLM call via `@anthropic-ai/sdk` is a TODO. This endpoint is stateless — it does not persist anything. The client debounces calls (500ms after last keystroke).
 
 **Errors**:
 - `400 Bad Request`: Missing required fields.
-- `503 Service Unavailable`: LLM API unreachable or API key not configured. Body: `{ "error": "Classification unavailable -- check LLM configuration" }`.
+- `503 Service Unavailable`: LLM API unreachable or API key not configured. Body: `{ "error": "Classification unavailable — check LLM configuration" }`.
 
 **Audit**: No audit log for preview operations (stateless).
 

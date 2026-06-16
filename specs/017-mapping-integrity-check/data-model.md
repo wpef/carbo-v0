@@ -8,52 +8,60 @@
 enum IntegrityEntityType {
   OBJECT_MAPPING
   FIELD_MAPPING
+  MIGRATION_LOGIC
   MIGRATION_FILTER
-  TRANSFORMATION_RULE
 }
 
 enum IntegrityIssueType {
-  SOURCE_OBJECT_DELETED
-  DESTINATION_OBJECT_DELETED
-  SOURCE_FIELD_DELETED
-  DESTINATION_PROPERTY_DELETED
-  TYPE_CHANGE_INCOMPATIBLE
-  REFERENCED_FIELD_DELETED
+  UNMAPPED_REQUIRED_FIELD
+  INCOMPATIBLE_TYPE
+  MISSING_LOGIC
+  INVALID_FILTER
+  BROKEN_REFERENCE
+  MISSING_EQUIVALENCE
 }
 
 model IntegrityIssue {
-  id                String               @id @default(cuid())
-  migrationPlanId   String
-  migrationPlan     MigrationPlan        @relation(fields: [migrationPlanId], references: [id], onDelete: Cascade)
+  id         String              @id @default(uuid())
+  planId     String
+  entityType IntegrityEntityType
+  entityId   String
+  issueType  IntegrityIssueType
+  severity   String              @default("ERROR")
+  message    String
+  resolved   Boolean             @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime            @default(now())
 
-  entityType        IntegrityEntityType
-  entityId          String               // ID of the affected ObjectMapping, FieldMapping, MigrationFilter, or MigrationLogic
-  issueType         IntegrityIssueType
-  description       String               // Human-readable: "source field 'CustomField__c' deleted"
-  context           Json?                // Additional context: { oldType, newType } for TYPE_CHANGE_INCOMPATIBLE
+  plan MigrationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  detectedAt        DateTime             @default(now())
-  resolvedAt        DateTime?            // Null = unresolved; set when fixed
-
-  @@unique([migrationPlanId, entityType, entityId, issueType])  // Prevent duplicate issues for same entity+type
-  @@index([migrationPlanId])
-  @@index([entityId])
-  @@index([resolvedAt])
-  @@map("integrity_issues")
+  @@unique([planId, entityType, entityId, issueType])
 }
 ```
 
+### IntegrityIssueType taxonomy
+
+| Value | Detected on | Meaning |
+|---|---|---|
+| `BROKEN_REFERENCE` | OBJECT_MAPPING, FIELD_MAPPING | Source or destination object/field no longer exists in the CURRENT snapshot |
+| `UNMAPPED_REQUIRED_FIELD` | OBJECT_MAPPING | A required (non-read-only) destination field has no FieldMapping |
+| `INCOMPATIBLE_TYPE` | FIELD_MAPPING | Current field types are INCOMPATIBLE per the 012 type-compatibility matrix |
+| `INVALID_FILTER` | MIGRATION_FILTER | Filter references a source field no longer present in the CURRENT snapshot |
+| `MISSING_LOGIC` | FIELD_MAPPING | (Reserved — not yet emitted by the engine) |
+| `MISSING_EQUIVALENCE` | MIGRATION_LOGIC | (Reserved — not yet emitted by the engine) |
+
 ### MigrationPlan Extension (status transition)
 
-The existing `MigrationPlan` model (001 data-model) already includes `PlanStatus.BROKEN`. No schema change needed -- the integrity check engine uses the existing status field.
+The existing `MigrationPlan` model (001 data-model) already includes `PlanStatus.BROKEN`. No schema change needed. The `checkAndUpdatePlanStatus(planId)` function calls `checkIntegrity(planId)` after every CRUD on ObjectMapping or FieldMapping and updates `MigrationPlan.status`:
 
 ```prisma
 // Already defined in 001:
 // enum PlanStatus { DRAFT  READY  BROKEN }
 //
-// The integrity check:
-//   - Sets status = BROKEN when unresolved issues exist
-//   - Sets status = DRAFT (or READY if all steps complete) when all issues resolved
+// checkAndUpdatePlanStatus:
+//   - Sets status = BROKEN when unresolvedIssues > 0
+//   - Sets status = READY if unresolvedIssues = 0 AND currentStep = DOCUMENTS AND previous status was READY
+//   - Sets status = DRAFT otherwise
 ```
 
 ## Field Descriptions
@@ -62,15 +70,16 @@ The existing `MigrationPlan` model (001 data-model) already includes `PlanStatus
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String (cuid)` | Unique identifier. |
-| `migrationPlanId` | `String` | FK to the parent migration plan. Cascade-deleted with the plan. |
-| `entityType` | `IntegrityEntityType` | Which kind of entity is affected: object mapping, field mapping, filter, or rule. |
-| `entityId` | `String` | ID of the specific affected entity (ObjectMapping.id, FieldMapping.id, etc.). |
-| `issueType` | `IntegrityIssueType` | Classification of the issue. Maps directly to spec FR-002 through FR-008. |
-| `description` | `String` | Human-readable description (e.g., "source field 'CustomField__c' deleted", "type change: string to boolean"). |
-| `context` | `Json?` | Structured metadata. For TYPE_CHANGE_INCOMPATIBLE: `{ oldType: string, newType: string }`. For deletions: `{ apiName: string, side: "source" \| "destination" }`. |
-| `detectedAt` | `DateTime` | When the issue was first detected. Set on creation. |
-| `resolvedAt` | `DateTime?` | When the issue was resolved. Null means unresolved. Set by the resolver when the consultant fixes the mapping or a subsequent check no longer detects the issue. |
+| `id` | `String (uuid)` | Unique identifier. |
+| `planId` | `String` | FK to the parent migration plan. Cascade-deleted with the plan. |
+| `entityType` | `IntegrityEntityType` | Which kind of entity is affected: OBJECT_MAPPING, FIELD_MAPPING, MIGRATION_LOGIC, or MIGRATION_FILTER. |
+| `entityId` | `String` | ID of the specific affected entity. Polymorphic — no Prisma relation defined (references multiple tables). |
+| `issueType` | `IntegrityIssueType` | Classification of the issue. |
+| `severity` | `String` | "ERROR" or "WARNING". Defaults to "ERROR". |
+| `message` | `String` | Human-readable description (e.g., `Source object "Contact" no longer exists in the current schema`). |
+| `resolved` | `Boolean` | `false` = active issue; `true` = resolved (manually or auto-resolved). |
+| `resolvedAt` | `DateTime?` | Timestamp when the issue was resolved. Null means still active. |
+| `createdAt` | `DateTime` | When the issue was first detected. |
 
 ## Relationships
 
@@ -79,22 +88,17 @@ MigrationPlan (1) ──► (N) IntegrityIssue     (cascade delete)
 IntegrityIssue      ──► (1) ObjectMapping     (via entityId, when entityType = OBJECT_MAPPING)
 IntegrityIssue      ──► (1) FieldMapping      (via entityId, when entityType = FIELD_MAPPING)
 IntegrityIssue      ──► (1) MigrationFilter   (via entityId, when entityType = MIGRATION_FILTER)
-IntegrityIssue      ──► (1) MigrationLogic    (via entityId, when entityType = TRANSFORMATION_RULE)
+IntegrityIssue      ──► (1) MigrationLogic    (via entityId, when entityType = MIGRATION_LOGIC)
 ```
 
-Note: The `entityId` FK is polymorphic (points to different tables based on `entityType`). This is intentional -- a Prisma relation is not defined on `entityId` because it references multiple tables. Queries join manually when needed.
+Note: `entityId` is polymorphic — Prisma does not declare a typed relation on it; service code queries each table manually by entityType.
 
 ## Constraints
 
-- The `@@unique([migrationPlanId, entityType, entityId, issueType])` constraint prevents duplicate issues. If the same field mapping is broken for the same reason, re-running the check does not create a second issue -- it finds the existing one and skips creation (idempotent, Principle V).
-- `resolvedAt` is the sole marker of resolution. No separate "dismissed" or "acknowledged" states (spec does not distinguish).
-- Cascade delete on `migrationPlanId` ensures issues are cleaned up when a plan is deleted.
-
-## Indexes
-
-- `migrationPlanId` -- query all issues for a plan (UI: integrity check results page, plan status computation).
-- `entityId` -- query issues for a specific entity (UI: per-mapping broken badge).
-- `resolvedAt` -- filter unresolved issues (`WHERE resolvedAt IS NULL`), compute plan status transition.
+- `@@unique([planId, entityType, entityId, issueType])` prevents duplicate issues. Re-running the check upserts (idempotent): existing unresolved issues are updated in-place; newly absent issues are auto-resolved.
+- `resolved` + `resolvedAt` together mark resolution. `resolved = false` means active. Auto-resolution sets `resolved = true, resolvedAt = NOW()`.
+- Cascade delete on `planId` ensures issues are cleaned up when a plan is deleted.
+- No explicit `@@index` directives in the implemented schema beyond the unique constraint.
 
 ## DTOs
 
@@ -105,9 +109,9 @@ interface IntegrityCheckResult {
   planId: string
   planStatus: 'DRAFT' | 'READY' | 'BROKEN'
   checkedAt: string               // ISO 8601
-  totalIssues: number
-  unresolvedIssues: number
-  issues: IntegrityIssueDTO[]
+  totalIssues: number             // All issues (resolved + unresolved)
+  unresolvedIssues: number        // Only unresolved
+  issues: IntegrityIssueDTO[]     // All currently unresolved issues
 }
 ```
 
@@ -116,16 +120,29 @@ interface IntegrityCheckResult {
 ```typescript
 interface IntegrityIssueDTO {
   id: string
-  entityType: 'OBJECT_MAPPING' | 'FIELD_MAPPING' | 'MIGRATION_FILTER' | 'TRANSFORMATION_RULE'
+  entityType: 'OBJECT_MAPPING' | 'FIELD_MAPPING' | 'MIGRATION_LOGIC' | 'MIGRATION_FILTER'
   entityId: string
-  issueType: 'SOURCE_OBJECT_DELETED' | 'DESTINATION_OBJECT_DELETED' | 'SOURCE_FIELD_DELETED' | 'DESTINATION_PROPERTY_DELETED' | 'TYPE_CHANGE_INCOMPATIBLE' | 'REFERENCED_FIELD_DELETED'
-  description: string
-  context: Record<string, unknown> | null
-  detectedAt: string
+  issueType:
+    | 'UNMAPPED_REQUIRED_FIELD'
+    | 'INCOMPATIBLE_TYPE'
+    | 'MISSING_LOGIC'
+    | 'INVALID_FILTER'
+    | 'BROKEN_REFERENCE'
+    | 'MISSING_EQUIVALENCE'
+  severity: string        // "ERROR" or "WARNING"
+  message: string         // Human-readable description
+  resolved: boolean
   resolvedAt: string | null
+  detectedAt: string      // ISO 8601 (maps to IntegrityIssue.createdAt)
+}
+```
 
-  // Enriched fields for UI display
-  entityLabel: string             // e.g., "Contact → Contacts" for object mapping, "Email → email" for field mapping
-  actionRequired: string          // e.g., "Delete this mapping or remap to a valid field"
+### RepairResult
+
+```typescript
+interface RepairResult {
+  deletedObjectMappings: number
+  deletedFieldMappings: number
+  planStatus: 'DRAFT' | 'READY' | 'BROKEN'
 }
 ```

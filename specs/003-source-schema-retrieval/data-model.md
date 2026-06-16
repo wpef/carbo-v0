@@ -6,68 +6,81 @@
 
 ```prisma
 model SchemaSnapshot {
-  id            String   @id @default(cuid())
-  connectionId  String
-  role          String   // "source" | "destination" — shared table for both sides
-  status        String   // "CURRENT" | "PREVIOUS"
-  objectCount   Int
-  retrievedAt   DateTime @default(now())
+  id           String         @id @default(uuid())
+  connectionId String
+  side         SnapshotSide                        // SOURCE or DESTINATION (typed enum, not a string)
+  status       SnapshotStatus @default(CURRENT)    // CURRENT or PREVIOUS (typed enum)
+  fetchedAt    DateTime       @default(now())
 
   // Relations
-  connection    ConnectorConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  objects       SchemaObject[]
+  connection   ConnectorConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  objects      SchemaObject[]
 
-  @@unique([connectionId, status])   // At most one CURRENT and one PREVIOUS per connection
-  @@index([connectionId])
+  @@unique([connectionId, side, status])           // at most one CURRENT and one PREVIOUS per connection+side
+}
+
+enum SnapshotSide {
+  SOURCE
+  DESTINATION
+}
+
+enum SnapshotStatus {
+  CURRENT
+  PREVIOUS
 }
 ```
+
+> `objectCount` is NOT stored — it is derived at query time from the `objects` relation count.
+> `retrievedAt` is named `fetchedAt` in the implementation.
+> `role` was renamed to `side` (typed `SnapshotSide` enum). The unique constraint now includes `side` so both SOURCE and DESTINATION can coexist per connection.
 
 ### SchemaObject (FR-001, FR-002)
 
 ```prisma
 model SchemaObject {
-  id          String   @id @default(cuid())
+  id          String  @id @default(uuid())
   snapshotId  String
   apiName     String
   label       String
   description String?
-  isCustom    Boolean
+  isCustom    Boolean @default(false)
 
   // Relations
   snapshot    SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   fields      ObjectField[]  // Populated by feature 005
 
   @@unique([snapshotId, apiName])   // No duplicate objects within a snapshot
-  @@index([snapshotId])
 }
 ```
+
+> `isCustom` defaults to `false`. No `isSelected` field — object selection is a separate `ObjectSelection` table (feature 004, not a column on `SchemaObject`).
 
 ### ObjectField (defined in 005, referenced here for completeness)
 
 ```prisma
 model ObjectField {
-  id                String   @id @default(cuid())
-  objectId          String
-  snapshotId        String
-  apiName           String
-  label             String
-  dataType          String
-  isRequired        Boolean
-  isReadOnly        Boolean
-  isUnique          Boolean
-  isAccessible      Boolean  @default(true)
-  referenceTo       String?
-  relationshipType  String?  // "lookup" | "master-detail" | "external"
+  id               String  @id @default(uuid())
+  objectId         String
+  snapshotId       String
+  apiName          String
+  label            String
+  dataType         String
+  isRequired       Boolean @default(false)
+  isReadOnly       Boolean @default(false)
+  isUnique         Boolean @default(false)
+  isAccessible     Boolean @default(true)
+  referenceTo      String?
+  relationshipType String?                    // "lookup" | "master-detail" | "external"
+  picklistValues   String?                    // JSON array — consumed by 013 D1 value-equivalence
 
   // Relations
-  object    SchemaObject   @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  snapshot  SchemaSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  object   SchemaObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
 
   @@unique([objectId, apiName])
-  @@index([objectId])
-  @@index([snapshotId])
 }
 ```
+
+> `ObjectField` has a single parent relation through `SchemaObject` (via `objectId`). The `snapshotId` is stored for query efficiency but there is no separate Prisma relation to `SchemaSnapshot` on `ObjectField` — cascade comes from `SchemaObject`.
 
 ## TypeScript Types (in-memory, not persisted)
 
@@ -114,8 +127,8 @@ export interface DriftChange {
 ```typescript
 export interface DriftReport {
   connectionId: string
-  role: 'source' | 'destination'
-  checkedAt: string             // ISO 8601
+  side: 'source' | 'destination'   // matches SnapshotSide enum (renamed from 'role')
+  checkedAt: string                 // ISO 8601
   status: 'ok' | 'drift' | 'unavailable'
   changes: DriftChange[]
   severitySummary: {
@@ -123,19 +136,19 @@ export interface DriftReport {
     warning: number
     info: number
   }
-  reason?: string               // populated when status='unavailable'
+  reason?: string                   // populated when status='unavailable'
 }
 ```
 
 ## Relationships
 
 ```
-ConnectorConnection (1) ──► (0..2) SchemaSnapshot  [CURRENT + PREVIOUS]
+ConnectorConnection (1) ──► (0..4) SchemaSnapshot  [CURRENT + PREVIOUS, per side SOURCE/DESTINATION]
 SchemaSnapshot      (1) ──► (N)    SchemaObject
 SchemaObject        (1) ──► (N)    ObjectField     [populated by 005]
 
 DriftReport (in-memory) references:
-  - SchemaSnapshot (CURRENT) for stored state
+  - SchemaSnapshot (CURRENT, matching side) for stored state
   - ConnectorAdapter.getSchema() for live state
   - ObjectMapping / FieldMapping for affectsMapping flag
 ```
