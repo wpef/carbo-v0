@@ -4,11 +4,12 @@ import { getAdapter, listAdapterTypes } from '@/lib/adapters/registry'
 
 describe('ConnectorAdapter contract: DemoAdapter', () => {
   it('has all required capabilities flags set', () => {
-    expect(demoAdapter.capabilities).toEqual({
-      canRead: true,
-      canWrite: false,
-      canWriteSchema: false,
-    })
+    // 022: canWriteSchema is now true; supportedFieldTypes is present
+    expect(demoAdapter.capabilities.canRead).toBe(true)
+    expect(demoAdapter.capabilities.canWrite).toBe(false)
+    expect(demoAdapter.capabilities.canWriteSchema).toBe(true)
+    expect(Array.isArray(demoAdapter.capabilities.supportedFieldTypes)).toBe(true)
+    expect(demoAdapter.capabilities.supportedFieldTypes!.length).toBeGreaterThan(0)
   })
 
   it('has all required methods', () => {
@@ -96,9 +97,11 @@ describe('ConnectorAdapter contract: DemoAdapter', () => {
     expect(stats[0].nullCount).toBeGreaterThan(0)
   })
 
-  it('createObject/createField are undefined when canWriteSchema=false', () => {
-    expect(demoAdapter.createObject).toBeUndefined()
-    expect(demoAdapter.createField).toBeUndefined()
+  it('createObject/createField/modifyField are defined because canWriteSchema=true (022)', () => {
+    // 022: demo adapter now exposes write methods
+    expect(typeof demoAdapter.createObject).toBe('function')
+    expect(typeof demoAdapter.createField).toBe('function')
+    expect(typeof demoAdapter.modifyField).toBe('function')
   })
 })
 

@@ -65,10 +65,22 @@ export interface SchemaDiffResult {
   }[]
 }
 
+/** Partial update applied to an existing destination field (022 FR-004). */
+export interface FieldModification {
+  name?: string
+  label?: string
+  type?: string
+  description?: string
+  picklistValues?: string[]
+  group?: string
+}
+
 export interface ConnectorCapabilities {
   canRead: boolean
   canWrite: boolean
   canWriteSchema: boolean
+  /** List of field types this adapter accepts when creating/modifying fields (022). Only defined when canWriteSchema=true. */
+  supportedFieldTypes?: string[]
 }
 
 export interface ConnectorAdapter {
@@ -84,6 +96,19 @@ export interface ConnectorAdapter {
   getRecordCount(connectionId: string, objectApiName: string): Promise<number>
   getFieldStats(connectionId: string, objectApiName: string, fieldApiNames: string[]): Promise<FieldStats[]>
 
+  /** Create a new custom object on the destination (022). Optional — only when canWriteSchema=true. */
   createObject?(connectionId: string, object: { apiName: string; label: string; description?: string }): Promise<ConnectorObject>
+  /** Create a new field on an existing destination object (022). Optional — only when canWriteSchema=true. */
   createField?(connectionId: string, objectApiName: string, field: Omit<ConnectorField, 'isReadOnly' | 'isUnique'>): Promise<ConnectorField>
+  /**
+   * Modify properties of an existing destination field (022 FR-004).
+   * Optional — only implemented when canWriteSchema=true.
+   * Returns the updated ConnectorField as confirmed by the destination system.
+   */
+  modifyField?(
+    connectionId: string,
+    objectApiName: string,
+    fieldApiName: string,
+    updates: FieldModification,
+  ): Promise<ConnectorField>
 }
