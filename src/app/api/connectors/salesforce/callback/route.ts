@@ -21,7 +21,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = request.nextUrl
   const code = searchParams.get('code')
   const state = searchParams.get('state')
-  const planId = searchParams.get('planId') // optional — passed by UI as extra query param
+  const planId = state ? state.split(':')[0] : null // planId is embedded in the OAuth state (planId:nonce)
 
   // Basic redirect target (fallback if planId unknown)
   const baseRedirect = planId ? `/plans/${planId}/source` : '/'
@@ -68,6 +68,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         config: JSON.stringify(connectionConfig),
       },
     })
+
+    // Link the connection to the plan as its SOURCE (planId comes from the OAuth state).
+    if (planId) {
+      await prisma.migrationPlan.update({
+        where: { id: planId },
+        data: { sourceConnectionId: connection.id },
+      })
+    }
 
     await logAuditEvent({
       action: 'SALESFORCE_CONNECT_SUCCESS',

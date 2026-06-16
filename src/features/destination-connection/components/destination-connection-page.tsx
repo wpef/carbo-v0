@@ -145,20 +145,33 @@ export function DestinationConnectionPage({ planId }: { planId: string }) {
       <div className="space-y-4">
         <p className="text-muted-foreground">Select a destination adapter to connect:</p>
         <div className="grid gap-3 max-w-md">
-          {adapterTypes.map((type) => (
-            <Button
-              key={type}
-              variant="outline"
-              className="justify-start h-auto py-3"
-              onClick={() => handleConnect(type)}
-              disabled={connecting}
-            >
-              <span className="font-medium capitalize">{type}</span>
-              <span className="ml-2 text-muted-foreground text-sm">
-                {type === 'demo' ? '(Mock data for testing)' : ''}
-              </span>
-            </Button>
-          ))}
+          {adapterTypes
+            .filter((type) => type !== 'salesforce') // Salesforce is source-only
+            .map((type) => (
+              <Button
+                key={type}
+                variant="outline"
+                className="justify-start h-auto py-3"
+                onClick={() => {
+                  if (type === 'hubspot') {
+                    // OAuth2: redirect to the auth route which redirects to HubSpot login.
+                    window.location.href = `/api/connectors/hubspot/auth?planId=${planId}`
+                  } else {
+                    handleConnect(type)
+                  }
+                }}
+                disabled={connecting}
+              >
+                <span className="font-medium capitalize">{type}</span>
+                <span className="ml-2 text-muted-foreground text-sm">
+                  {type === 'demo'
+                    ? '(Mock data for testing)'
+                    : type === 'hubspot'
+                      ? '(OAuth — login HubSpot)'
+                      : ''}
+                </span>
+              </Button>
+            ))}
         </div>
       </div>
     )
