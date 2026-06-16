@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSchemaSnapshot, fetchAndStoreSchema } from '@/features/schema/services/schema-service'
+import { detectLiveDrift } from '@/features/schema/services/drift-service'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ planId: string }> }) {
   const { planId } = await params
@@ -26,7 +27,16 @@ export async function POST(_request: Request, { params }: { params: Promise<{ pl
 
   try {
     const snapshot = await fetchAndStoreSchema(planId, plan.sourceConnection.id, plan.sourceConnection.adapterType, 'SOURCE')
-    return NextResponse.json(snapshot, { status: 201 })
+
+    // Cluster 11 — run drift detection immediately after a schema refresh so the
+    // caller gets both the fresh snapshot and the DriftReport in one round-trip.
+    // The drift check is non-fatal: if it fails, the snapshot is still returned.
+    const driftReport = await detectLiveDrift(planId, 'source').catch((err) => {
+      console.warn('[schema/POST] detectLiveDrift failed (non-fatal):', err)
+      return null
+    })
+
+    return NextResponse.json({ snapshot, driftReport }, { status: 201 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Schema fetch failed'
     return NextResponse.json({ error: msg }, { status: 502 })

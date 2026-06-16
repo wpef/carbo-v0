@@ -25,8 +25,12 @@ export interface ConnectorField {
   isRequired: boolean
   isReadOnly: boolean
   isUnique: boolean
+  /** false when the authenticated user cannot read this field (005 FR-003). Defaults to true when absent. */
+  isAccessible?: boolean
   referenceTo?: string
   relationshipType?: 'lookup' | 'master-detail' | 'external'
+  /** Picklist / enumeration values (005 FR-004). Present only for picklist / enumeration dataTypes. */
+  picklistValues?: string[]
 }
 
 export type ConnectorRecord = Record<string, unknown>

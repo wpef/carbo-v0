@@ -40,8 +40,13 @@ export async function retrieveFieldsForObjects(
             isRequired: f.isRequired,
             isReadOnly: f.isReadOnly,
             isUnique: f.isUnique,
-            referenceTo: f.referenceTo,
-            relationshipType: f.relationshipType,
+            // Cluster 5 — persist isAccessible and picklistValues (005 FR-003 / FR-004)
+            // isAccessible: field returned by adapter means it is readable; default true when absent
+            isAccessible: f.isAccessible ?? true,
+            referenceTo: f.referenceTo ?? null,
+            relationshipType: f.relationshipType ?? null,
+            // picklistValues serialised as JSON string (matches schema column type String?)
+            picklistValues: f.picklistValues != null ? JSON.stringify(f.picklistValues) : null,
           })),
         })
 

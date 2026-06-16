@@ -8,6 +8,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    // Integration tests hit a remote Neon branch (network latency per query);
+    // unit tests finish in ms so a generous global timeout is harmless.
+    testTimeout: 30000,
   },
   resolve: {
     alias: {

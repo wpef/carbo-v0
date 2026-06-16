@@ -1,300 +1,236 @@
+// 012-field-mapping / Clusters 3, 6, 16 — Main field-mapping page (v4)
+// - Cluster 3: linkStatus badge via enriched DTOs
+// - Cluster 6: UnmappedFieldsWarning + exclude/re-include
+// - Cluster 16: MigrationPreviewPanel, real-time search, TabBadge, duplicate prevention (409)
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { useFieldMapping } from '../hooks/use-field-mapping'
+import { useUnmappedFields } from '../../unmapped/hooks/use-unmapped-fields'
+import { FieldMappingView, TabBadge } from './field-mapping-view'
+import { MigrationPreviewPanel } from './migration-preview-panel'
+import { UnmappedFieldsWarning, UnmappedFieldsBadge } from '../../unmapped/components/unmapped-fields-warning'
+import type { TabBadgeData } from './field-mapping-view'
 
-interface ObjectMapping {
+// ─── Object Mapping shape (from API) ─────────────────────────────────────────
+
+interface ObjectMappingItem {
   id: string
   sourceObjectName: string
   destinationObjectName: string
+  autoCreated: boolean
   fieldAutoMatchedAt: string | null
 }
 
-interface FieldMapping {
-  id: string
-  sourceFieldName: string
-  destinationFieldName: string
-  compatibilityStatus: 'COMPATIBLE' | 'WARNING' | 'INCOMPATIBLE'
-  migrationLogic: { id: string; status: string; valueEquivalences: unknown[] } | null
+// ─── Single object mapping panel (config + preview side by side) ──────────────
+
+interface FieldMappingPanelProps {
+  planId: string
+  mapping: ObjectMappingItem
+  onChanged: () => void
 }
 
-interface FieldInfo {
-  apiName: string
-  label: string
-  dataType: string
-  isRequired: boolean
-}
+function FieldMappingPanel({ planId, mapping, onChanged }: FieldMappingPanelProps) {
+  const [unmappedVersion, setUnmappedVersion] = useState(0)
 
-interface IntegrityIssue {
-  id: string
-  issueType: string
-  message: string
-  severity: string
-}
+  const fm = useFieldMapping(planId, mapping.id)
+  const unmapped = useUnmappedFields(planId, mapping.id, unmappedVersion)
 
-export function FieldMappingPage({ planId }: { planId: string }) {
-  const [objectMappings, setObjectMappings] = useState<ObjectMapping[]>([])
-  const [selectedMapping, setSelectedMapping] = useState<string | null>(null)
-  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([])
-  const [unmappedSource, setUnmappedSource] = useState<FieldInfo[]>([])
-  const [unmappedDest, setUnmappedDest] = useState<FieldInfo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [matching, setMatching] = useState(false)
-  const [selectedSrcField, setSelectedSrcField] = useState<string | null>(null)
-  const [issues, setIssues] = useState<IntegrityIssue[]>([])
-  const [checking, setChecking] = useState(false)
-
-  useEffect(() => {
-    loadObjectMappings()
-  }, [planId])
-
-  useEffect(() => {
-    if (selectedMapping) loadFieldMappings(selectedMapping)
-  }, [selectedMapping])
-
-  async function loadObjectMappings() {
-    setLoading(true)
-    const res = await fetch(`/api/plans/${planId}/object-mappings`)
-    const data = await res.json()
-    setObjectMappings(data)
-    if (data.length > 0 && !selectedMapping) setSelectedMapping(data[0].id)
-    setLoading(false)
+  const handleChanged = () => {
+    onChanged()
+    setUnmappedVersion((v) => v + 1)
   }
-
-  async function loadFieldMappings(mappingId: string) {
-    const [fmRes, srcFieldsRes, dstFieldsRes] = await Promise.all([
-      fetch(`/api/plans/${planId}/object-mappings/${mappingId}/field-mappings`),
-      fetch(`/api/plans/${planId}/source/fields`),
-      fetch(`/api/plans/${planId}/destination/fields`),
-    ])
-    const fmData = await fmRes.json()
-    setFieldMappings(fmData)
-
-    const mapping = objectMappings.find((m) => m.id === mappingId)
-    if (!mapping) return
-
-    const srcFields = await srcFieldsRes.json()
-    const dstFields = await dstFieldsRes.json()
-
-    const mappedSrcNames = new Set(fmData.map((fm: FieldMapping) => fm.sourceFieldName))
-    const mappedDstNames = new Set(fmData.map((fm: FieldMapping) => fm.destinationFieldName))
-
-    setUnmappedSource(
-      (srcFields[mapping.sourceObjectName] ?? []).filter((f: FieldInfo) => !mappedSrcNames.has(f.apiName)),
-    )
-    setUnmappedDest(
-      (dstFields[mapping.destinationObjectName] ?? []).filter((f: FieldInfo) => !mappedDstNames.has(f.apiName)),
-    )
-  }
-
-  async function handleAutoMatch() {
-    if (!selectedMapping) return
-    setMatching(true)
-    try {
-      await fetch(`/api/plans/${planId}/object-mappings/${selectedMapping}/field-mappings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoMatch: true }),
-      })
-      await loadFieldMappings(selectedMapping)
-    } finally {
-      setMatching(false)
-    }
-  }
-
-  async function handleManualLink(destFieldName: string, destType: string) {
-    if (!selectedMapping || !selectedSrcField) return
-    const srcField = unmappedSource.find((f) => f.apiName === selectedSrcField)
-    await fetch(`/api/plans/${planId}/object-mappings/${selectedMapping}/field-mappings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sourceFieldName: selectedSrcField,
-        destinationFieldName: destFieldName,
-        sourceType: srcField?.dataType ?? 'string',
-        destType,
-      }),
-    })
-    setSelectedSrcField(null)
-    await loadFieldMappings(selectedMapping)
-  }
-
-  async function handleDeleteFieldMapping(fieldMappingId: string) {
-    if (!selectedMapping) return
-    await fetch(`/api/plans/${planId}/object-mappings/${selectedMapping}/field-mappings?fieldMappingId=${fieldMappingId}`, {
-      method: 'DELETE',
-    })
-    await loadFieldMappings(selectedMapping)
-  }
-
-  async function handleRunIntegrity() {
-    setChecking(true)
-    try {
-      const res = await fetch(`/api/plans/${planId}/integrity`, { method: 'POST' })
-      const data = await res.json()
-      setIssues(data.issues ?? [])
-    } finally {
-      setChecking(false)
-    }
-  }
-
-  async function handleAdvanceStep() {
-    await fetch(`/api/plans/${planId}/step`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetStep: 'DOCUMENTS' }),
-    })
-    window.location.href = `/plans/${planId}/documents`
-  }
-
-  if (loading) return <div className="text-muted-foreground">Loading...</div>
-
-  const currentMapping = objectMappings.find((m) => m.id === selectedMapping)
 
   return (
-    <div className="space-y-6">
-      <div className="flex gap-2 flex-wrap">
-        {objectMappings.map((m) => (
-          <Button
+    <div className="flex gap-6 items-start">
+      {/* Left: config section */}
+      <section className="flex-1 min-w-0 rounded-lg border border-border p-6">
+        <div className="mb-4">
+          <h3 className="text-base font-semibold">
+            {mapping.sourceObjectName} &rarr; {mapping.destinationObjectName}
+          </h3>
+          <div className="text-sm text-muted-foreground mt-1">
+            {fm.fieldMappings.length} mappé{fm.fieldMappings.length !== 1 ? 's' : ''} ·{' '}
+            {fm.unmappedSourceFields.length} non mappé{fm.unmappedSourceFields.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+
+        {/* Unmapped fields warning — cluster 6 */}
+        {!unmapped.loading && unmapped.report && (
+          <div className="mb-6">
+            <UnmappedFieldsWarning
+              report={unmapped.report}
+              onExcludeField={async (apiName) => {
+                await unmapped.excludeField(apiName)
+                handleChanged()
+              }}
+              onIncludeField={async (exclusionId) => {
+                await unmapped.includeField(exclusionId)
+                handleChanged()
+              }}
+            />
+          </div>
+        )}
+
+        {fm.loading ? (
+          <p className="text-sm text-muted-foreground">Chargement des champs…</p>
+        ) : (
+          <FieldMappingView
+            planId={planId}
+            objectMappingId={mapping.id}
+            sourceObjectLabel={mapping.sourceObjectName}
+            destObjectLabel={mapping.destinationObjectName}
+            fieldMappings={fm.fieldMappings}
+            filteredMappings={fm.filteredMappings}
+            filteredUnmapped={fm.filteredUnmapped}
+            availableDestFields={fm.availableDestFields}
+            searchQuery={fm.searchQuery}
+            selectedSourceFieldName={fm.selectedSourceFieldName}
+            onSelectSource={fm.selectSourceField}
+            onCreateLink={async (input) => {
+              const r = await fm.createLink(input)
+              if (!r.error) handleChanged()
+              return r
+            }}
+            onDeleteLink={async (id) => {
+              const r = await fm.deleteLink(id)
+              if (!r.error) handleChanged()
+              return r
+            }}
+            onAutoMatch={async () => {
+              const r = await fm.triggerAutoMatch()
+              handleChanged()
+              return r
+            }}
+            onSearch={fm.setSearch}
+            error={fm.error}
+          />
+        )}
+      </section>
+
+      {/* Right: preview sidebar — cluster 16 */}
+      <aside className="w-96 shrink-0 sticky top-4 border border-border rounded-lg bg-background overflow-hidden max-h-[calc(100vh-8rem)]">
+        <MigrationPreviewPanel
+          planId={planId}
+          objectMappingId={mapping.id}
+          sourceObjectApiName={mapping.sourceObjectName}
+          sourceObjectLabel={mapping.sourceObjectName}
+          destObjectLabel={mapping.destinationObjectName}
+          fieldMappings={fm.fieldMappings}
+        />
+      </aside>
+    </div>
+  )
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
+export function FieldMappingPage({ planId }: { planId: string }) {
+  const [mappings, setMappings] = useState<ObjectMappingItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedMappingId, setSelectedMappingId] = useState<string | null>(null)
+  const [statsVersion, setStatsVersion] = useState(0)
+  const [tabBadges, setTabBadges] = useState<Record<string, TabBadgeData>>({})
+
+  useEffect(() => {
+    fetch(`/api/plans/${planId}/object-mappings`)
+      .then((res) => res.json())
+      .then((data) => {
+        const list: ObjectMappingItem[] = data.mappings ?? data ?? []
+        setMappings(list)
+        if (list.length > 0) setSelectedMappingId(list[0].id)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [planId])
+
+  // Refresh tab badges when statsVersion changes
+  useEffect(() => {
+    if (mappings.length === 0) return
+    const fetchBadges = async () => {
+      const entries = await Promise.allSettled(
+        mappings.map(async (m) => {
+          const res = await fetch(`/api/plans/${planId}/object-mappings/${m.id}/field-mappings`)
+          if (!res.ok) return null
+          const data = await res.json()
+          const fms = data.fieldMappings ?? []
+          const unmapped = data.unmappedSourceFields ?? []
+          const hasIncompatible = fms.some(
+            (fm: { linkStatus: string }) =>
+              fm.linkStatus === 'RED_SOLID' || fm.linkStatus === 'RED_DASHED' || fm.linkStatus === 'BROKEN',
+          )
+          return { id: m.id, data: { mapped: fms.length, total: fms.length + unmapped.length, hasIncompatible } }
+        }),
+      )
+      const newBadges: Record<string, TabBadgeData> = {}
+      for (const result of entries) {
+        if (result.status === 'fulfilled' && result.value) {
+          newBadges[result.value.id] = result.value.data
+        }
+      }
+      setTabBadges(newBadges)
+    }
+    fetchBadges().catch(() => {})
+  }, [planId, mappings, statsVersion])
+
+  const selectedMapping = mappings.find((m) => m.id === selectedMappingId) ?? null
+  const currentIndex = mappings.findIndex((m) => m.id === selectedMappingId)
+
+  if (loading) return <div className="text-muted-foreground text-sm p-4">Chargement…</div>
+
+  if (mappings.length === 0) {
+    return (
+      <div className="border rounded-lg p-8 text-center">
+        <p className="text-muted-foreground mb-2">Aucun mapping d&apos;objet trouvé.</p>
+        <p className="text-sm text-muted-foreground">Configurez d&apos;abord les mappings d&apos;objets.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Object pair tabs with TabBadge (cluster 16) */}
+      <div className="flex flex-wrap gap-2">
+        {mappings.map((m) => (
+          <button
             key={m.id}
-            variant={m.id === selectedMapping ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setSelectedMapping(m.id)}
+            type="button"
+            onClick={() => setSelectedMappingId(m.id)}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+              selectedMappingId === m.id
+                ? 'border-primary bg-primary/5 text-foreground'
+                : 'border-border bg-background text-muted-foreground hover:bg-muted/30 hover:text-foreground'
+            }`}
           >
-            {m.sourceObjectName} → {m.destinationObjectName}
-          </Button>
+            <span className="font-medium">{m.sourceObjectName}</span>
+            <span className="text-muted-foreground">&rarr;</span>
+            <span className="font-medium">{m.destinationObjectName}</span>
+            <TabBadge data={tabBadges[m.id] ?? null} />
+          </button>
         ))}
       </div>
 
-      {currentMapping && (
-        <>
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">
-                {currentMapping.sourceObjectName} → {currentMapping.destinationObjectName}
-              </h3>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleAutoMatch} disabled={matching}>
-                  {matching ? 'Matching...' : 'Auto-Match Fields'}
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {fieldMappings.length > 0 && (
-            <div>
-              <h4 className="font-medium mb-2">Mapped Fields ({fieldMappings.length})</h4>
-              <div className="space-y-1">
-                {fieldMappings.map((fm) => (
-                  <div key={fm.id} className="flex items-center justify-between p-2 border rounded text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono">{fm.sourceFieldName}</span>
-                      <span className="text-muted-foreground">→</span>
-                      <span className="font-mono">{fm.destinationFieldName}</span>
-                      <Badge
-                        variant={
-                          fm.compatibilityStatus === 'COMPATIBLE'
-                            ? 'default'
-                            : fm.compatibilityStatus === 'WARNING'
-                              ? 'secondary'
-                              : 'destructive'
-                        }
-                        className="text-xs"
-                      >
-                        {fm.compatibilityStatus}
-                      </Badge>
-                      {fm.migrationLogic && (
-                        <Badge variant="outline" className="text-xs">
-                          Logic: {fm.migrationLogic.status}
-                        </Badge>
-                      )}
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteFieldMapping(fm.id)}>
-                      ×
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {(unmappedSource.length > 0 || unmappedDest.length > 0) && (
-            <>
-              <Separator />
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium mb-2">Unmapped Source ({unmappedSource.length})</h4>
-                  <div className="space-y-1">
-                    {unmappedSource.map((f) => (
-                      <button
-                        key={f.apiName}
-                        className={`w-full text-left p-2 rounded border text-sm ${
-                          selectedSrcField === f.apiName
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border hover:bg-muted'
-                        }`}
-                        onClick={() => setSelectedSrcField(selectedSrcField === f.apiName ? null : f.apiName)}
-                      >
-                        <span className="font-mono text-xs">{f.apiName}</span>
-                        <Badge variant="outline" className="ml-2 text-xs">{f.dataType}</Badge>
-                        {f.isRequired && <Badge variant="destructive" className="ml-1 text-xs">req</Badge>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <h4 className="font-medium mb-2">Unmapped Destination ({unmappedDest.length})</h4>
-                  <div className="space-y-1">
-                    {unmappedDest.map((f) => (
-                      <button
-                        key={f.apiName}
-                        className={`w-full text-left p-2 rounded border text-sm ${
-                          selectedSrcField ? 'hover:bg-primary/10 cursor-pointer' : 'opacity-60'
-                        }`}
-                        onClick={() => handleManualLink(f.apiName, f.dataType)}
-                        disabled={!selectedSrcField}
-                      >
-                        <span className="font-mono text-xs">{f.apiName}</span>
-                        <Badge variant="outline" className="ml-2 text-xs">{f.dataType}</Badge>
-                        {f.isRequired && <Badge variant="destructive" className="ml-1 text-xs">req</Badge>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </>
+      {/* Selected mapping panel */}
+      {selectedMapping && (
+        <FieldMappingPanel
+          key={selectedMapping.id}
+          planId={planId}
+          mapping={selectedMapping}
+          onChanged={() => setStatsVersion((v) => v + 1)}
+        />
       )}
 
-      <Separator />
-
-      <div className="flex gap-4">
-        <Button variant="outline" onClick={handleRunIntegrity} disabled={checking}>
-          {checking ? 'Checking...' : 'Run Integrity Check'}
-        </Button>
-        <Button onClick={handleAdvanceStep} className="flex-1">
-          Continue to Documents →
-        </Button>
-      </div>
-
-      {issues.length > 0 && (
-        <Card className="p-4 border-destructive">
-          <h4 className="font-medium text-destructive mb-2">Integrity Issues ({issues.length})</h4>
-          <div className="space-y-1">
-            {issues.map((issue, i) => (
-              <div key={i} className="text-sm flex items-center gap-2">
-                <Badge variant={issue.severity === 'ERROR' ? 'destructive' : 'secondary'} className="text-xs">
-                  {issue.severity}
-                </Badge>
-                <span>{issue.message}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
+      {/* Navigate to next mapping */}
+      {mappings.length > 1 && currentIndex < mappings.length - 1 && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setSelectedMappingId(mappings[currentIndex + 1].id)}
+            className="text-sm border rounded px-3 py-1.5 bg-background hover:bg-muted transition-colors"
+          >
+            Objet suivant : {mappings[currentIndex + 1].sourceObjectName} &rarr; {mappings[currentIndex + 1].destinationObjectName} &rarr;
+          </button>
+        </div>
       )}
     </div>
   )

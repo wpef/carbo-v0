@@ -258,10 +258,11 @@ model MigrationFilter {
 // ─── 016: Field Exclusion ───
 
 model FieldExclusion {
-  id              String @id @default(uuid())
+  id              String   @id @default(uuid())
   objectMappingId String
   sourceFieldName String
   reason          String?
+  createdAt       DateTime @default(now()) // 016 data-model
 
   objectMapping ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
 
