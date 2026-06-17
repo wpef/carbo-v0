@@ -3,8 +3,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { recordStep } from '@/features/plans/lib/record-step'
 import { useFields } from '@/features/schema/hooks/use-fields'
 import { FieldRetrievalProgress } from '@/features/schema/components/field-retrieval-progress'
 import { ObjectFieldAccordion } from '@/features/schema/components/object-field-accordion'
@@ -13,6 +14,7 @@ import type { FieldRetrievalItemResult } from '@/features/schema/hooks/use-field
 export default function DestinationFieldsPage() {
   const params = useParams<{ planId: string }>()
   const planId = params.planId
+  const router = useRouter()
 
   const { data, loading, retrieving, lastResults, error, retrieveAndRefresh, fetchFields } =
     useFields(planId, 'destination')
@@ -122,11 +124,16 @@ export default function DestinationFieldsPage() {
             {totalFields} field{totalFields !== 1 ? 's' : ''}).
           </p>
           <p className="text-sm text-muted-foreground mb-3">Next: Create Mapping</p>
-          <Link href={`/plans/${planId}/object-mapping`}>
-            <button type="button" className="px-3 py-1.5 text-sm font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-              Create Mapping &rarr;
-            </button>
-          </Link>
+          <button
+            type="button"
+            onClick={async () => {
+              await recordStep(planId, 'OBJECT_MAPPING')
+              router.push(`/plans/${planId}/object-mapping`)
+            }}
+            className="px-3 py-1.5 text-sm font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Create Mapping &rarr;
+          </button>
         </div>
       )}
     </main>

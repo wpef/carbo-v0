@@ -8,6 +8,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { recordStep } from '@/features/plans/lib/record-step'
 import { ObjectCard } from './ObjectCard'
 import { ObjectLink } from './ObjectLink'
 import { ObjectSearchFilter, type ObjectFilterCategory } from './ObjectSearchFilter'
@@ -207,9 +208,10 @@ export function ObjectMappingView({
     [destObjects, mappings],
   )
 
-  const handleNavigateToFieldMapping = useCallback(() => {
+  const handleNavigateToFieldMapping = useCallback(async () => {
     const apiName = detailState?.apiName
     setDetailState(null)
+    await recordStep(planId, 'FIELD_MAPPING')
     router.push(`/plans/${planId}/field-mapping${apiName ? `?object=${apiName}` : ''}`)
   }, [router, planId, detailState])
 

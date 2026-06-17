@@ -3,8 +3,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { recordStep } from '@/features/plans/lib/record-step'
 import { useFields } from '@/features/schema/hooks/use-fields'
 import { FieldRetrievalProgress } from '@/features/schema/components/field-retrieval-progress'
 import { ObjectFieldAccordion } from '@/features/schema/components/object-field-accordion'
@@ -13,6 +14,7 @@ import type { FieldRetrievalItemResult } from '@/features/schema/hooks/use-field
 export default function SourceFieldsPage() {
   const params = useParams<{ planId: string }>()
   const planId = params.planId
+  const router = useRouter()
 
   const { data, loading, retrieving, lastResults, error, retrieveAndRefresh, fetchFields } =
     useFields(planId, 'source')
@@ -114,11 +116,16 @@ export default function SourceFieldsPage() {
         <div className="mt-8 rounded-lg border border-border bg-muted/30 p-4">
           <p className="text-sm font-medium mb-3">Source schema ready.</p>
           <div className="flex flex-wrap gap-3">
-            <Link href={`/plans/${planId}/destination`}>
-              <button type="button" className="px-3 py-1.5 text-sm border rounded hover:bg-muted transition-colors">
-                Connect Destination &rarr;
-              </button>
-            </Link>
+            <button
+              type="button"
+              onClick={async () => {
+                await recordStep(planId, 'DESTINATION')
+                router.push(`/plans/${planId}/destination`)
+              }}
+              className="px-3 py-1.5 text-sm border rounded hover:bg-muted transition-colors"
+            >
+              Connect Destination &rarr;
+            </button>
           </div>
         </div>
       )}

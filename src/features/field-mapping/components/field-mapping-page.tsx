@@ -5,6 +5,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { recordStep } from '@/features/plans/lib/record-step'
 import { useFieldMapping } from '../hooks/use-field-mapping'
 import { useUnmappedFields } from '../../unmapped/hooks/use-unmapped-fields'
 import { FieldMappingView, TabBadge } from './field-mapping-view'
@@ -126,6 +128,7 @@ function FieldMappingPanel({ planId, mapping, onChanged }: FieldMappingPanelProp
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function FieldMappingPage({ planId }: { planId: string }) {
+  const router = useRouter()
   const [mappings, setMappings] = useState<ObjectMappingItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMappingId, setSelectedMappingId] = useState<string | null>(null)
@@ -232,6 +235,20 @@ export function FieldMappingPage({ planId }: { planId: string }) {
           </button>
         </div>
       )}
+
+      {/* Finish field mapping → proceed to documents (advances currentStep to DOCUMENTS → READY) */}
+      <div className="flex justify-end border-t border-border pt-6">
+        <button
+          type="button"
+          onClick={async () => {
+            await recordStep(planId, 'DOCUMENTS')
+            router.push(`/plans/${planId}/documents`)
+          }}
+          className="px-4 py-2 text-sm font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Continue to documents &rarr;
+        </button>
+      </div>
     </div>
   )
 }
