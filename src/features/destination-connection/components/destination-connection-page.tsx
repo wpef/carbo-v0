@@ -38,6 +38,8 @@ export function DestinationConnectionPage({ planId }: { planId: string }) {
     const schemaRes = await fetch(`/api/plans/${planId}/destination/schema`)
     const schemaData = await schemaRes.json()
     if (schemaData) setSchema(schemaData)
+    // Connected but no snapshot yet (e.g. just back from OAuth) — fetch schema automatically.
+    else await handleFetchSchema()
   }, [planId])
 
   useEffect(() => {

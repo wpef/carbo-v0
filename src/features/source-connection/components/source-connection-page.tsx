@@ -39,6 +39,10 @@ export function SourceConnectionPage({ planId }: { planId: string }) {
       // /source/objects returns { objects, summary } (009); tolerate a bare array too.
       setObjects(Array.isArray(objs) ? objs : (objs.objects ?? []))
       setSchemaReady(true) // set last so the empty-state never flashes during load
+    } else {
+      // Connected but no snapshot yet (e.g. just back from OAuth) — fetch schema automatically
+      // (refresh strategy: auto on first connection; manual "Refresh Schema" re-fetches later).
+      await handleFetchSchema()
     }
   }, [planId])
 

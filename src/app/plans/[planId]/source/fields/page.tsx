@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { recordStep } from '@/features/plans/lib/record-step'
@@ -24,6 +24,16 @@ export default function SourceFieldsPage() {
   useEffect(() => {
     fetchFields()
   }, [fetchFields])
+
+  // Auto-retrieve on first arrival if nothing has been retrieved yet — no manual "Retrieve"
+  // click needed (refresh strategy: auto on first reach; the button re-retrieves on demand).
+  const autoRetrievedRef = useRef(false)
+  useEffect(() => {
+    if (!autoRetrievedRef.current && !loading && !retrieving && !error && data && data.objects.length === 0) {
+      autoRetrievedRef.current = true
+      retrieveAndRefresh()
+    }
+  }, [loading, retrieving, error, data, retrieveAndRefresh])
 
   const handleRetrieve = async () => {
     setProgressResults(undefined)
