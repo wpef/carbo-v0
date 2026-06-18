@@ -29,6 +29,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pla
     snapshot.id,
     meta.commonBusinessObjects,
     meta.systemObjectPrefixes,
+    meta.systemObjectSuffixes,
     planId,
   )
 

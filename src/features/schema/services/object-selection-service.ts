@@ -39,15 +39,19 @@ export interface ObjectsWithSelectionResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function categorise(
+export function categorise(
   apiName: string,
   isCustom: boolean,
   commonBusinessObjects: string[],
   systemPrefixes: string[],
+  systemSuffixes: string[] = [],
 ): 'custom' | 'business' | 'system' {
   if (isCustom) return 'custom'
+  // Known business objects win over the system heuristics (e.g. "Campaign" must stay business).
   if (commonBusinessObjects.includes(apiName)) return 'business'
-  if (systemPrefixes.length > 0 && systemPrefixes.some((p) => apiName.startsWith(p))) return 'system'
+  if (systemPrefixes.some((p) => apiName.startsWith(p))) return 'system'
+  // Real SF internal objects are mostly identified by suffix (AccountFeed, AccountHistory, …).
+  if (systemSuffixes.some((s) => apiName.endsWith(s))) return 'system'
   return 'business'
 }
 
@@ -175,6 +179,7 @@ export async function getObjectsWithSelection(
   snapshotId: string,
   commonBusinessObjects: string[] = [],
   systemPrefixes: string[] = [],
+  systemSuffixes: string[] = [],
   planId?: string,
 ): Promise<ObjectsWithSelectionResult> {
   const objects = await prisma.schemaObject.findMany({
@@ -195,7 +200,7 @@ export async function getObjectsWithSelection(
 
   const enriched = objects.map((obj) => {
     const isSelected = selMap.get(obj.apiName) ?? true
-    const category = categorise(obj.apiName, obj.isCustom, commonBusinessObjects, systemPrefixes)
+    const category = categorise(obj.apiName, obj.isCustom, commonBusinessObjects, systemPrefixes, systemSuffixes)
     return { ...obj, isSelected, category }
   })
 
