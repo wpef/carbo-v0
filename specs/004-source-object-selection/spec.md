@@ -37,8 +37,8 @@ As a consultant, I can select which objects are relevant for migration from the 
 ## Functional Requirements
 
 - **FR-001**: The system MUST display all objects from the CURRENT schema snapshot in a selectable list, showing: label, API name, standard/custom badge, and description.
-- **FR-002**: The system MUST pre-select all custom objects (isCustom=true) and common business objects by default. The list of common business objects is defined per connector type (e.g., Account, Contact, Lead, Opportunity, Case for CRM systems).
-- **FR-003**: The system MUST provide a "Hide system objects" toggle, enabled by default, that hides objects classified as system/internal by the connector adapter.
+- **FR-002**: The system MUST pre-select all custom objects (isCustom=true) and common business objects by default. The list of common business objects is defined per connector type (Salesforce: Account, Contact, Lead, Opportunity, Case, Campaign, Task, Event, Note, Attachment, ContentDocument, CampaignMember). This list MUST be a **single source of truth** shared between the schema layer (`isDefaultSelected`) and the selection layer (`initDefaultSelection`/`getObjectsWithSelection`): the two MUST NOT maintain separate lists, or common objects get classified-but-not-pre-selected. (Enforced by a regression guard test.)
+- **FR-003**: The system MUST provide a "Hide system objects" toggle, enabled by default, that hides objects classified as system/internal by the connector adapter. Classification MUST use both **prefixes AND suffixes**: real CRM orgs expose most internal objects by suffix (Salesforce: `…Feed`, `…History`, `…Share`, `…ChangeEvent`, `…Tag` — often 40%+ of all objects), which a prefix-only filter misses, leaving the toggle ineffective on large orgs.
 - **FR-004**: The system MUST provide real-time search/filter by label or API name (case-insensitive, substring match).
 - **FR-005**: The system MUST allow on-demand expansion of any object to display:
   (a) the record count,
@@ -50,6 +50,8 @@ As a consultant, I can select which objects are relevant for migration from the 
 - **FR-008**: The system MUST prevent the consultant from proceeding to field retrieval with zero objects selected, displaying a clear validation message.
 - **FR-009**: The system MUST display a count of selected objects vs. total objects (e.g., "42 / 1,234 objects selected").
 - **FR-010**: The system MUST log selection changes (initial selection, manual changes) to the audit trail.
+- **FR-011**: The system MUST provide a selection filter ("All" / "Selected" / "Unselected") alongside the search box, combinable with the search and the "Hide system objects" toggle. On a large org (hundreds of business objects after system filtering), the consultant MUST be able to isolate the currently-selected set in one click.
+- **FR-012**: Schema and field retrieval MUST be **automatic, not a manual step the consultant can skip**. On first connection (including the post-OAuth return), the system fetches the schema automatically; on first reaching the field step, it retrieves fields for the selected objects automatically. Re-visits use the cached snapshot; an explicit "Refresh"/"Re-retrieve" re-fetches on demand (and runs drift detection); reconnecting re-fetches. This prevents the consultant from reaching mapping with empty source fields. (Field retrieval MUST be scoped to **selected** objects only — never the full object set — to avoid thousands of API calls on large orgs.) This strategy is cross-cutting and applies symmetrically to the destination side ([[006-destination-connection]] / [[008-destination-field-retrieval]]).
 
 ## Key Entities
 
