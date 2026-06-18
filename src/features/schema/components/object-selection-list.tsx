@@ -4,6 +4,7 @@
 
 import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { SelectionToolbar } from './selection-toolbar'
 import { ObjectRow } from './object-row'
 import { ObjectExpandPanel } from './object-expand-panel'
@@ -31,18 +32,24 @@ export function ObjectSelectionList({
   onToggleSystem,
 }: ObjectSelectionListProps) {
   const [search, setSearch] = useState('')
+  const [selectionFilter, setSelectionFilter] = useState<'all' | 'selected' | 'unselected'>('all')
   const [expandedApiName, setExpandedApiName] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
+    let list = objects
+    if (selectionFilter === 'selected') list = list.filter((o) => o.isSelected)
+    else if (selectionFilter === 'unselected') list = list.filter((o) => !o.isSelected)
     const q = search.trim().toLowerCase()
-    if (!q) return objects
-    return objects.filter(
-      (o) =>
-        o.apiName.toLowerCase().includes(q) ||
-        o.label.toLowerCase().includes(q) ||
-        (o.description ?? '').toLowerCase().includes(q),
-    )
-  }, [objects, search])
+    if (q) {
+      list = list.filter(
+        (o) =>
+          o.apiName.toLowerCase().includes(q) ||
+          o.label.toLowerCase().includes(q) ||
+          (o.description ?? '').toLowerCase().includes(q),
+      )
+    }
+    return list
+  }, [objects, search, selectionFilter])
 
   function handleToggleExpand(objectApiName: string) {
     setExpandedApiName((prev) => (prev === objectApiName ? null : objectApiName))
@@ -58,13 +65,32 @@ export function ObjectSelectionList({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Real-time search */}
-      <Input
-        placeholder="Search objects by name or label..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
+      {/* Real-time search + selection filter */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Input
+          placeholder="Search objects by name or label..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-sm"
+        />
+        <div className="flex items-center gap-1 text-xs">
+          {(['all', 'selected', 'unselected'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setSelectionFilter(f)}
+              className={cn(
+                'px-2 py-1 rounded border transition-colors',
+                selectionFilter === f
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground hover:bg-muted',
+              )}
+            >
+              {f === 'all' ? 'Tous' : f === 'selected' ? 'Sélectionnés' : 'Non sélectionnés'}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="border rounded-lg overflow-hidden">
         <SelectionToolbar
@@ -77,7 +103,7 @@ export function ObjectSelectionList({
 
         {filtered.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-            No objects match &ldquo;{search}&rdquo;.
+            {search ? `No objects match “${search}”.` : 'No objects match the current filter.'}
           </div>
         ) : (
           filtered.map((obj) => (
