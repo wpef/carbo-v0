@@ -114,6 +114,8 @@ export default function DestinationFieldsPage() {
         <ObjectFieldAccordion
           objects={data.objects}
           failedObjects={lastResults?.filter((r) => !!r.error)}
+          planId={planId}
+          side="destination"
         />
       )}
 

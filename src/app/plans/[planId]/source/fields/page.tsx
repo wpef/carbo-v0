@@ -109,6 +109,8 @@ export default function SourceFieldsPage() {
         <ObjectFieldAccordion
           objects={data.objects}
           failedObjects={lastResults?.filter((r) => !!r.error)}
+          planId={planId}
+          side="source"
         />
       )}
 

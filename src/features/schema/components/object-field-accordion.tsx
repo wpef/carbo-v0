@@ -3,6 +3,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { FieldTable } from './field-table'
 import { Badge } from '@/components/ui/badge'
 import type { ObjectFieldResult, FieldRetrievalItemResult } from '@/features/schema/hooks/use-fields'
@@ -18,38 +19,58 @@ interface ObjectFieldAccordionProps {
   objects: ObjectWithFields[]
   failedObjects?: FieldRetrievalItemResult[]
   onRetry?: (objectApiName: string) => void
+  /** When provided, each object shows a "Preview records" link to /{side}/preview/{object}. */
+  planId?: string
+  side?: 'source' | 'destination'
 }
 
 interface AccordionItemProps {
   obj: ObjectWithFields
   failedError?: string
   onRetry?: () => void
+  previewHref?: string
 }
 
-function AccordionItem({ obj, failedError, onRetry }: AccordionItemProps) {
+function AccordionItem({ obj, failedError, onRetry, previewHref }: AccordionItemProps) {
   const [open, setOpen] = useState(false)
 
   return (
     <div className="border-b last:border-0">
-      <button
-        type="button"
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
+        <button
+          type="button"
+          className="flex items-center gap-2 min-w-0 flex-1 text-left"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
           <span className="font-medium text-sm truncate">{obj.objectLabel}</span>
           <span className="text-xs text-muted-foreground font-mono shrink-0">{obj.objectApiName}</span>
-        </div>
+        </button>
         <div className="flex items-center gap-2 shrink-0 ml-2">
+          {previewHref && !failedError && (
+            <Link
+              href={previewHref}
+              className="text-xs border rounded px-2 py-1 hover:bg-muted transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Preview records
+            </Link>
+          )}
           {failedError ? (
             <Badge variant="destructive">Error</Badge>
           ) : (
             <Badge variant="secondary">{obj.fieldCount} fields</Badge>
           )}
-          <span className="text-muted-foreground text-xs">{open ? '▲' : '▼'}</span>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-label={open ? 'Collapse' : 'Expand'}
+            className="text-muted-foreground text-xs"
+          >
+            {open ? '▲' : '▼'}
+          </button>
         </div>
-      </button>
+      </div>
 
       {open && (
         <div className="px-4 pb-4">
@@ -75,7 +96,13 @@ function AccordionItem({ obj, failedError, onRetry }: AccordionItemProps) {
   )
 }
 
-export function ObjectFieldAccordion({ objects, failedObjects = [], onRetry }: ObjectFieldAccordionProps) {
+export function ObjectFieldAccordion({
+  objects,
+  failedObjects = [],
+  onRetry,
+  planId,
+  side,
+}: ObjectFieldAccordionProps) {
   const failedMap = new Map(failedObjects.filter((f) => !!f.error).map((f) => [f.objectApiName, f.error!]))
 
   if (objects.length === 0 && failedObjects.length === 0) {
@@ -94,6 +121,7 @@ export function ObjectFieldAccordion({ objects, failedObjects = [], onRetry }: O
           obj={obj}
           failedError={failedMap.get(obj.objectApiName)}
           onRetry={onRetry ? () => onRetry(obj.objectApiName) : undefined}
+          previewHref={planId && side ? `/plans/${planId}/${side}/preview/${obj.objectApiName}` : undefined}
         />
       ))}
       {/* Show failed objects that have no data at all */}

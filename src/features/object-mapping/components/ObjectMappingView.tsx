@@ -235,20 +235,30 @@ export function ObjectMappingView({
   return (
     <div className="space-y-3">
       {/* Status bar */}
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <span>{mappings.length} mapping{mappings.length !== 1 ? 's' : ''}</span>
-        {selectedSourceApiName && (
-          <span className="text-primary bg-primary/5 border border-primary/20 rounded px-2 py-0.5 text-xs">
-            Source sélectionnée : <strong>{selectedSourceApiName}</strong> — Cliquez un cercle destination.{' '}
-            <button
-              type="button"
-              className="underline hover:no-underline"
-              onClick={() => { setSelectedSourceApiName(null); setActionError('') }}
-            >
-              Annuler
-            </button>
-          </span>
-        )}
+      <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+        <div className="flex items-center gap-3 min-w-0">
+          <span>{mappings.length} mapping{mappings.length !== 1 ? 's' : ''}</span>
+          {selectedSourceApiName && (
+            <span className="text-primary bg-primary/5 border border-primary/20 rounded px-2 py-0.5 text-xs">
+              Source sélectionnée : <strong>{selectedSourceApiName}</strong> — Cliquez un cercle destination.{' '}
+              <button
+                type="button"
+                className="underline hover:no-underline"
+                onClick={() => { setSelectedSourceApiName(null); setActionError('') }}
+              >
+                Annuler
+              </button>
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => router.push(`/plans/${planId}/schema-write`)}
+          className="shrink-0 text-xs border rounded px-2 py-1 hover:bg-muted transition-colors text-foreground"
+          title="Créer un objet ou un champ dans la destination (ex : objet source custom sans équivalent)"
+        >
+          + Créer un objet/champ destination
+        </button>
       </div>
 
       {/* Errors & warnings */}
