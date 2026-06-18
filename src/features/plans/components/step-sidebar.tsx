@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -34,9 +35,30 @@ export function StepSidebar({ planId, currentStep }: StepSidebarProps) {
   const activePage = detectActiveStep(pathname)
   const activeIdx = activePage !== undefined ? getStepIndex(activePage) : -1
 
+  // High-water mark: every step up to the furthest reached (recorded currentStep OR the page
+  // currently open) is "validated" and freely clickable. Gating on currentStep alone locked
+  // steps the user had actually reached whenever currentStep lagged behind.
+  const reachedIdx = Math.max(currentMaxIdx, activeIdx)
+
+  // Persist the high-water mark: if the open page is ahead of the recorded step, advance it
+  // (forward-only server-side; a 422 when already at/past is benign). This keeps back-nav
+  // unlocked after the user moves on. Fires at most once per active step.
+  const advancedForRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (activePage && activeIdx > currentMaxIdx && advancedForRef.current !== activePage) {
+      advancedForRef.current = activePage
+      fetch(`/api/plans/${planId}/step`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetStep: activePage }),
+      }).catch(() => {})
+    }
+  }, [planId, activePage, activeIdx, currentMaxIdx])
+
   const nextStep = activePage !== undefined ? getNextStep(activePage) : null
-  // FR-008: button active when on the current step (can advance) or on a completed step (direct nav)
-  const nextAccessible = nextStep !== null && activeIdx <= currentMaxIdx
+  // A next step is always reachable: it is at most the immediate frontier just past the
+  // current page (which is itself reached). handleNextStep PATCHes only at the frontier.
+  const nextAccessible = nextStep !== null
 
   async function handleNextStep() {
     if (!nextStep) return
@@ -61,9 +83,9 @@ export function StepSidebar({ planId, currentStep }: StepSidebarProps) {
         <nav className="space-y-1">
           {PLAN_STEPS.map((step, idx) => {
             const href = `/plans/${planId}/${STEP_PATHS[step]}`
-            const isCompleted = idx < currentMaxIdx
+            const isCompleted = idx < reachedIdx
             const isCurrent = step === activePage
-            const isAccessible = idx <= currentMaxIdx
+            const isAccessible = idx <= reachedIdx
 
             const circle = (
               <span
