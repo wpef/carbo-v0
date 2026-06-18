@@ -13,6 +13,7 @@ import {
   getObjectsWithSelection,
   saveSelections,
 } from '@/features/schema/services/object-selection-service'
+import { getAdapterMetadata } from '@/lib/adapters/metadata'
 
 const planIds: string[] = []
 const connectionIds: string[] = []
@@ -181,5 +182,49 @@ describe('saveSelections — integration', () => {
       where: { connectionId_snapshotId_objectApiName: { connectionId: conn.id, snapshotId: snapshot.id, objectApiName: 'Account' } },
     })
     expect(row!.isSelected).toBe(false)
+  })
+})
+
+// Regression guard for the recette bug found on a real 1123-object SF org:
+// (1) common business objects (Contact/Opportunity/…) were classified but NOT pre-selected,
+// (2) internal objects identified by SUFFIX (…Feed/…History/…Share) were shown as business.
+// This exercises the LIVE adapter metadata end-to-end so the two can't silently regress.
+describe('getObjectsWithSelection — real SF metadata (recette regression guard)', () => {
+  it('hides suffix-system objects and pre-selects every common + custom object', async () => {
+    const conn = await seedConnection()
+    const snapshot = await seedSnapshot(conn.id, 'SOURCE', [
+      { apiName: 'Account', label: 'Account', isCustom: false },
+      { apiName: 'Contact', label: 'Contact', isCustom: false },
+      { apiName: 'Opportunity', label: 'Opportunity', isCustom: false },
+      { apiName: 'Case', label: 'Case', isCustom: false },
+      { apiName: 'AccountFeed', label: 'Account Feed', isCustom: false },
+      { apiName: 'ContactHistory', label: 'Contact History', isCustom: false },
+      { apiName: 'AccountShare', label: 'Account Share', isCustom: false },
+      { apiName: 'Widget__c', label: 'Widget', isCustom: true },
+    ])
+
+    const meta = getAdapterMetadata('salesforce')
+    const result = await getObjectsWithSelection(
+      conn.id,
+      snapshot.id,
+      meta.commonBusinessObjects,
+      meta.systemObjectPrefixes,
+      meta.systemObjectSuffixes,
+    )
+    const byName = new Map(result.objects.map((o) => [o.apiName, o]))
+
+    // Suffix-identified internals are classified system (the bug: they showed as business).
+    for (const name of ['AccountFeed', 'ContactHistory', 'AccountShare']) {
+      expect(byName.get(name)!.category).toBe('system')
+      expect(byName.get(name)!.isSelected).toBe(false)
+    }
+    // Every common business object is pre-selected (the bug: Contact/Opportunity/Case were not).
+    for (const name of ['Account', 'Contact', 'Opportunity', 'Case']) {
+      expect(byName.get(name)!.category).toBe('business')
+      expect(byName.get(name)!.isSelected).toBe(true)
+    }
+    // Custom objects pre-selected.
+    expect(byName.get('Widget__c')!.isSelected).toBe(true)
+    expect(result.summary.system).toBe(3)
   })
 })
