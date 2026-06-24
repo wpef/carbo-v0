@@ -25,6 +25,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
 import type { SchemaObjectItem, ObjectMappingItem } from '../hooks/useObjectMappings'
+import { useMappingStats } from '../hooks/useObjectMappings'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,8 @@ export function ObjectMappingView({
 
   // ─── Detail modal ───────────────────────────────────────────────────────────
   const [detailState, setDetailState] = useState<DetailState | null>(null)
+  // Cluster 10 — live stats for the open detail modal (was hardcoded to zeros; backend existed but unwired).
+  const { stats: mappingStats } = useMappingStats(planId, detailState?.mappingId ?? null)
 
   // ─── Derived sets ───────────────────────────────────────────────────────────
   const mappedSourceNames = new Set(mappings.map((m) => m.sourceObjectName))
@@ -441,10 +444,10 @@ export function ObjectMappingView({
           objectApiName={detailState.apiName}
           objectLabel={detailState.label}
           role={detailState.role}
-          recordCount={null}
-          fieldsToValidate={0}
-          totalFields={0}
-          migrationFilterCount={0}
+          recordCount={mappingStats ? (detailState.role === 'source' ? mappingStats.sourceRecordCount : mappingStats.destRecordCount) : null}
+          fieldsToValidate={mappingStats ? Math.max(0, mappingStats.mappedFieldCount - mappingStats.validatedFieldCount) : 0}
+          totalFields={mappingStats ? mappingStats.totalSourceFields : 0}
+          migrationFilterCount={mappingStats ? mappingStats.filterCount : 0}
           onNavigateToFieldMapping={handleNavigateToFieldMapping}
         />
       )}

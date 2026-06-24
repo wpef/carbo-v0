@@ -11,6 +11,7 @@ import { useFieldMapping } from '../hooks/use-field-mapping'
 import { useUnmappedFields } from '../../unmapped/hooks/use-unmapped-fields'
 import { FieldMappingView, TabBadge } from './field-mapping-view'
 import { MigrationPreviewPanel } from './migration-preview-panel'
+import { FilterPanel } from '@/features/filters/components/filter-panel'
 import { UnmappedFieldsWarning, UnmappedFieldsBadge } from '../../unmapped/components/unmapped-fields-warning'
 import type { TabBadgeData } from './field-mapping-view'
 
@@ -108,6 +109,11 @@ function FieldMappingPanel({ planId, mapping, onChanged }: FieldMappingPanelProp
             error={fm.error}
           />
         )}
+
+        {/* Cluster 12 — migration filters for this object pair (was orphaned: FilterPanel rendered nowhere) */}
+        <div className="mt-6 border-t border-border pt-6">
+          <FilterPanel planId={planId} mappingId={mapping.id} sourceObjectLabel={mapping.sourceObjectName} />
+        </div>
       </section>
 
       {/* Right: preview sidebar — cluster 16 */}
