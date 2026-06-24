@@ -105,9 +105,14 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       action?: string
       valueEquivalences?: Array<{ sourceValue: string; destinationValue: string }>
       classificationPrompt?: string
+      promptText?: string
     }
 
-    const { action, valueEquivalences, classificationPrompt } = body
+    const { action, valueEquivalences } = body
+    // The client (MigrationLogicModal/use-migration-logic) sends the D2 prompt under `promptText`;
+    // accept both keys so the body contract can't silently drift again (this mismatch made SAVE
+    // return 400 and VALIDATE persist an empty prompt — a real recette regression).
+    const classificationPrompt = body.classificationPrompt ?? body.promptText
 
     if (action !== 'SAVE' && action !== 'VALIDATE') {
       return NextResponse.json(
