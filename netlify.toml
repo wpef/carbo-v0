@@ -1,10 +1,13 @@
 # Netlify — hébergement Carbo
 # Le runtime Next.js (OpenNext) est auto-détecté et installé par Netlify.
 # Phase démo : `prisma db push` synchronise le schéma vers Neon (crée les tables au 1er
-# déploiement, no-op ensuite). On passera à `prisma migrate deploy` avant la prod.
+# déploiement, no-op ensuite). `--accept-data-loss` : le passage de l'enum PlanStatus à
+# DRAFT/READY/BROKEN retire des valeurs inutilisées (IN_PROGRESS/COMPLETED/ARCHIVED) ;
+# sans plan utilisant ces statuts, aucune donnée n'est perdue. On passera à
+# `prisma migrate deploy` (sans ce flag) avant la vraie prod.
 
 [build]
-  command = "npx prisma db push && npm run build"
+  command = "npx prisma db push --accept-data-loss && npm run build"
   publish = ".next"
 
 [build.environment]
