@@ -1,13 +1,11 @@
 'use client'
 // 021-pdf-export — Bouton de téléchargement PDF réutilisable
 //
-// Actuellement : ouvre le HTML d'impression dans un nouvel onglet (mode print-html).
-// TODO: Quand Puppeteer sera installé et que la route retournera application/pdf,
-//       supprimer la gestion du mode 'print-html' et activer le téléchargement direct :
-//       const blob = await response.blob()
-//       const url = URL.createObjectURL(blob)
-//       anchor.download = filename
-//       anchor.click()
+// Mode normal (application/pdf) : télécharge directement le blob PDF généré par
+//   puppeteer-core + @sparticuz/chromium côté serveur.
+// Mode fallback (X-Pdf-Mode: print-html) : si Chromium a échoué côté serveur, la route
+//   renvoie le HTML d'impression — on l'ouvre dans un nouvel onglet pour que l'utilisateur
+//   puisse faire Fichier > Imprimer > Enregistrer en PDF. Le parcours ne casse jamais.
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -20,11 +18,7 @@ interface PdfDownloadButtonProps {
 }
 
 /**
- * Déclenche le téléchargement (ou l'impression) du document en PDF.
- *
- * Mode actuel (print-html) : ouvre la page d'impression dans un nouvel onglet.
- *   L'utilisateur peut utiliser Fichier > Imprimer > Enregistrer en PDF.
- * Mode futur (application/pdf) : déclenche le téléchargement direct du fichier PDF.
+ * Déclenche le téléchargement du document en PDF binaire, avec repli HTML d'impression.
  */
 export function PdfDownloadButton({
   planId,

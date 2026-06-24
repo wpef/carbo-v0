@@ -1,0 +1,79 @@
+// 018-rule-description-engine — Hook for generating plan descriptions (v4)
+//
+// Ported from v3 src/hooks/use-plan-description.ts. Same POST contract:
+//   POST /api/plans/:planId/description  { enhance: boolean }
+
+'use client'
+
+import { useState, useCallback } from 'react'
+import type { PlanDescription } from '@/features/documents/types/plan-description'
+
+interface UsePlanDescriptionState {
+  description: PlanDescription | null
+  loading: boolean
+  error: string
+}
+
+interface UsePlanDescriptionReturn extends UsePlanDescriptionState {
+  generate: (enhance?: boolean) => Promise<void>
+  reset: () => void
+}
+
+/**
+ * Hook to generate and hold the human-readable PlanDescription.
+ *
+ * @param planId - The plan ID to generate descriptions for.
+ */
+export function usePlanDescription(planId: string): UsePlanDescriptionReturn {
+  const [state, setState] = useState<UsePlanDescriptionState>({
+    description: null,
+    loading: false,
+    error: '',
+  })
+
+  const generate = useCallback(
+    async (enhance = false) => {
+      setState({ description: null, loading: true, error: '' })
+
+      try {
+        const res = await fetch(`/api/plans/${planId}/description`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enhance }),
+        })
+
+        const data = await res.json()
+
+        if (!res.ok) {
+          setState({
+            description: null,
+            loading: false,
+            error: data.message ?? 'Échec de la génération de la description.',
+          })
+          return
+        }
+
+        setState({ description: data as PlanDescription, loading: false, error: '' })
+      } catch (err) {
+        setState({
+          description: null,
+          loading: false,
+          error: err instanceof Error ? err.message : 'Échec de la génération de la description.',
+        })
+      }
+    },
+    [planId],
+  )
+
+  const reset = useCallback(() => {
+    setState({ description: null, loading: false, error: '' })
+  }, [])
+
+  return {
+    description: state.description,
+    loading: state.loading,
+    error: state.error,
+    generate,
+    reset,
+  }
+}

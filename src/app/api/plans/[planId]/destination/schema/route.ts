@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSchemaSnapshot, fetchAndStoreSchema } from '@/features/schema/services/schema-service'
+import { computePersistedDrift } from '@/features/schema/services/drift-service'
 import { checkAndUpdatePlanStatus } from '@/features/integrity/services/integrity-service'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ planId: string }> }) {
@@ -33,7 +34,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ pl
       console.warn('[destination/schema/POST] checkAndUpdatePlanStatus failed (non-fatal):', err)
     })
 
-    return NextResponse.json(snapshot, { status: 201 })
+    // Cluster 11 / 003 FR-006 — diff the rotated snapshots (PREVIOUS → new CURRENT)
+    // so the caller can render "what changed in this refresh". Mirror of source. Non-fatal.
+    const driftReport = await computePersistedDrift(planId, 'destination').catch((err) => {
+      console.warn('[destination/schema/POST] computePersistedDrift failed (non-fatal):', err)
+      return null
+    })
+
+    return NextResponse.json({ snapshot, driftReport }, { status: 201 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Schema fetch failed'
     return NextResponse.json({ error: msg }, { status: 502 })

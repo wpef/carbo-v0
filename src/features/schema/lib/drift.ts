@@ -334,6 +334,69 @@ export function buildUnavailableReport(
 }
 
 // ---------------------------------------------------------------------------
+// mergeDriftReports — 001 FR-015 (plan-level merge of source + destination)
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge the source and destination DriftReports into a single plan-level report
+ * for rendering by the banner / PlanDriftContext (001 §"Drift report computation").
+ *
+ * Merge rules:
+ * - `changes` are concatenated (each DriftChange already carries `role` via its
+ *   originating report; the merged report keeps every change so consumers can
+ *   filter by side using the per-report context they hold separately).
+ * - `severitySummary` is summed.
+ * - `status` precedence: 'drift' if either side drifted, else 'unavailable' if
+ *   either side is unavailable (degraded — 001 FR-016), else 'ok'.
+ * - `checkedAt` is the most recent of the two.
+ * - Absent sides (null) are skipped — a plan with no destination connection
+ *   contributes nothing (001: "that side is skipped").
+ *
+ * The merged report's `connectionId`/`role` are not meaningful at plan level;
+ * `role` is set to 'source' as a stable placeholder and `connectionId` to ''.
+ */
+export function mergeDriftReports(
+  source: DriftReport | null,
+  destination: DriftReport | null,
+): DriftReport | null {
+  const present = [source, destination].filter((r): r is DriftReport => r != null)
+  if (present.length === 0) return null
+
+  const changes = present.flatMap((r) => r.changes)
+  const severitySummary = present.reduce(
+    (acc, r) => ({
+      critical: acc.critical + r.severitySummary.critical,
+      warning: acc.warning + r.severitySummary.warning,
+      info: acc.info + r.severitySummary.info,
+    }),
+    { critical: 0, warning: 0, info: 0 },
+  )
+
+  const anyDrift = present.some((r) => r.status === 'drift')
+  const anyUnavailable = present.some((r) => r.status === 'unavailable')
+  const status: DriftReport['status'] = anyDrift ? 'drift' : anyUnavailable ? 'unavailable' : 'ok'
+
+  const checkedAt = present
+    .map((r) => r.checkedAt)
+    .sort()
+    .at(-1)!
+
+  const reason = anyUnavailable
+    ? present.find((r) => r.status === 'unavailable')?.reason
+    : undefined
+
+  return {
+    connectionId: '',
+    role: 'source',
+    checkedAt,
+    status,
+    changes,
+    severitySummary,
+    ...(reason ? { reason } : {}),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 

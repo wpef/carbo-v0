@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { usePlanDescription } from '@/features/documents/hooks/use-plan-description'
+import { PlanDescriptionView } from '@/features/documents/components/plan-description-view'
 
 interface DocumentMeta {
   id: string
@@ -27,6 +29,14 @@ export function DocumentsPage({ planId }: { planId: string }) {
   const [contractDocs, setContractDocs] = useState<DocumentMeta[]>([])
   const [generating, setGenerating] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // 018 — Description de plan (template, non-LLM)
+  const {
+    description,
+    loading: descLoading,
+    error: descError,
+    generate: generateDescription,
+  } = usePlanDescription(planId)
 
   useEffect(() => {
     loadDocuments()
@@ -68,6 +78,45 @@ export function DocumentsPage({ planId }: { planId: string }) {
 
   return (
     <div className="space-y-6">
+      {/* Description du plan (018 — template, non-LLM) */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="font-semibold">Description du plan</h3>
+            <p className="text-sm text-muted-foreground">
+              Synthèse lisible de toutes les règles de migration, prête pour la revue client.
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button
+              variant="secondary"
+              onClick={() => generateDescription(false)}
+              disabled={descLoading || generating !== null}
+            >
+              {descLoading ? 'Génération…' : 'Générer la description'}
+            </Button>
+            <Button
+              onClick={() => generateDescription(true)}
+              disabled={descLoading || generating !== null}
+            >
+              {descLoading ? 'Génération…' : 'Générer avec IA'}
+            </Button>
+          </div>
+        </div>
+
+        {descError && (
+          <p className="mt-3 text-sm text-destructive">{descError}</p>
+        )}
+
+        {description && (
+          <div className="mt-4 border-t pt-4">
+            <PlanDescriptionView description={description} />
+          </div>
+        )}
+      </Card>
+
+      <Separator />
+
       {/* Document Technique */}
       <Card className="p-4">
         <div className="flex items-center justify-between">

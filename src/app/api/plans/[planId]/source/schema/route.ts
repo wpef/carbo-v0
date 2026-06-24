@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSchemaSnapshot, fetchAndStoreSchema } from '@/features/schema/services/schema-service'
-import { detectLiveDrift } from '@/features/schema/services/drift-service'
+import { computePersistedDrift } from '@/features/schema/services/drift-service'
 import { checkAndUpdatePlanStatus } from '@/features/integrity/services/integrity-service'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ planId: string }> }) {
@@ -37,11 +37,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ pl
       console.warn('[schema/POST] checkAndUpdatePlanStatus failed (non-fatal):', err)
     })
 
-    // Cluster 11 — run drift detection immediately after a schema refresh so the
-    // caller gets both the fresh snapshot and the DriftReport in one round-trip.
-    // The drift check is non-fatal: if it fails, the snapshot is still returned.
-    const driftReport = await detectLiveDrift(planId, 'source').catch((err) => {
-      console.warn('[schema/POST] detectLiveDrift failed (non-fatal):', err)
+    // Cluster 11 / 003 FR-006 — after the refresh, diff the rotated snapshots
+    // (PREVIOUS → the new CURRENT just written) so the caller can show "what
+    // changed in this refresh" in one round-trip. A live drift check here would
+    // be a no-op (the new CURRENT was written from the same fetch it compares
+    // against). Non-fatal: if it fails, the snapshot is still returned.
+    const driftReport = await computePersistedDrift(planId, 'source').catch((err) => {
+      console.warn('[schema/POST] computePersistedDrift failed (non-fatal):', err)
       return null
     })
 

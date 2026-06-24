@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { listAdapterTypes } from '@/lib/adapters/registry'
+import { SchemaDiffView } from '@/features/schema/components/schema-diff-view'
+import type { DriftReport } from '@/features/schema/lib/drift'
 
 interface ConnectionState {
   id: string
@@ -29,6 +31,10 @@ export function SourceConnectionPage({ planId }: { planId: string }) {
   const [objects, setObjects] = useState<SchemaObjectLite[]>([])
   const [fetchingSchema, setFetchingSchema] = useState(false)
   const [schemaReady, setSchemaReady] = useState(false)
+  // 003 FR-006 — diff returned by POST /source/schema (PREVIOUS → new CURRENT).
+  // Shown after a refresh so the consultant sees what changed. null = no diff
+  // (first retrieval or no change); reset on every refresh.
+  const [diffReport, setDiffReport] = useState<DriftReport | null>(null)
 
   const loadSchemaAndObjects = useCallback(async () => {
     const schemaRes = await fetch(`/api/plans/${planId}/source/schema`)
@@ -87,6 +93,10 @@ export function SourceConnectionPage({ planId }: { planId: string }) {
     try {
       const res = await fetch(`/api/plans/${planId}/source/schema`, { method: 'POST' })
       if (res.ok) {
+        // POST returns { snapshot, driftReport } (003 FR-006) — capture the diff
+        // so we can show what the refresh changed; tolerate older bare-snapshot shapes.
+        const body = await res.json().catch(() => null)
+        setDiffReport(body?.driftReport ?? null)
         const objRes = await fetch(`/api/plans/${planId}/source/objects`)
         const objsData = await objRes.json()
         setObjects(Array.isArray(objsData) ? objsData : (objsData.objects ?? []))
@@ -168,6 +178,14 @@ export function SourceConnectionPage({ planId }: { planId: string }) {
           <Button onClick={() => router.push(`/plans/${planId}/source/objects`)}>
             Continue to object selection →
           </Button>
+        </Card>
+      )}
+
+      {/* 003 FR-006 — diff since the previous snapshot, shown after a refresh. */}
+      {diffReport && diffReport.status === 'drift' && (
+        <Card className="p-4 space-y-3">
+          <p className="font-medium text-sm">Changes since last retrieval</p>
+          <SchemaDiffView report={diffReport} />
         </Card>
       )}
 

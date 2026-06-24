@@ -1,16 +1,154 @@
-// 021-pdf-export — Utilitaires PDF côté serveur
+// 021-pdf-export — Utilitaires PDF côté serveur (Netlify-compatible)
 //
-// TODO: Installer puppeteer et câbler generatePdfBinary() pour la génération
-//       de PDF binaire réelle. La fonction est actuellement un stub qui retourne
-//       le HTML enrichi de CSS @media print pour impression navigateur.
+// generatePdfBinary() rend le HTML enrichi en PDF A4 binaire via puppeteer-core +
+// @sparticuz/chromium (Chromium compatible Lambda/OpenNext — on n'embarque PAS le
+// paquet 'puppeteer' complet, dont le Chromium bundlé casse sur Lambda).
 //
-// Pour le PDF binaire :
-//   import puppeteer from 'puppeteer'
-//   const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] })
-//   const page = await browser.newPage()
-//   await page.setContent(html, { waitUntil: 'networkidle0' })
-//   const buffer = await page.pdf({ format: 'A4', margin: { top: '25mm', bottom: '25mm', left: '20mm', right: '20mm' }, ... })
-//   await browser.close()
+// Stratégie executablePath :
+//   1. PUPPETEER_EXECUTABLE_PATH (dev local : pointer vers un Chrome/Edge installé)
+//   2. @sparticuz/chromium.executablePath() (runtime Netlify/Lambda)
+// Si le lancement échoue, generatePdfBinary lève une erreur : la route retombe
+// alors gracieusement sur le HTML d'impression (enrichHtmlForPrint).
+
+import type { Browser, PDFOptions } from 'puppeteer-core'
+
+const DEFAULT_MARGIN = {
+  top: '25mm',
+  right: '25mm',
+  bottom: '20mm',
+  left: '20mm',
+}
+
+export interface PdfBinaryOptions {
+  /** Titre affiché dans l'entête de page (A4). */
+  title?: string
+  /** Date affichée dans l'entête de page. */
+  date?: string
+}
+
+export interface PdfBinaryResult {
+  buffer: Buffer
+  fileSize: number
+}
+
+/**
+ * Résout le chemin de l'exécutable Chromium.
+ * - En dev/local : honore PUPPETEER_EXECUTABLE_PATH si défini.
+ * - Sinon : utilise le Chromium de @sparticuz/chromium (runtime Netlify/Lambda,
+ *   et dev local si la dépendance a téléchargé son binaire).
+ */
+async function resolveChromium(): Promise<{
+  executablePath: string
+  args: string[]
+  headless: boolean | 'shell'
+  defaultViewport: { width: number; height: number; deviceScaleFactor?: number } | null
+}> {
+  // Import dynamique : évite de charger le binaire au build et garde la route
+  // fonctionnelle même si la dépendance n'est pas résolvable (fallback HTML).
+  const chromium = (await import('@sparticuz/chromium')).default
+
+  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH
+  const executablePath = envPath && envPath.trim() !== '' ? envPath : await chromium.executablePath()
+
+  return {
+    executablePath,
+    args: chromium.args,
+    headless: chromium.headless,
+    defaultViewport: chromium.defaultViewport,
+  }
+}
+
+/**
+ * Convertit une chaîne HTML auto-portée en PDF A4 binaire.
+ *
+ * Injecte du CSS anti-coupure (break-inside: avoid) sur les <tr> et titres,
+ * puis rend via page.pdf() avec entête (titre + date) et pied de page (Page X / Y).
+ *
+ * Lève une erreur si Chromium ne peut pas démarrer — l'appelant doit alors
+ * retomber sur le HTML d'impression (enrichHtmlForPrint).
+ */
+export async function generatePdfBinary(
+  htmlContent: string,
+  options: PdfBinaryOptions = {},
+): Promise<PdfBinaryResult> {
+  const { title = '', date = new Date().toLocaleDateString('fr-FR') } = options
+
+  // CSS anti-coupure de page injecté avant rendu.
+  const pageBreakCss = `
+    <style>
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      h1, h2, h3, h4, h5, h6 { break-inside: avoid; page-break-inside: avoid; break-after: avoid; page-break-after: avoid; }
+    </style>
+  `
+  const htmlWithCss = htmlContent.includes('</head>')
+    ? htmlContent.replace('</head>', `${pageBreakCss}</head>`)
+    : `${pageBreakCss}${htmlContent}`
+
+  // Import dynamique de puppeteer-core (idem : ne casse pas le build).
+  const puppeteer = (await import('puppeteer-core')).default
+  const { executablePath, args, headless, defaultViewport } = await resolveChromium()
+
+  console.log(`[PDF] Lancement de Chromium — title="${title}" (${executablePath})`)
+
+  let browser: Browser | undefined
+  try {
+    browser = await puppeteer.launch({
+      executablePath,
+      args,
+      headless,
+      defaultViewport,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[PDF] Échec du lancement de Chromium :', message)
+    throw new Error(`Génération PDF impossible : Chromium n'a pas pu démarrer. ${message}`)
+  }
+
+  try {
+    const page = await browser.newPage()
+    await page.setContent(htmlWithCss, { waitUntil: 'networkidle0' })
+
+    const headerTemplate = title
+      ? `<div style="font-size:9px;color:#666;width:100%;padding:0 20mm;box-sizing:border-box;display:flex;justify-content:space-between;">
+           <span>${escapeHtml(title)}</span>
+           <span>${escapeHtml(date)}</span>
+         </div>`
+      : '<div></div>'
+
+    const footerTemplate = `<div style="font-size:9px;color:#666;width:100%;padding:0 20mm;box-sizing:border-box;text-align:center;">
+        Page <span class="pageNumber"></span> / <span class="totalPages"></span>
+      </div>`
+
+    const pdfOptions: PDFOptions = {
+      format: 'A4',
+      printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate,
+      footerTemplate,
+      margin: DEFAULT_MARGIN,
+    }
+
+    const pdfBytes = await page.pdf(pdfOptions)
+    const buffer = Buffer.from(pdfBytes)
+    console.log(`[PDF] PDF généré : ${buffer.length} octets`)
+
+    return { buffer, fileSize: buffer.length }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[PDF] Erreur de génération du PDF :', message)
+    throw new Error(`Génération PDF échouée : ${message}`)
+  } finally {
+    await browser.close()
+  }
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 /**
  * Produit un nom de fichier PDF sécurisé.

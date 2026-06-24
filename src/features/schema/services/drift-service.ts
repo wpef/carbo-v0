@@ -220,3 +220,81 @@ export async function detectLiveDrift(
 
   return report
 }
+
+/**
+ * computePersistedDrift — 003 FR-006 ("display the diff when a refresh is performed").
+ *
+ * Compares the two persisted snapshots PREVIOUS → CURRENT (both produced by
+ * fetchAndStoreSchema's rotation) and returns a DriftReport describing what the
+ * refresh just changed. Unlike detectLiveDrift this is purely DB-backed (no
+ * adapter call) and is meant to be called by the schema POST route *after* the
+ * new CURRENT has been written.
+ *
+ * Why this exists: calling detectLiveDrift() right after a refresh is a no-op,
+ * because the new CURRENT was just written from the same live fetch the drift
+ * compares against (CURRENT == live). The meaningful "what changed in this
+ * refresh" is PREVIOUS → CURRENT, which this function computes.
+ *
+ * Returns status='ok' with no changes when there is no PREVIOUS snapshot
+ * (first-ever retrieval — nothing to diff against). Never throws.
+ */
+export async function computePersistedDrift(
+  planId: string,
+  role: 'source' | 'destination',
+): Promise<DriftReport> {
+  const plan = await prisma.migrationPlan.findUnique({
+    where: { id: planId },
+    include: { sourceConnection: true, destinationConnection: true },
+  })
+
+  if (!plan) {
+    return buildUnavailableReport('', role, `Plan ${planId} not found`)
+  }
+
+  const connection = role === 'source' ? plan.sourceConnection : plan.destinationConnection
+  if (!connection) {
+    return buildUnavailableReport('', role, `No ${role} connection on plan ${planId}`)
+  }
+
+  const connectionId = connection.id
+  const side: SnapshotSide = role === 'source' ? 'SOURCE' : 'DESTINATION'
+
+  const [currentSnapshot, previousSnapshot] = await Promise.all([
+    prisma.schemaSnapshot.findUnique({
+      where: { connectionId_side_status: { connectionId, side, status: 'CURRENT' } },
+      include: { objects: { include: { fields: true }, orderBy: { apiName: 'asc' } } },
+    }),
+    prisma.schemaSnapshot.findUnique({
+      where: { connectionId_side_status: { connectionId, side, status: 'PREVIOUS' } },
+      include: { objects: { include: { fields: true }, orderBy: { apiName: 'asc' } } },
+    }),
+  ])
+
+  if (!currentSnapshot) {
+    return buildUnavailableReport(connectionId, role, 'No CURRENT snapshot — retrieve schema first')
+  }
+
+  // First-ever retrieval: nothing to diff against. Report 'ok' (no drift), per
+  // 003 edge case "PREVIOUS is the first-ever snapshot → all objects added" is
+  // surfaced by the live diff path; here we simply report no change.
+  if (!previousSnapshot) {
+    return {
+      connectionId,
+      role,
+      checkedAt: new Date().toISOString(),
+      status: 'ok',
+      changes: [],
+      severitySummary: { critical: 0, warning: 0, info: 0 },
+    }
+  }
+
+  const currentObjects = hydrateStoredSnapshot(currentSnapshot.objects)
+  const previousObjects = hydrateStoredSnapshot(previousSnapshot.objects)
+
+  // PREVIOUS plays the role of "stored", CURRENT the role of "live" so that
+  // additions/removals read in the natural refresh direction.
+  const mappingCtx = await buildMappingContext(planId, role)
+  const report = computeDrift(connectionId, role, previousObjects, currentObjects, mappingCtx)
+
+  return report
+}

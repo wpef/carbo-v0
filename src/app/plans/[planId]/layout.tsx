@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation'
 import { PlanHeader } from '@/features/plans/components/plan-header'
 import { StepSidebar } from '@/features/plans/components/step-sidebar'
 import { DriftBanner } from '@/features/schema/components/drift-banner'
+import { PlanDriftProvider } from '@/features/plans/plan-drift-context'
 import { normalizeStep } from '@/features/plans/lib/steps'
 import type { PlanStepValue } from '@/features/plans/lib/steps'
 import type { ConnectionInfo } from '@/features/plans/types'
@@ -35,20 +36,28 @@ export default async function PlanLayout({
   const currentStep = normalizeStep(plan.currentStep)
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <PlanHeader
-        planId={plan.id}
-        name={plan.name}
-        status={plan.status as 'DRAFT' | 'READY' | 'BROKEN'}
-        sourceConnection={plan.sourceConnection as ConnectionInfo | null}
-        destinationConnection={plan.destinationConnection as ConnectionInfo | null}
-      />
-      {/* Drift banner — client component, non-blocking (FR-011). */}
-      <DriftBanner planId={plan.id} />
-      <div className="flex flex-1 min-h-0">
-        <StepSidebar planId={plan.id} currentStep={currentStep as PlanStepValue} />
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+    // PlanDriftProvider (001 FR-015) owns the plan-visit drift check + merged
+    // report; the banner and downstream action pages read it from context.
+    <PlanDriftProvider
+      planId={plan.id}
+      hasSource={plan.sourceConnection != null}
+      hasDestination={plan.destinationConnection != null}
+    >
+      <div className="h-screen flex flex-col overflow-hidden">
+        <PlanHeader
+          planId={plan.id}
+          name={plan.name}
+          status={plan.status as 'DRAFT' | 'READY' | 'BROKEN'}
+          sourceConnection={plan.sourceConnection as ConnectionInfo | null}
+          destinationConnection={plan.destinationConnection as ConnectionInfo | null}
+        />
+        {/* Drift banner — client component, non-blocking (FR-011). */}
+        <DriftBanner />
+        <div className="flex flex-1 min-h-0">
+          <StepSidebar planId={plan.id} currentStep={currentStep as PlanStepValue} />
+          <main className="flex-1 overflow-auto p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </PlanDriftProvider>
   )
 }
