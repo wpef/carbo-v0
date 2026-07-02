@@ -1,70 +1,83 @@
 # Implementation Plan: Mapping Integrity Check
 
-**Branch**: `017-mapping-integrity-check` | **Date**: 2026-04-02 | **Spec**: `specs/017-mapping-integrity-check/spec.md`
+**Branch**: `017-mapping-integrity-check` | **Date**: 2026-05-18 | **Spec**: `specs/017-mapping-integrity-check/spec.md`
 
 ## Summary
 
-Detect broken mappings after schema changes. When a source or destination schema is refreshed, the system checks all migration plans referencing that connection for: deleted objects, deleted fields, and type changes that break compatibility. Broken entities are flagged with persistent IntegrityIssue records, and the plan status transitions to BROKEN. Issues are resolved when the consultant fixes (remaps or removes) the affected mappings.
+Post-schema-refresh integrity engine that detects broken mappings (deleted objects/fields, incompatible type changes, orphaned filters/rules) and transitions the plan to BROKEN status. The consultant resolves issues manually via a repair UI -- no automatic re-binding (Principle IX). This feature gates document generation (019/020): a BROKEN plan cannot proceed.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
-**Primary Dependencies**: Next.js Route Handlers, Prisma ORM, type-compatibility service (012), Connector Interface types (000)
-**Storage**: Neon Postgres via Prisma (IntegrityIssue table linked to MigrationPlan, isolated per tenant)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js sur Vercel (dev sur localhost)
-**Project Type**: Web application (unified Next.js)
-**Constraints**: Integrity check must complete within 5 seconds for 10 object mappings with 200 field mappings
+**Language/Version**: TypeScript 5.x (strict mode)
+**Primary Dependencies**: Prisma ORM (query layer), existing mapping models (011/012/013), type compatibility matrix (012), AuditLog (001)
+**Storage**: Neon Postgres via Prisma -- `IntegrityIssue` persisted table + status transitions on `MigrationPlan`, `ObjectMapping`, `FieldMapping`
+**Testing**: Vitest -- unit tests for the check engine with realistic fixtures (10 object mappings, 200 field mappings); integration tests against a real Postgres
+**Target Platform**: Next.js Route Handlers (API) + React components (UI badges/banners)
+**Project Type**: Backend service + thin UI layer
+**Constraints**: No automatic FK re-binding (Principle IX); apiName-based resolution only; synchronous execution after schema refresh
 
 ## Constitution Check
 
 | # | Principle | Status | Notes |
 |---|-----------|--------|-------|
-| I | Spec-First | PASS | spec.md approved |
-| II | Readability | PASS | Straightforward comparison logic; each check type is a separate function |
-| III | Data fidelity | PASS | **Core feature**: ensures migration plan stays consistent with actual schemas |
-| IV | Tests on real data | PASS | Tests with realistic schema diffs (field deletions, type changes, object removals) |
-| V | Idempotence | PASS | Running integrity check twice produces same results; issues are not duplicated |
-| VI | Traceability | PASS | All integrity check results and plan status transitions logged to audit trail |
-| VII | Observability | PASS | Console logs for each issue detected, plan status changes |
-| VIII | Modularity | PASS | Isolated behind IntegrityCheckService; uses type-compatibility from 012; triggered by schema refresh (003/007), not internally coupled |
-| IX | Human-in-the-loop | PASS | **Cœur du Principe IX** — marque les mappings cassés via `IntegrityIssue` mais ne supprime / remap jamais automatiquement ; pas de fuzzy match auto ; le consultant résout chaque issue manuellement (remap ou suppression) ; `plan.status=BROKEN` jusqu'à résolution explicite |
+| I | Spec-First | PASS | spec.md approved with design decisions |
+| II | Readability | PASS | Single-responsibility engine; named issue types, no magic constants |
+| III | Data fidelity | PASS | No silent re-binding; broken mappings flagged, never auto-healed |
+| IV | Tests on real data | PASS | Realistic fixtures: 10 objects, 200 fields, type changes, deletions |
+| V | Idempotence | PASS | Re-running check on same snapshot produces identical issues; resolved issues stay resolved |
+| VI | Traceability | PASS | All check results and status transitions logged to AuditLog |
+| VII | Observability | PASS | Console logging at each check phase (start, issues found, status transition) |
+| VIII | Modularity | PASS | Isolated service at `src/lib/services/integrity/`; public API = 2 functions |
+| IX | Human-in-the-loop | PASS | Core design: no auto-remap, no auto-delete, consultant resolves manually |
 
-## Project Structure
+## Architecture
 
-### Documentation
-
-```text
-specs/017-mapping-integrity-check/
-├── plan.md
-├── research.md
-├── data-model.md
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
 ```
-
-### Source Code
-
-```text
 src/
-├── app/
-│   └── api/plans/[planId]/
-│       └── integrity/
-│           └── route.ts                            # GET issues, POST trigger check
-├── components/mapping/
-│   ├── IntegrityIssuesBanner.tsx                   # Plan-level banner showing broken status
-│   └── IntegrityIssueRow.tsx                       # Single issue display with resolution action
-├── lib/
-│   ├── services/integrity-check.ts                 # Core integrity check logic
-│   └── types/mapping.ts                            # Extended with IntegrityIssue types
-└── hooks/
-    └── use-integrity-issues.ts                     # React hook for integrity state
-
-tests/
-├── unit/services/integrity-check.test.ts
-└── integration/api/integrity-check.test.ts
+  lib/
+    services/
+      integrity/
+        check-engine.ts           # Core: runIntegrityCheck(planId) -> IntegrityCheckResult
+        issue-resolver.ts         # resolveIssue(issueId), bulkResolveByPlan(planId)
+        index.ts                  # Public API barrel
+    types/
+      integrity.ts                # IntegrityIssue types, enums, DTOs
+  app/
+    api/
+      plans/
+        [planId]/
+          integrity/
+            route.ts              # GET  -> run check, return issues
+            [issueId]/
+              route.ts            # PATCH -> resolve/dismiss an issue
+            resolve-all/
+              route.ts            # POST -> bulk resolve all issues for plan
 ```
 
-**Structure Decision**: Integrity check is a plan-level concern (not per-object-mapping), so the API sits at `/api/plans/[planId]/integrity/`. The check is triggered by schema refresh features (003, 007) calling the IntegrityCheckService, or manually via the POST endpoint.
+### Data Flow
+
+```
+Schema Refresh (003/007)
+  -> POST /api/plans/[planId]/integrity (or auto-triggered by refresh handler)
+    -> checkEngine.runIntegrityCheck(planId)
+      -> Load plan + all ObjectMappings + FieldMappings + MigrationFilters + MigrationLogic
+      -> For each ObjectMapping: resolve sourceObjectApiName against CURRENT snapshot
+      -> For each FieldMapping: resolve sourceFieldApiName + destFieldApiName against CURRENT snapshot
+      -> For each MigrationFilter: resolve sourceFieldApiName against CURRENT snapshot
+      -> For each FIELD_REFERENCE rule: resolve referenced field against CURRENT snapshot
+      -> Collect IntegrityIssue[] (new + existing unresolved)
+      -> Persist new issues, update plan status
+      -> Log to AuditLog
+    -> Return { issues, planStatus, checkedAt }
+```
+
+## Phases
+
+### Phase 0: Research
+See `research.md` -- type compatibility matrix reuse, apiName resolution strategy, performance.
+
+### Phase 1: Design
+See `data-model.md` (IntegrityIssue Prisma model), `contracts/api.md` (API routes + DTOs).
+
+### Phase 2: Implementation
+See `tasks.md` -- 3 phases: types + model, engine + API, UI integration.

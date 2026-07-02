@@ -1,36 +1,62 @@
 # Research: Unmapped Fields Detection
 
-## Decision 1: Computation Strategy
+## Decision 1: Read-Time Computation vs Materialized View
 
-**Options**:
-- **Real-time computation**: Compute on every API call from schema fields - mapped fields - excluded fields. Pure read, no stored state.
-- **Materialized view**: Pre-compute and store unmapped field lists. Update on field mapping changes. Faster reads, stale risk.
-- **Hybrid**: Compute real-time but cache in memory for the session.
+**Decision**: Unmapped fields are computed at read time by comparing the current set of field mappings and exclusions against the source/destination schema snapshots. No background process, no materialized view, no stored "unmapped" flag.
 
-**Decision**: Real-time computation. The inputs are small (200 fields max per object, ~50 mappings, ~20 exclusions). The computation is a simple set difference: `unmappedSource = allSourceFields - mappedSourceFields - excludedSourceFields`. This runs in O(n) with Set lookups and completes in under 1ms. No caching needed.
+**Rationale**: The spec explicitly states "unmapped fields detection is a read-time computation based on the current set of field mappings and exclusions -- it does not require a separate background process." The computation is simple: `unmappedSourceFields = allSourceFields - mappedSourceFields - excludedSourceFields`. With 200+ fields, this is still sub-millisecond.
 
-## Decision 2: Exclusion Persistence vs. Computed
+**Alternatives**: Background job that pre-computes unmapped status (unnecessary complexity, stale data risk), stored `isMapped` flag on each field (sync nightmare when mappings change), database view (ties computation to Postgres, harder to unit test).
 
-**Options**:
-- **Persisted exclusions**: Store FieldExclusion rows in DB. Explicit, auditable, survives refresh.
-- **Session-only exclusions**: Store in frontend state. Simpler but lost on page reload.
+## Decision 2: Coverage Formula
 
-**Decision**: Persisted exclusions. Principle VI (Traceability) requires audit trail for exclusion decisions. The consultant's deliberate choice to exclude a field is a meaningful action that must persist across sessions and appear in client documents.
+**Decision**: Two coverage metrics per object mapping:
 
-## Decision 3: Auto-Clear Exclusion on Mapping
+1. **Source coverage** = `(mappedSourceFields + excludedSourceFields) / totalSourceFields * 100`
+2. **Destination required coverage** = `mappedRequiredDestFields / totalRequiredDestFields * 100`
 
-The spec says: "A field that was marked as intentionally excluded becomes mapped: the exclusion flag is automatically cleared." This is handled in the FieldMappingService (012). When `createFieldMapping` succeeds, it checks for and deletes any FieldExclusion for that sourceFieldName. This keeps the logic in the mapping service (where the trigger occurs) rather than in the unmapped-fields service.
+A "green" (complete) state requires: source coverage = 100% AND destination required coverage = 100%.
 
-## Decision 4: Bulk Exclusion
+**Rationale**: Source coverage includes excluded fields because deliberate exclusions are a valid consultant decision (not a gap). Destination coverage only counts required fields because optional unmapped destination fields are acceptable. The two percentages serve different purposes: source coverage answers "have I reviewed every source field?" while destination coverage answers "will the migration succeed without required field errors?"
 
-The spec requires bulk exclusion for objects with many irrelevant fields. The API supports a single POST with an array of sourceFieldNames. The UI provides a "select all visible" + "exclude selected" flow.
+**Alternatives**: Single combined metric (loses the distinction between source and destination concerns), exclude-excluded-from-percentage (penalizes deliberate decisions), count-based instead of percentage (less intuitive for consultants).
 
-## Decision 5: "Required" Destination Property Detection
+## Decision 3: FieldExclusion Model Design
 
-Required destination properties that are unmapped represent a migration risk (writes will fail). The "required" status comes from the connector schema metadata (ConnectorField.isRequired). The unmapped-fields computation checks all destination fields where isRequired=true and filters out those that have a FieldMapping targeting them.
+**Decision**: A `FieldExclusion` table with: id, objectMappingId, sourceFieldName, reason (optional text), createdAt. Only source fields can be excluded (not destination required fields -- those must be mapped or get a default value).
 
-## Decision 6: Integration with Other Features
+**Rationale**: The spec says "the consultant can mark unmapped fields as 'intentionally excluded'" specifically for source fields. Destination required fields appear in a separate warning section -- the consultant resolves them by creating a field mapping (possibly with a FIXED_VALUE transformation), not by excluding them. The optional `reason` field allows the consultant to document why a field was excluded (e.g., "system field, not relevant for migration").
 
-- **Feature 011 (Object Detail Modal, A3)**: The "fields remaining to validate" count is computed as: `totalSourceFields - mappedSourceFields - excludedSourceFields`. The object detail endpoint (011) calls UnmappedFieldsService for this count.
-- **Feature 012 (Field Mapping View)**: The GET endpoint already returns `unmappedSourceFields` and `unmappedDestinationFields`. This data comes from UnmappedFieldsService.
-- **Feature 019/020 (Documents)**: Unmapped fields warnings are included in generated documents. The document generation service calls UnmappedFieldsService.
+**Alternatives**: Exclude both source and destination fields (spec doesn't support destination exclusion), store exclusions as a JSON array on ObjectMapping (loses queryability and audit trail), no reason field (loses documentation value).
+
+## Decision 4: Bulk Exclusion UX
+
+**Decision**: The POST endpoint accepts either a single exclusion or an array of exclusions. The UI provides a "Select all" checkbox on the unmapped source fields list, plus individual checkboxes, and a "Exclure la selection" button. All selected fields are submitted in a single POST request.
+
+**Rationale**: The spec requires "bulk-mark fields as 'intentionally excluded'" for the edge case of source objects with hundreds of system fields. A single API call with an array payload is simpler than multiple sequential calls and allows a single audit log entry.
+
+**Alternatives**: Individual exclusion only (poor UX for 100+ fields), "Exclude all" button without selection (too aggressive -- the consultant may want to exclude most but not all), drag-and-drop to an excluded zone (over-engineered).
+
+## Decision 5: Auto-Clear Exclusion on Mapping
+
+**Decision**: When a FieldMapping is created for a source field that has a FieldExclusion, the exclusion is automatically deleted. This is implemented in the field mapping creation service (012), not in the unmapped fields service, because the trigger event is "field mapping created."
+
+**Rationale**: FR-006 states "the system MUST automatically clear the 'intentionally excluded' flag when a field mapping is created for a previously excluded field." This prevents contradictory states (field both mapped and excluded). The deletion happens in the same transaction as the field mapping creation.
+
+**Alternatives**: Soft-clear (mark exclusion as inactive) -- adds complexity, no benefit since the mapping supersedes the exclusion; leave exclusion in place (contradictory state); periodic cleanup job (stale data between runs).
+
+## Decision 6: Integration with 011 Object Detail Modal
+
+**Decision**: The "fields remaining to validate" count in the 011 object detail modal (A3) is derived from: `unmappedSourceFieldsCount + unmappedRequiredDestFieldsCount`. This count is computed by the unmapped-fields endpoint and exposed as a convenience field in the response.
+
+**Rationale**: The spec for 011 states "fields remaining to validate is computed from the total source fields minus mapped fields minus intentionally excluded fields." This is exactly the unmapped source field count from this feature. Adding the unmapped required destination field count makes the indicator more comprehensive.
+
+**Alternatives**: Separate endpoint for the modal count (unnecessary duplication), client-side computation in the modal (requires the modal to fetch all field data), store the count on ObjectMapping (stale data risk).
+
+## Decision 7: Real-Time Updates
+
+**Decision**: The unmapped fields list updates in real time as the consultant adds or removes field mappings. This is achieved by passing a `version` counter (incremented after every field mapping mutation) from the field mapping view to the `useUnmappedFields` hook, which triggers a re-fetch.
+
+**Rationale**: The spec edge case states "the unmapped fields list updates in real time as the consultant adds or removes field mappings." The version counter pattern is already used in 012 for similar real-time update needs (tab badge updates).
+
+**Alternatives**: WebSocket/SSE (over-engineered for a single-user tool), polling (wasteful), manual refresh button (poor UX).

@@ -1,37 +1,106 @@
 # Data Model: Migration Filters
 
-## Prisma Schema Additions
+## Prisma Schema
+
+### MigrationFilter (FR-001, FR-002, FR-003)
 
 ```prisma
+enum FilterOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  NOT_CONTAINS
+  STARTS_WITH
+  ENDS_WITH
+  GREATER_THAN
+  LESS_THAN
+  IS_NULL
+  DATE_AFTER
+  DATE_BEFORE
+}
+
 model MigrationFilter {
-  id                String   @id @default(uuid())
-  objectMappingId   String
-  sourceFieldName   String
-  operator          String   // EQUALS | NOT_EQUALS | CONTAINS | STARTS_WITH | ENDS_WITH | GREATER_THAN | LESS_THAN | DATE_AFTER | DATE_BEFORE
-  value             String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id              String         @id @default(uuid())
+  objectMappingId String
+  fieldApiName    String
+  operator        FilterOperator
+  value           String?
+  isActive        Boolean        @default(true)  // FR: toggle a filter on/off without deleting it
 
-  objectMapping     ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
-
-  @@index([objectMappingId])
+  objectMapping ObjectMapping @relation(fields: [objectMappingId], references: [id], onDelete: Cascade)
 }
 ```
 
-## Entity Relationships
+> **Note**: `MigrationFilter` has **no `createdAt` or `updatedAt` columns** in the implemented schema.
+> The service DTO includes placeholder timestamps for API compatibility, but they are not persisted.
+> The field referencing the source schema is `fieldApiName` (not `sourceFieldName`).
+
+
+### Connector Interface Extension (FilterCondition type)
+
+```typescript
+// Added to src/lib/types/connector.ts
+
+interface FilterCondition {
+  fieldName: string
+  operator: 'EQUALS' | 'NOT_EQUALS' | 'CONTAINS' | 'NOT_CONTAINS' | 'STARTS_WITH' | 'ENDS_WITH' | 'GREATER_THAN' | 'LESS_THAN' | 'IS_NULL' | 'DATE_AFTER' | 'DATE_BEFORE'
+  value: string
+}
+
+// Optional method added to ConnectorAdapter
+interface ConnectorAdapter {
+  // ... existing methods ...
+
+  /** Optional: count records matching filter conditions. If not implemented, total count is returned. */
+  getFilteredRecordCount?(connectionId: string, objectApiName: string, filters: FilterCondition[]): Promise<number>
+}
+```
+
+## Field Descriptions
+
+### MigrationFilter
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String (uuid)` | Unique identifier. |
+| `objectMappingId` | `String` | FK to the parent ObjectMapping. Cascade-deleted when the object mapping is removed. |
+| `fieldApiName` | `String` | The API name of the source field this filter applies to. Must exist in the source object's schema (FR-005). |
+| `operator` | `FilterOperator` | The comparison operator. One of 11 supported operators (FR-002). |
+| `value` | `String?` | The comparison value. Nullable — `IS_NULL` operator requires no value. Always stored as string; type coercion is handled at query time by the connector. Date values are expected in ISO 8601 format (YYYY-MM-DD). |
+| `isActive` | `Boolean` | When false, the filter is ignored at query time (toggle on/off without deleting). |
+
+## Relationships
 
 ```
-ObjectMapping (1) ──► (N) MigrationFilter
+ObjectMapping (1) ──► (N) MigrationFilter    (cascade delete)
 ```
 
-## Key Constraints
+**Note**: MigrationFilter has no children. It is a leaf entity belonging to ObjectMapping. When an object mapping is deleted (011 FR-011), all its filters are cascade-deleted automatically.
 
-- **No limit**: An ObjectMapping can have any number of filters (spec says 20+ supported).
-- **No uniqueness constraint on (objectMappingId, sourceFieldName, operator)**: The same field can have multiple filters (e.g., "CreatedDate DATE_AFTER 2020-01-01" AND "CreatedDate DATE_BEFORE 2025-01-01").
-- **Value is always a string**: The filter value is stored as a string regardless of field type. Type coercion is the responsibility of the connector at execution time. Dates are stored as ISO 8601 strings (YYYY-MM-DD).
+## Constraints
 
-## Notes
+- No uniqueness constraint on `(objectMappingId, fieldApiName, operator, value)` — the same filter can technically be added twice (the spec does not explicitly forbid duplicates, but the UI should prevent it with a client-side check).
+- `value` is nullable. `IS_NULL` operator requires `value = null`. Other operators store the value as a plain string; type coercion is handled at the connector query layer.
+- There is no limit on the number of filters per object mapping (edge case: "20+ filters supported without limit").
+- No `@@index` directive on `objectMappingId` in the implemented schema (index implicitly created via the FK constraint by PostgreSQL).
 
-- Cascade deletion: deleting an ObjectMapping (011) cascades to all its MigrationFilters.
-- The `sourceFieldName` references a field from the source schema snapshot. If that field is later deleted during a schema refresh, the integrity check (017) will flag this filter as broken.
-- Filters apply to source records only. There is no destination filter concept.
+## Indexes
+
+- No explicit `@@index` in the implemented Prisma schema. The FK on `objectMappingId` generates an implicit index for filter listing and estimation queries.
+
+## Integration Points
+
+### ObjectMapping relation update
+
+The ObjectMapping model (defined in 011) carries the reverse relation as `filters`:
+
+```prisma
+model ObjectMapping {
+  // ... existing fields ...
+  filters MigrationFilter[]
+}
+```
+
+### 011 Object Detail Modal (A3)
+
+The "migration filter count" section in the object detail modal (011 FR-008) is derived from `MigrationFilter.count({ where: { objectMappingId } })`. Feature 011 owns the UI rendering; this feature provides the data.

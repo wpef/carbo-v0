@@ -1,52 +1,83 @@
 # Quickstart: Text Document Generation
 
+## What this feature provides
+
+Generation of a human-readable HTML document summarizing an entire migration plan for client review. Includes field mapping tables, migration logic rule descriptions, unmapped fields warnings, and migration filter descriptions.
+
 ## Prerequisites
 
-- Node.js 18+
-- Feature 013 (migration-logic), 016 (unmapped-fields-detection), 018 (rule-description-engine) implemented
-- Prisma schema includes `TextDocument` model
-- `ANTHROPIC_API_KEY` set in `.env.local` (optional -- needed only if plan has PROMPT rules)
+- Feature 013 (Migration Logic) implemented
+- Feature 016 (Unmapped Fields Detection) implemented
+- Feature 018 (Rule Description Engine) implemented
+- Prisma migrated with `TextDocument` model
+- A migration plan with at least one object mapping and field mappings
 
-## Setup
+## How to use
 
-```bash
-# After adding TextDocument to prisma/schema.prisma
-npx prisma db push
-```
-
-## Generate a Document
+### 1. Generate a text document
 
 ```bash
-# Via API
-POST /api/plans/{planId}/documents/text
-
-# Response: document metadata with stats (no HTML body)
+curl -X POST http://localhost:3000/api/plans/{planId}/documents/text
 ```
 
-## View a Document
+Response:
+```json
+{
+  "id": "clx_doc_001",
+  "mappingPlanId": "clx_plan_001",
+  "status": "CURRENT",
+  "fieldCount": 42,
+  "ruleCount": 8,
+  "unmappedCount": 5,
+  "llmCallCount": 2,
+  "generatedAt": "2026-05-18T14:30:00.000Z"
+}
+```
+
+### 2. List all document versions
 
 ```bash
-# List versions
-GET /api/plans/{planId}/documents/text
-
-# Get specific document with HTML
-GET /api/plans/{planId}/documents/text/{documentId}
+curl http://localhost:3000/api/plans/{planId}/documents/text
 ```
 
-## Preview in App
+Response: array of document summaries, ordered by most recent first.
 
-Navigate to `/plans/{planId}/documents/text/{documentId}` to see the rendered HTML preview in an iframe.
-
-## Run Tests
+### 3. View full document HTML
 
 ```bash
-npx vitest run tests/unit/services/text-document/
-npx vitest run tests/integration/text-document.test.ts
+curl http://localhost:3000/api/plans/{planId}/documents/text/{documentId}
 ```
 
-## Key Behaviors
+Response includes `htmlContent` -- the full self-contained HTML document.
 
-- Each POST creates a **new immutable version** -- documents are never updated
-- Stats (field count, rule count, etc.) are snapshot values at generation time
-- If the plan has PROMPT rules and no API key, rule descriptions show fallback text
-- A table of contents is included when the plan has 3+ object mappings
+### 4. UI preview
+
+Navigate to `/plans/{planId}/documents` in the application. The documents page lists generated text documents with a "Generate" button and a preview pane that renders the HTML in a sandboxed iframe.
+
+## Document Structure
+
+The generated HTML document contains:
+
+1. **Summary section**: plan name, description, source/destination systems, counts (objects, fields, rules), generation timestamp
+2. **Table of contents** (when 3+ object mappings): links to each object section
+3. **Per-object sections**:
+   - Object heading (source name -> destination name)
+   - Field mapping table (source field, destination field, types, rule description)
+   - Migration filters subsection
+   - Unmapped fields warning subsection
+4. **Generation stats footer**: total counts for audit reference
+
+## Using the service function directly (for feature 021)
+
+```typescript
+import { generateTextDocument } from '@/features/text-document/services/text-document-service'
+
+// Generate and persist a new text document
+const doc = await generateTextDocument(planId)
+// doc.id can be used to fetch the HTML for PDF export
+```
+
+## Dependencies
+
+- **Depends on**: 013 (Migration Logic), 016 (Unmapped Fields Detection), 018 (Rule Description Engine)
+- **Used by**: 021 (PDF Export)

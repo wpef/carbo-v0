@@ -1,135 +1,156 @@
-# API Contract: Source Field Retrieval
+# Contracts: Source Field Retrieval
 
-Base path: `/api/plans/[planId]/source/fields`
+## API Routes
 
----
+### POST /api/plans/[planId]/source/fields
 
-## POST /api/plans/[planId]/source/fields
+**Purpose**: Trigger field retrieval for all selected objects (FR-001). Called after object selection confirmation or when the consultant triggers a re-retrieval.
 
-Trigger batch field retrieval for all selected objects. Retrieves field metadata from the adapter for each selected object sequentially. Persists results as they complete.
+**Request**: No body required. The service reads selected objects from the database.
 
-**Request body**: None.
-
-**Response 201**:
+**Response** (200):
 ```json
 {
-  "result": {
-    "succeeded": [
-      { "objectApiName": "Account", "objectId": "clxyz...", "status": "success", "fieldCount": 67 },
-      { "objectApiName": "Contact", "objectId": "clxyz...", "status": "success", "fieldCount": 42 }
-    ],
-    "failed": [
-      { "objectApiName": "CustomObj__c", "objectId": "clxyz...", "status": "error", "error": "Insufficient permissions" }
-    ],
-    "totalFields": 109,
-    "duration": 12340
+  "status": "completed",
+  "summary": {
+    "totalObjects": 42,
+    "succeeded": 41,
+    "failed": 1,
+    "totalFields": 1523,
+    "failures": [
+      {
+        "objectApiName": "CustomObj__c",
+        "error": "Insufficient permissions to describe object"
+      }
+    ]
   }
 }
 ```
 
-**Response 404**: Plan not found, no source connection, no schema, or no selected objects.
-
-**Response 409**: Field retrieval already in progress.
+**Response** (400 — no selected objects):
 ```json
 {
-  "error": "RETRIEVAL_IN_PROGRESS",
-  "message": "Field retrieval is already in progress."
+  "error": "No selected objects found. Select objects before retrieving fields."
+}
+```
+
+**Response** (404 — plan or connection not found):
+```json
+{
+  "error": "Plan not found" | "No source connection found for this plan"
+}
+```
+
+**Behavior**:
+1. Resolve the source connection for the plan
+2. Load all `ObjectSelection` rows where `isSelected=true` for the CURRENT snapshot (not a column on `SchemaObject` — selection is tracked in the separate `ObjectSelection` table)
+3. For each selected object, call `adapter.getFields(connectionId, objectApiName)` with bounded concurrency (5)
+4. Persist results as `ObjectField` rows (upsert: delete existing fields for the object, then insert)
+5. Log the retrieval event to the audit trail (FR-007)
+6. Return the summary
+
+**Idempotency**: Safe to call multiple times. Each call replaces existing fields for selected objects with fresh data. Concurrent calls for the same plan are rejected (409).
+
+**Response** (409 — concurrent retrieval):
+```json
+{
+  "error": "Field retrieval already in progress for this plan"
 }
 ```
 
 ---
 
-## GET /api/plans/[planId]/source/fields
+### GET /api/plans/[planId]/source/fields
 
-Get all persisted fields grouped by object. Only returns fields for selected objects.
+**Purpose**: List all persisted fields for all selected objects in the CURRENT snapshot.
 
-**Response 200**:
+**Response** (200):
 ```json
 {
   "objects": [
     {
-      "objectId": "clxyz...",
       "objectApiName": "Account",
       "objectLabel": "Account",
-      "fieldCount": 67,
+      "fieldCount": 65,
       "fields": [
         {
-          "id": "clxyz...",
-          "apiName": "Id",
-          "label": "Account ID",
-          "dataType": "id",
+          "id": "clu...",
+          "apiName": "Name",
+          "label": "Account Name",
+          "dataType": "string",
           "isRequired": true,
-          "isReadOnly": true,
-          "isUnique": true,
+          "isReadOnly": false,
+          "isUnique": false,
           "isAccessible": true,
           "referenceTo": null,
           "relationshipType": null
         },
         {
-          "id": "clxyz...",
-          "apiName": "ParentId",
-          "label": "Parent Account ID",
+          "id": "clu...",
+          "apiName": "OwnerId",
+          "label": "Owner",
           "dataType": "reference",
-          "isRequired": false,
+          "isRequired": true,
           "isReadOnly": false,
           "isUnique": false,
           "isAccessible": true,
-          "referenceTo": "Account",
-          "relationshipType": "Lookup"
+          "referenceTo": "User",
+          "relationshipType": "lookup"
+        },
+        {
+          "id": "clu...",
+          "apiName": "InternalScore__c",
+          "label": "Internal Score",
+          "dataType": "double",
+          "isRequired": false,
+          "isReadOnly": false,
+          "isUnique": false,
+          "isAccessible": false,
+          "referenceTo": null,
+          "relationshipType": null
         }
       ]
-    }
-  ],
-  "summary": {
-    "objectCount": 2,
-    "totalFields": 109,
-    "inaccessibleFields": 3
-  }
-}
-```
-
-**Response 200** (no fields retrieved yet):
-```json
-{
-  "objects": [],
-  "summary": {
-    "objectCount": 0,
-    "totalFields": 0,
-    "inaccessibleFields": 0
-  }
-}
-```
-
-**Response 404**: Plan not found, no source connection, or no schema.
-
----
-
-## GET /api/plans/[planId]/source/fields/[objectId]
-
-Get fields for a specific object.
-
-**Response 200**:
-```json
-{
-  "objectId": "clxyz...",
-  "objectApiName": "Account",
-  "objectLabel": "Account",
-  "fieldCount": 67,
-  "fields": [
-    {
-      "id": "clxyz...",
-      "apiName": "Id",
-      "label": "Account ID",
-      "dataType": "id",
-      "isRequired": true,
-      "isReadOnly": true,
-      "isUnique": true,
-      "isAccessible": true,
-      "referenceTo": null,
-      "relationshipType": null
     }
   ]
 }
 ```
 
-**Response 404**: Object not found or no fields retrieved for this object.
+**Response** (404): Plan or connection not found.
+
+---
+
+### GET /api/plans/[planId]/source/fields/[objectApiName]
+
+**Purpose**: List persisted fields for a single object.
+
+**Response** (200):
+```json
+{
+  "objectApiName": "Account",
+  "objectLabel": "Account",
+  "fieldCount": 65,
+  "fields": [...]
+}
+```
+
+**Response** (404): Object not found or not selected.
+
+---
+
+## Validation Rules
+
+| Rule | Endpoint | Condition |
+|------|----------|-----------|
+| Plan must exist | All | 404 if missing |
+| Source connection must exist and be CONNECTED | All | 404 / 400 if missing or not connected |
+| At least one object must be selected | POST | 400 if zero selected |
+| No concurrent retrieval | POST | 409 if already in progress |
+| Object must be selected | GET /[objectApiName] | 404 if not selected |
+
+## Audit Trail Events (FR-007)
+
+| Event | Logged data |
+|-------|-------------|
+| `FIELD_RETRIEVAL_STARTED` | planId, connectionId, objectCount |
+| `FIELD_RETRIEVAL_COMPLETED` | planId, connectionId, totalFields, succeededObjects, failedObjects (with error messages) |
+| `FIELD_RETRIEVAL_FAILED` | planId, connectionId, error message (when entire batch fails) |

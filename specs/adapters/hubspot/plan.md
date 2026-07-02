@@ -1,95 +1,107 @@
 # Implementation Plan: HubSpot Adapter
 
-**Branch**: `adapters-hubspot` | **Date**: 2026-04-02 | **Spec**: `specs/adapters/hubspot/spec.md`
+**Branch**: `implement/phase-1-v4` | **Date**: 2026-05-18 | **Spec**: `specs/adapters/hubspot/spec.md`
 
 ## Summary
 
-Implement the HubSpot destination adapter as a concrete implementation of the Connector Interface (000). Supports two auth methods (Private App token, OAuth2), schema retrieval (standard + custom objects via CRM API v3 and Schemas API), property retrieval via Properties API, record preview via Search API, field stats, schema write (create properties and custom objects), rate limit handling, and token lifecycle. Full read+write adapter (canRead=true, canWrite=false, canWriteSchema=true).
+Build the HubSpot destination adapter implementing `ConnectorAdapter` from feature 000. The adapter authenticates via Private App token or OAuth2, retrieves standard and custom CRM objects with their properties, provides record preview with field stats, and supports schema write operations (create properties, create custom objects). Uses `@hubspot/api-client` as the SDK for all HubSpot API interactions.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x
-**Primary Dependencies**: @hubspot/api-client, Next.js 14+ (App Router for OAuth callback route)
-**Storage**: N/A (adapter is stateless; connection state stored by plan features)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js web application
-**Project Type**: Connector adapter within unified Next.js project
-**Performance Goals**: Schema retrieval < 3s for standard objects; property retrieval < 2s per object; record preview < 5s
-**Constraints**: Custom objects require Enterprise tier. Private App tokens cannot be refreshed. Property creation limited to common types.
-**Scale/Scope**: Single HubSpot portal per adapter instance. 5 standard objects + N custom objects. Up to 1000 properties per object.
+**Language/Version**: TypeScript 5.x (Next.js 14+ App Router)
+**Primary Dependencies**: @hubspot/api-client, Next.js Route Handlers, Prisma ORM
+**Storage**: Neon Postgres via Prisma (shared `Connection` model from feature 006)
+**Testing**: Vitest (unit + integration), Playwright (E2E)
+**Target Platform**: Web browser (Vercel deployment)
+**Project Type**: Connector adapter (service layer + API routes)
+**Performance Goals**: Schema browsing <2 min end-to-end; record preview first page <5s; property creation <10s
+**Constraints**: Destination connector (canWriteSchema=true); single portal per connection; Custom objects require Enterprise tier
+**Scale/Scope**: HubSpot portals with standard objects (5) + custom objects (Enterprise only); up to 100k records per object
 
 ## Constitution Check
 
-| # | Principle | Status | Justification |
-|---|-----------|--------|---------------|
-| I | Spec-First | PASS | spec.md approved with detailed FRs |
-| II | Readability | PASS | Direct @hubspot/api-client usage; auth methods clearly separated |
-| III | Data fidelity | PASS | Unknown property types (calculation, score) preserved and flagged; no silent omissions |
-| IV | Tests on real data | PASS | Contract tests with realistic HubSpot-shaped fixtures (standard objects, properties, records) |
-| V | Idempotence | PASS | Read operations are idempotent. Schema write checks for name conflicts before creating. |
-| VI | Traceability | PASS | Every operation logged to audit trail (connect, schema retrieval, property creation, errors) |
-| VII | Observability | PASS | Console logging for API calls, rate limits, auth status, schema write operations |
-| VIII | Modularity | PASS | Adapter isolated in `src/lib/connectors/hubspot/`; depends only on ConnectorAdapter interface + @hubspot/api-client |
-| IX | Human-in-the-loop | N/A | Adapter stateless ; expose des opérations CRUD + schema write sur HubSpot, mais l'orchestration et la confirmation des écritures sont assurées par 022 (côté applicatif) |
+| # | Principle | Status | Notes |
+|---|-----------|--------|-------|
+| I | Spec-First | PASS | spec.md approved with 14 FRs |
+| II | Readability | PASS | @hubspot/api-client is the canonical SDK; no custom abstractions |
+| III | Data fidelity | PASS | FR-005 retrieves all properties; FR-010 validates before write; no silent omissions |
+| IV | Tests on real data | PASS | Will use realistic HubSpot CRM fixtures (not lorem ipsum); contract tests against mock adapter |
+| V | Idempotence | PASS | Schema reads are idempotent; property creation checks uniqueness (FR-010) before write |
+| VI | Traceability | PASS | FR-013: every operation logged to audit trail |
+| VII | Observability | PASS | Console logging on all API calls, rate limits, errors |
+| VIII | Modularity | PASS | Isolated adapter at `src/lib/adapters/hubspot/`; public interface = ConnectorAdapter |
+| IX | Human-in-the-loop | N/A | Schema write requires explicit user action; no auto-creation |
 
-## Project Structure
+## Architecture
 
-### Documentation (this feature)
+### Project Structure
 
-```text
-specs/adapters/hubspot/
-├── spec.md
-├── plan.md              # This file
-├── research.md
-├── data-model.md        # Skipped (no new Prisma entities)
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
+```
+src/lib/adapters/hubspot/
+  hubspot-adapter.ts          # ConnectorAdapter implementation (entry point)
+  auth.ts                     # Private App + OAuth2 authentication
+  schema.ts                   # Object + property retrieval, snapshot management
+  records.ts                  # Record reading + pagination + stats
+  schema-write.ts             # Property + custom object creation (canWriteSchema)
+  rate-limiter.ts             # 429 detection, Retry-After, exponential backoff
+  types.ts                    # HubSpot-specific internal types
+  constants.ts                # Standard objects list, creatable property types
+
+src/app/api/connectors/hubspot/
+  connect/route.ts            # POST  - Private App token validation
+  oauth/route.ts              # GET   - Initiate OAuth2 flow
+  oauth/callback/route.ts     # GET   - OAuth2 callback
+  [connectionId]/
+    disconnect/route.ts       # POST  - Disconnect
+    objects/route.ts          # GET   - List objects (standard + custom)
+    objects/[apiName]/
+      fields/route.ts         # GET   - List properties for object
+      records/route.ts        # GET   - Paginated records + stats
+    schema-write/
+      property/route.ts       # POST  - Create property on object
+      object/route.ts         # POST  - Create custom object
+
+tests/unit/adapters/hubspot/
+  auth.test.ts
+  schema.test.ts
+  records.test.ts
+  schema-write.test.ts
+  rate-limiter.test.ts
+
+tests/fixtures/hubspot/
+  account-info.json           # Realistic HubSpot account info response
+  objects-standard.json       # Standard CRM objects response
+  objects-custom.json         # Custom objects response (Schemas API)
+  properties-contacts.json    # Properties for contacts object
+  search-contacts.json        # Search API response with records
 ```
 
-### Source Code
+### Adapter Registration
 
-```text
-src/
-└── lib/
-    └── connectors/
-        └── hubspot/
-            ├── index.ts                   # Public barrel export
-            ├── hubspot-adapter.ts         # ConnectorAdapter implementation
-            ├── hubspot-auth.ts            # Private App token validation + OAuth2 flow
-            ├── hubspot-schema.ts          # Standard objects + custom objects retrieval, property mapping
-            ├── hubspot-records.ts         # Search API queries, pagination, field stats
-            ├── hubspot-schema-write.ts    # Create properties and custom objects
-            ├── hubspot-constants.ts       # Standard object list, creatable types, env var keys
-            └── hubspot-types.ts           # Adapter-specific types (HubSpotConfig, auth method variants)
-
-src/
-└── app/
-    └── api/
-        └── connectors/
-            └── hubspot/
-                ├── auth/
-                │   └── route.ts            # POST: validate Private App token; GET: initiate OAuth2
-                └── callback/
-                    └── route.ts            # GET: handle OAuth2 callback
-
-tests/
-├── unit/
-│   └── connectors/
-│       └── hubspot/
-│           ├── adapter.test.ts
-│           ├── auth.test.ts
-│           ├── schema.test.ts
-│           ├── records.test.ts
-│           └── schema-write.test.ts
-└── fixtures/
-    └── hubspot/
-        ├── objects-standard.json          # Standard objects (contacts, companies, deals, tickets, line_items)
-        ├── properties-contacts.json       # Contacts properties (~60 properties)
-        └── records-contacts.json          # 25 contact records
+The adapter is registered in `src/lib/adapters/registry.ts`:
+```typescript
+import { hubspotAdapter } from '@/lib/adapters/hubspot/hubspot-adapter'
+// registry: "hubspot" -> hubspotAdapter
 ```
 
-**Structure Decision**: Mirror Salesforce adapter structure for consistency. Extra module `hubspot-schema-write.ts` for the schema write capability (canWriteSchema=true). OAuth2 and Private App auth in a single auth module with method discrimination.
+### Key Design Decisions
 
-**Règle — instanciation depuis les services** : Tout code service qui a besoin d'une instance de cet adaptateur DOIT passer par `src/lib/connectors/adapter-factory.ts`. Importer la classe `HubSpotAdapter` directement depuis les services est interdit — cela court-circuite la factory et casse l'ajout de nouveaux adaptateurs.
+1. **Two auth methods in one adapter**: Private App (bearer token, simpler) and OAuth2 (authorization code flow). Both validate via the same account info endpoint. The adapter stores the auth method in the connection config to know how to handle token refresh.
+2. **Schema write as separate module**: `schema-write.ts` isolates all mutating operations (property creation, object creation) from read-only operations. Gated by `canWriteSchema=true`.
+3. **Rate limiter as wrapper**: All SDK calls go through a rate-limiter that intercepts 429 responses, reads `Retry-After`, and applies exponential backoff transparently.
+4. **Standard objects as constants**: The 5 standard objects (contacts, companies, deals, tickets, line_items) are hardcoded. Custom objects come from the Schemas API, which may fail on non-Enterprise portals.
+
+## Phases
+
+### Phase 0: Research
+See `research.md` -- @hubspot/api-client SDK, CRM API v3, OAuth2 flow, Properties API, Schemas API.
+
+### Phase 1: Design
+See `contracts/api.md` (API route contracts), `data-model.md` (shared model from 006).
+
+### Phase 2: Implementation
+See `tasks.md` -- ordered by dependency, grouped by user story.
+
+## Complexity Tracking
+
+No Constitution violations. This section is intentionally empty.

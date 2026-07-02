@@ -1,33 +1,35 @@
 # Tasks: Connector Interface
 
 **Input**: `specs/000-connector-interface/`
-**Prerequisites**: plan.md, spec.md, research.md
+**Prerequisites**: None (foundation feature)
 
-## Phase 1: Setup
+## Phase 1: Type Definitions
 
-- [ ] T001 [P] Initialize project tooling: add Vitest config if not present (`vitest.config.ts`), ensure `tsconfig.json` paths include `@/` alias for `src/`
+- [ ] T001 Create `src/lib/types/connector.ts` with all interface types: ConnectorConnection, ConnectorSchema, ConnectorObject, ConnectorField, ConnectorRecord, FieldStats, PaginatedRecords, SchemaDiffResult, ConnectorCapabilities, ConnectorAdapter. All per data-model.md. Include JSDoc on `getRecords` page param: "1-indexed (FR-012)".
+- [ ] T002 [P] Create `src/lib/adapters/demo/demo-adapter.ts`: mock implementation of ConnectorAdapter using in-memory data. Provide 3 objects (Contact, Account, Deal) with 5-10 fields each, 50 mock records per object. Set capabilities: canRead=true, canWrite=false, canWriteSchema=false.
+- [ ] T003 [P] Create `src/lib/adapters/registry.ts`: adapter registry mapping adapter type string to ConnectorAdapter instance. Initial entries: "demo" → DemoAdapter. Export `getAdapter(type: string): ConnectorAdapter`.
 
-## Phase 2: Core Types (US1 — Implement connector interface)
+**Checkpoint**: Types compile, demo adapter passes type check, registry resolves "demo".
 
-**Goal**: All connector types and the adapter interface are defined and compile-checked.
+---
 
-**Independent Test**: `npx tsc --noEmit` passes; contract test suite passes.
+## Phase 2: Contract Tests
 
-### Implementation
+- [ ] T004 Create `tests/unit/types/connector-contract.test.ts`: contract test suite validating DemoAdapter against ConnectorAdapter interface. Verify: all required methods exist, capabilities flags set, connect returns valid status, getSchema returns objects array, getRecords with page=1 returns currentPage=1, getFieldStats returns matching field names. Verify createObject/createField are undefined when canWriteSchema=false.
 
-- [ ] T002 Create `src/lib/connectors/types.ts` with all types: ConnectorConnection (id, name, type, status, config), ConnectorSchema (objects array), ConnectorObject (apiName, label, description, isCustom, isSelected), ConnectorField (apiName, label, dataType, isRequired, isReadOnly, isUnique, referenceTo, relationshipType), ConnectorRecord (key-value map), FieldStats (fieldApiName, nullCount, distinctCount, sampleValues), PaginatedRecords (records, totalCount, pageSize, currentPage, hasNextPage), SchemaDiffResult (addedObjects, removedObjects, modifiedObjects), ConnectionStatus enum (CONNECTED, EXPIRED, ERROR)
-- [ ] T003 Define ConnectorAdapter interface in `src/lib/connectors/types.ts`: capability flags (canRead, canWrite, canWriteSchema), required methods (connect, disconnect, getSchema, getFields, getRecords, getRecordCount, getFieldStats), optional methods (createObject, createField — only when canWriteSchema). All methods return Promise.
-- [ ] T004 Create barrel export `src/lib/connectors/index.ts` re-exporting all types from `types.ts`
+**Checkpoint**: All contract tests pass. Feature complete.
 
-## Phase 3: Validation
-
-- [ ] T005 Create contract test suite `tests/unit/connectors/contract.test.ts`: implement a MockAdapter satisfying ConnectorAdapter, verify all method signatures return correct types, verify capability flags are declared, verify a read-only mock (canWriteSchema=false) compiles without createObject/createField
-- [ ] T006 Run `npx tsc --noEmit` and `npx vitest run tests/unit/connectors/contract.test.ts` to confirm zero errors
+---
 
 ## Dependencies & Execution Order
 
-- **T001**: No dependencies, can start immediately
-- **T002, T003**: Depend on T001 (need tsconfig paths). T002 and T003 target the same file — execute sequentially.
-- **T004**: Depends on T002, T003 (needs types to re-export)
-- **T005**: Depends on T004 (imports from barrel)
-- **T006**: Depends on T005 (runs the tests)
+- **T001**: No deps — start immediately
+- **T002, T003**: Depend on T001 (types). Parallel-safe.
+- **T004**: Depends on T002, T003 (needs demo adapter + registry)
+
+### Parallel Opportunities
+
+```
+Phase 1: T001 first, then [T002 | T003] parallel
+Phase 2: T004 (sequential after Phase 1)
+```

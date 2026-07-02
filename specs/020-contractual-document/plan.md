@@ -1,97 +1,101 @@
 # Implementation Plan: Contractual Document Generation
 
-**Branch**: `020-contractual-document` | **Date**: 2026-04-02 | **Spec**: `specs/020-contractual-document/spec.md`
+**Branch**: `020-contractual-document` | **Date**: 2026-05-18 | **Spec**: `specs/020-contractual-document/spec.md`
 
 ## Summary
 
-Generate an immutable formal contractual HTML document with signature block for client sign-off. Structurally similar to 019 (text document) but with distinct formal styling, dedicated sections for scope/correspondence/migration logic rules/exclusions/filters/signature, and a unique document reference number. Shares the same Rule Description Engine (018) and unmapped fields data (016) as dependencies.
+Generate a formal contractual HTML document with signature block for client sign-off before migration execution. The document includes a unique reference number, scope section, correspondence tables per object mapping, a dedicated migration logic rules section, exclusions listing unmapped fields, filter tables, and a signature block. The layout is visually distinct from the text document (feature 019) with formal contractual styling.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x
-**Primary Dependencies**: Feature 018 (rule-description service), Feature 016 (unmapped fields)
-**Storage**: Neon Postgres via Prisma -- new `ContractualDocument` entity (isolated per tenant)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js 14+ (App Router) sur Vercel
-**Project Type**: Domain service + API route + preview component within monolithic Next.js project
-**Performance Goals**: Generation <30s for 50-field plan (including LLM calls)
-**Constraints**: HTML template is server-side; document is immutable; reference number must be globally unique
-**Scale/Scope**: 1 service, 1 template builder, 1 API route, 1 React preview component, 1 Prisma model
+**Language/Version**: TypeScript 5.x (strict mode), Next.js 14+ App Router
+**Primary Dependencies**: Prisma ORM, React 18+ (for preview component), Tailwind CSS, shadcn/ui
+**Storage**: Neon Postgres (via Prisma) -- ContractualDocument table for immutable document storage
+**Testing**: Vitest (unit for template rendering + reference number generation, integration for full pipeline), Playwright (E2E for preview)
+**Target Platform**: Vercel (serverless Route Handlers)
+**Project Type**: Full-stack (backend service + HTML template + UI preview component)
+**Performance Goals**: Full generation in <30s for 50-field plan (SC), including LLM calls via feature 018
+**Constraints**: Reference numbers globally unique; document immutable once persisted; formal layout distinct from text document
 
 ## Constitution Check
 
-| # | Principle | Status | Justification |
-|---|-----------|--------|---------------|
-| I | Spec-First | PASS | spec.md approved and complete |
-| II | Readability | PASS | Template builder mirrors 019 structure with explicit section functions |
-| III | Data fidelity | PASS | All sections always present (even if empty); exclusions section lists every unmapped field |
-| IV | Tests on real data | PASS | Tests use realistic plan with 3 objects, 40 fields, mixed rules |
-| V | Idempotence | PASS | Each generation creates a new immutable document with unique reference |
-| VI | Traceability | PASS | Generation events logged with plan ID, document type, reference number |
-| VII | Observability | PASS | Console logs for generation progress |
-| VIII | Modularity | PASS | Parallel to 019; shares 018 interface; own template/service/model |
-| IX | Human-in-the-loop | PASS | Génération déclenchée explicitement par le consultant ; document immuable, référence unique (numéro contractuel) ; aucune régénération auto |
+| # | Principle | Status | Notes |
+|---|-----------|--------|-------|
+| I | Spec-First | PASS | spec.md approved with 15 FRs + 12 acceptance scenarios |
+| II | Readability | PASS | Standard HTML template with CSS; formal styling in dedicated stylesheet |
+| III | Data fidelity | PASS | 100% of mappings, rules, filters included; unmapped fields listed under "Will NOT be migrated" (FR-007); broken mappings shown with warning flag; all sections always present (FR-014) |
+| IV | Tests on real data | PASS | Integration tests use realistic 40-field plans with mixed rule types |
+| V | Idempotence | PASS | Each generation creates a new immutable document with unique reference number |
+| VI | Traceability | PASS | Document generation logged with reference number and stats (FR-012) |
+| VII | Observability | PASS | Console logs for generation start, per-section progress, completion |
+| VIII | Modularity | PASS | Isolated at `src/features/contractual-document/`; shares data loader pattern with 019 but independent template and service |
+| IX | Human-in-the-loop | PASS | Document NOT auto-updated; consultant must explicitly regenerate; signature block is manual print-and-sign |
 
-## Project Structure
+## Architecture
 
-### Documentation (this feature)
+### Source Code Layout
 
-```text
-specs/020-contractual-document/
-├── spec.md
-├── plan.md              # This file
-├── research.md
-├── data-model.md
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
 ```
-
-### Source Code
-
-```text
 src/
-├── lib/
-│   └── services/
-│       └── contractual-document/
-│           ├── index.ts                          # Public barrel export
-│           ├── contractual-document.service.ts   # Orchestrates: load -> describe -> build -> persist
-│           ├── template-builder.ts               # Builds formal HTML: header, scope, correspondence, rules, exclusions, filters, signature
-│           ├── reference-generator.ts            # Generates unique CARBO-YYYYMMDD-XXXX reference numbers
-│           └── types.ts                          # ContractualDocumentData, ScopeData, SignatureBlockData
-│
 ├── app/
-│   ├── api/
-│   │   └── plans/
-│   │       └── [planId]/
-│   │           └── documents/
-│   │               └── contractual/
-│   │                   └── route.ts              # POST: generate, GET: list versions
-│   │
-│   └── plans/
-│       └── [planId]/
+│   └── api/
+│       └── plans/[planId]/
 │           └── documents/
 │               └── contractual/
+│                   ├── route.ts                      # POST (generate) + GET (list versions)
 │                   └── [documentId]/
-│                       └── page.tsx              # Preview page with iframe
-│
-└── components/
-    └── documents/
-        └── contractual-document-preview.tsx      # iframe-based preview (formal styling)
-
+│                       └── route.ts                  # GET (single document HTML)
+├── features/
+│   └── contractual-document/
+│       ├── components/
+│       │   ├── contractual-document-preview.tsx       # HTML preview in iframe (formal styling)
+│       │   ├── contractual-document-list.tsx          # List of generated versions
+│       │   └── generate-contractual-button.tsx        # Generate button with loading
+│       ├── services/
+│       │   ├── contractual-document-service.ts        # Orchestrate generation pipeline
+│       │   ├── contractual-document-loader.ts         # Load complete plan data (shared pattern with 019)
+│       │   └── reference-number-generator.ts          # Generate CARBO-YYYYMMDD-XXXX reference numbers
+│       ├── templates/
+│       │   ├── contractual-document-template.ts       # HTML template function (plan data → HTML string)
+│       │   └── contractual-document-styles.ts         # Formal contractual CSS
+│       ├── hooks/
+│       │   ├── use-contractual-documents.ts           # Fetch document list for a plan
+│       │   └── use-contractual-document.ts            # Fetch single document
+│       └── types.ts                                   # ContractualDocument types
 prisma/
-└── schema.prisma                                 # ContractualDocument model
-
+└── schema.prisma                                      # ContractualDocument model addition
 tests/
 ├── unit/
-│   └── services/
-│       └── contractual-document/
-│           ├── template-builder.test.ts          # HTML sections correctness
-│           ├── reference-generator.test.ts       # Uniqueness, format validation
-│           └── service.test.ts                   # Full generation flow
-└── integration/
-    └── contractual-document.test.ts              # Seeded plan -> generate -> verify
+│   └── contractual-document/
+│       ├── contractual-document-template.test.ts
+│       ├── reference-number-generator.test.ts
+│       └── contractual-document-loader.test.ts
+├── integration/
+│   └── contractual-document/
+│       └── contractual-document-generation.test.ts
+└── fixtures/
+    └── contractual-document/
+        └── plan-fixtures.ts
 ```
 
-**Structure Decision**: Mirrors 019 structure. Separate `reference-generator.ts` for the unique document reference logic. Template builder has more sections than 019 (scope, correspondence, migration logic rules, exclusions, filters, signature).
+### Key Dependencies Between Files
+
+- `contractual-document-service.ts` → `contractual-document-loader.ts` + `generateDescriptions()` (from 018) + `contractual-document-template.ts` + `reference-number-generator.ts` + `audit.ts`
+- `contractual-document-template.ts` → pure function (receives fully resolved data)
+- `contractual-document-loader.ts` → Prisma (same pattern as 019 loader, loads plan + all relations)
+- `reference-number-generator.ts` → Prisma (checks uniqueness of generated reference)
+
+## Phases
+
+### Phase 0: Research
+See `research.md` -- decisions on reference numbers, formal layout, signature block, relationship with 019.
+
+### Phase 1: Design
+See `data-model.md` (Prisma schema addition), `contracts/api.md` (API routes).
+
+### Phase 2: Implementation
+See `tasks.md` -- ordered by: schema → loader → reference generator → template → service → API → UI → tests.
+
+## Complexity Tracking
+
+No constitution violations identified. Structure closely parallels feature 019 with distinct template and additional sections (scope, signature block, reference number).

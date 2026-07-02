@@ -1,56 +1,81 @@
 # Research: Mapping Integrity Check
 
-## Decision 1: Integrity Issue Persistence
+## Decision 1: apiName-Based Resolution (Not FK-Based)
 
-**Options**:
-- **Transient (compute on demand)**: Recalculate issues every time the plan is viewed. No storage needed but slow for large plans.
-- **Persisted**: Store IntegrityIssue records in DB. Fast reads, survives page reload, queryable.
-- **Hybrid**: Compute and cache, invalidate on mapping changes.
+**Decision**: The integrity check resolves mappings against the current schema snapshot by `apiName`, not by stored FK IDs.
 
-**Decision**: Persisted. The spec explicitly states "integrity issues are persisted so the consultant can view them across sessions without requiring a re-check." IntegrityIssue records are created during the integrity check and deleted when resolved (mapping removed or remapped).
+**Rationale**: Schema refresh creates new `SchemaObject` / `ObjectField` records with new UUIDs. The old snapshot records are rotated to PREVIOUS then deleted. Stored FKs (`ObjectMapping.sourceObjectId`, `FieldMapping.sourceFieldId`, etc.) point at the old snapshot and become dangling after rotation. Resolving by `apiName` against the CURRENT snapshot is the only reliable way to detect what still exists.
 
-## Decision 2: Trigger Mechanism
+This is explicitly codified in the spec's Design Decisions section: no automatic FK re-binding (Principle IX). The integrity check reads by apiName but never writes/mutates FKs.
 
-**Options**:
-- **Automatic on schema refresh**: IntegrityCheckService is called at the end of schema refresh (features 003, 007). No manual trigger needed.
-- **Manual only**: Consultant clicks "Check Integrity" button. Risk of stale data.
-- **Both**: Automatic + manual re-check button.
+**Alternatives**: FK-based resolution (would require re-binding FKs during snapshot rotation -- violates Principle IX), storing both FK and apiName with FK as authoritative (apiName would drift from FK, creating confusing states).
 
-**Decision**: Both. The primary trigger is automatic (schema refresh calls `integrityCheck.run(planId)` at the end). A manual POST endpoint is also available for the consultant to re-check on demand. The schema refresh features (003, 007) import and call IntegrityCheckService -- this is the integration point.
+## Decision 2: Persisted Issues vs Transient Check Results
 
-## Decision 3: Issue Resolution Detection
+**Decision**: `IntegrityIssue` records are persisted in the database.
 
-When the consultant fixes a broken mapping (remaps the field or removes the mapping), how is the IntegrityIssue resolved?
+**Rationale**: The spec requires that "integrity issues are persisted so the consultant can view them across sessions without requiring a re-check" (Assumptions). A transient in-memory result would require re-running the check on every page load, which is wasteful and contradicts the explicit assumption.
 
-**Options**:
-- **Explicit resolution**: Consultant clicks "resolve" on each issue. Tedious.
-- **Automatic on mapping change**: When a FieldMapping or ObjectMapping is created/updated/deleted, re-run integrity check for affected entities.
-- **Re-check on demand**: Resolution happens when the integrity check is re-run.
+Persisted issues also enable:
+- Audit trail cross-referencing (issue ID in AuditLog details)
+- Resolution tracking (resolvedAt timestamp)
+- Dashboard-level status aggregation without re-running checks
 
-**Decision**: Automatic on mapping change + re-check. When the FieldMappingService or ObjectMappingService performs a delete or create, it calls `integrityCheck.resolveForEntity(entityId)` to clear matching IntegrityIssues. When all issues for a plan are resolved, the plan status transitions back from BROKEN. A full re-check (POST endpoint) can also be triggered manually to catch all resolutions at once.
+**Alternatives**: Transient results computed on-demand (contradicts spec Assumptions), cached in Redis/memory (adds infrastructure complexity for no benefit given Prisma is already available).
 
-## Decision 4: Check Scope
+## Decision 3: Reuse of Type Compatibility Matrix from 012
 
-The integrity check compares the **current schema snapshot** against the **migration plan's references**. It does NOT diff two schema versions. This means:
+**Decision**: The integrity check reuses the exact same type compatibility matrix defined in feature 012 for detecting type-change incompatibilities.
 
-1. For each ObjectMapping: check if sourceObjectName exists in source schema and destinationObjectName exists in dest schema.
-2. For each FieldMapping: check if sourceFieldName exists in source object's fields and destinationFieldName exists in dest object's fields.
-3. For each FieldMapping: if field types have changed, re-evaluate compatibility via the type compatibility matrix (012).
-4. For each MigrationFilter: check if sourceFieldName exists in source object's fields.
+**Rationale**: FR-006 explicitly states "detect and flag field mappings where a type change breaks compatibility according to the type compatibility matrix (feature 012)." Using a different matrix would create divergent behavior between the mapping UI (which shows COMPATIBLE/WARNING/INCOMPATIBLE) and the integrity check (which would flag different type changes as breaking).
 
-This is a pure comparison against the latest schema snapshot. The check does NOT need the previous schema.
+The matrix is already implemented as a pure function `getCompatibility(sourceType, destType) -> COMPATIBLE | WARNING | INCOMPATIBLE`. The integrity check calls it with the new type from the refreshed snapshot.
 
-## Decision 5: Multiple Plans per Connection
+**Alternatives**: Separate stricter matrix for integrity (divergent behavior, maintenance burden), only flagging type changes when the matrix result is INCOMPATIBLE (spec says "breaks compatibility" which includes WARNING->INCOMPATIBLE transitions).
 
-The spec states: "Multiple plans reference the same connection: all plans are checked." The schema refresh feature stores the connection at the plan level (MigrationPlan.sourceConnectionId / destinationConnectionId). When a schema refresh occurs on connection X, the integrity check queries all plans with that connectionId and runs checks for each.
+## Decision 4: Check Trigger Strategy
 
-## Decision 6: Plan Status State Machine
+**Decision**: The integrity check runs synchronously after schema refresh completes, triggered by the refresh handler in features 003/007.
 
-```
-DRAFT     →  BROKEN   (integrity check finds issues)
-READY     →  BROKEN   (integrity check finds issues)
-BROKEN    →  DRAFT    (all issues resolved, plan not yet complete)
-BROKEN    →  READY    (all issues resolved, plan was complete)
-```
+**Rationale**: The spec states "The integrity check is a synchronous operation that runs after schema refresh completes" (Assumptions) and "The system MUST perform an integrity check on all migration plans referencing a connection after that connection's schema is refreshed" (FR-001).
 
-The plan status field already exists in MigrationPlan (feature 001). The IntegrityCheckService modifies it via Prisma update.
+The check must run on ALL plans referencing the refreshed connection, not just the currently open plan. This means the refresh handler iterates plans by `sourceConnectionId` or `destinationConnectionId`.
+
+**Alternatives**: Lazy check on plan open (would miss issues until the consultant opens the plan), background job (adds queue infrastructure; the spec says synchronous), webhook from connector (overcomplicates for a local-first v0).
+
+## Decision 5: Performance Target
+
+**Decision**: Target < 5 seconds for a plan with 10 object mappings and 200 field mappings (SC from spec).
+
+**Rationale**: The check is I/O-bound (Prisma queries). With proper eager loading (include ObjectMappings with FieldMappings, MigrationFilters, and MigrationLogic rules in a single query), the check is a single DB round-trip for loading + a batch of apiName lookups against the current snapshot + a batch upsert for issues.
+
+Estimated query plan:
+1. Load plan + relations: 1 query (~50ms)
+2. Load current snapshot objects + fields for the plan's connections: 2 queries (~50ms each)
+3. Compare and collect issues: in-memory (~10ms for 200 fields)
+4. Upsert issues + update plan status: 1 transaction (~100ms)
+Total: ~260ms, well under 5s.
+
+**Alternatives**: None needed -- the straightforward approach meets the target.
+
+## Decision 6: Issue Resolution Semantics
+
+**Decision**: Resolving an issue means setting `resolvedAt = NOW()`. When ALL issues for a plan are resolved, the plan status transitions back from BROKEN to DRAFT or COMPLETE as appropriate.
+
+**Rationale**: FR-010 requires automatic status transition when all issues are resolved. The resolution can happen in two ways:
+1. The consultant deletes or remaps the broken mapping (the issue is auto-resolved when the entity no longer exists or is no longer broken).
+2. A subsequent schema refresh no longer detects the issue (the field/object reappeared).
+
+In both cases, the resolver marks `resolvedAt` and checks remaining unresolved issues. If zero remain, it transitions the plan.
+
+**Alternatives**: Explicit "dismiss" action separate from "resolve" (spec doesn't distinguish; both mean the issue is no longer active).
+
+## Decision 7: MigrationFilter and FIELD_REFERENCE Rule Checks
+
+**Decision**: The integrity check also validates MigrationFilters (FR-007) and FIELD_REFERENCE migration logic rules (FR-008) that reference source fields.
+
+**Rationale**: A migration filter referencing a deleted source field would cause the migration to fail silently (filtering on a nonexistent field = no records filtered, or an error). A FIELD_REFERENCE rule referencing a deleted field would produce null/error during transformation. Both must be flagged.
+
+The entityType enum includes `MIGRATION_FILTER` and `TRANSFORMATION_RULE` to distinguish these from object/field mapping issues.
+
+**Alternatives**: Only check object and field mappings (spec explicitly includes filters and rules in FR-007/FR-008).

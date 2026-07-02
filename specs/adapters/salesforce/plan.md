@@ -1,93 +1,86 @@
 # Implementation Plan: Salesforce Adapter
 
-**Branch**: `adapters-salesforce` | **Date**: 2026-04-02 | **Spec**: `specs/adapters/salesforce/spec.md`
+**Branch**: `implement/phase-1-v4` | **Date**: 2026-05-18 | **Spec**: `specs/adapters/salesforce/spec.md`
 
 ## Summary
 
-Implement the Salesforce source adapter as a concrete implementation of the Connector Interface (000). Handles OAuth2+PKCE authentication, schema retrieval via jsforce describeGlobal/describe, object selection with system object filtering, field retrieval, record preview via SOQL, field stats calculation, rate limit handling, and token refresh. Read-only adapter (canRead=true, canWrite=false, canWriteSchema=false).
+Implement the Salesforce adapter: a concrete `ConnectorAdapter` (feature 000) for Salesforce as a read-only source. The adapter authenticates via OAuth2 with PKCE (S256), retrieves schema metadata via jsforce v3.x `describeGlobal` / `describe`, queries records via SOQL, computes field stats, and handles rate limits and token refresh transparently. No new data model -- the adapter fulfils the `ConnectorAdapter` interface and is consumed by features 002-010 through the adapter registry.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x
-**Primary Dependencies**: jsforce v3.x, Next.js 14+ (App Router for OAuth callback route)
-**Storage**: N/A (adapter is stateless; connection state stored by plan features)
-**Testing**: Vitest (unit + integration)
-**Target Platform**: Next.js web application
-**Project Type**: Connector adapter within unified Next.js project
-**Performance Goals**: Schema retrieval < 5s for 1200+ objects; record preview < 5s for first page
-**Constraints**: OAuth2 PKCE required. Token exchange via direct HTTP POST (jsforce does not support code_verifier). PKCE store on globalThis for hot-reload survival.
-**Scale/Scope**: Single Salesforce org per adapter instance. Up to 1200+ objects, 500+ fields per object.
+**Language/Version**: TypeScript 5.x (Next.js 14+ App Router)
+**Primary Dependencies**: jsforce v3.x (Salesforce REST API), Next.js Route Handlers
+**Storage**: Neon Postgres via Prisma (connection record managed by feature 002; adapter is stateless beyond token lifecycle)
+**Testing**: Vitest (unit + integration), Playwright (E2E)
+**Target Platform**: Web (Vercel deployment, localhost dev)
+**Project Type**: Adapter module within the Carbo-v0 Next.js mono-project
+**Constraints**: Read-only (canRead=true, canWrite=false, canWriteSchema=false); jsforce does NOT support PKCE -- token exchange via direct HTTP POST; PKCE verifier on `globalThis` for dev hot-reload survival
 
 ## Constitution Check
 
-| # | Principle | Status | Justification |
-|---|-----------|--------|---------------|
-| I | Spec-First | PASS | spec.md approved with detailed FRs and gotchas |
-| II | Readability | PASS | Direct jsforce usage; no magic. Gotchas documented in code comments. |
-| III | Data fidelity | PASS | Unknown field types preserved as strings; no silent omissions; all fields from describe() returned |
-| IV | Tests on real data | PASS | Contract tests with realistic Salesforce-shaped fixtures (1200 objects, varied field types, relationship fields) |
-| V | Idempotence | PASS | All operations are read-only; re-running schema retrieval returns the same snapshot |
-| VI | Traceability | PASS | Every operation (connect, disconnect, schema retrieval, record read, rate limit, error) logged to audit trail |
-| VII | Observability | PASS | Console logging for OAuth flow steps, API calls, rate limit status, token refresh |
-| VIII | Modularity | PASS | Adapter isolated in `src/lib/connectors/salesforce/`; depends only on ConnectorAdapter interface + jsforce |
-| IX | Human-in-the-loop | N/A | Adapter stateless ; expose des opérations CRUD sur Salesforce, ne prend aucune décision sur le plan ; les opérations destructives éventuelles (Phase 2) seront déclenchées par les features applicatives, jamais par l'adapter lui-même |
+| # | Principle | Status | Notes |
+|---|-----------|--------|-------|
+| I | Spec-First | PASS | spec.md approved; this plan is phase 3 of speckit workflow |
+| II | Readability | PASS | Standard jsforce usage; OAuth flow extracted into a dedicated module; system-object filter as a documented constant |
+| III | Data fidelity | PASS | FR-006/009: 100% of objects and fields retrieved, no silent omission; FLS-restricted fields listed with "no access" marker |
+| IV | Tests on real data | PASS | Realistic fixtures from a Salesforce Developer Edition org (describeGlobal, describe Contact, SOQL Contact query) |
+| V | Idempotence | PASS | Read-only adapter; same query = same result |
+| VI | Traceability | PASS | FR-015: every operation (connect, disconnect, schema, records, errors, rate limits) logged to audit trail |
+| VII | Observability | PASS | Console logging on every API call, token refresh, rate limit event |
+| VIII | Modularity | PASS | Adapter is a self-contained module at `src/lib/adapters/salesforce/`; public surface = `ConnectorAdapter` interface + adapter registration |
+| IX | Human-in-the-loop | N/A | Adapter is read-only; no destructive or ambiguous operations |
 
-## Project Structure
+## Architecture
 
-### Documentation (this feature)
-
-```text
-specs/adapters/salesforce/
-├── spec.md
-├── plan.md              # This file
-├── research.md
-├── data-model.md        # Skipped (no new Prisma entities)
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
 ```
+src/lib/adapters/salesforce/
+  index.ts                    # Adapter entry: exports ConnectorAdapter implementation
+  auth.ts                     # OAuth2 + PKCE flow (buildAuthUrl, exchangeCode, refreshToken)
+  pkce.ts                     # PKCE helpers (generateVerifier, computeChallenge, globalThis store)
+  client.ts                   # jsforce Connection factory + rate-limit interceptor
+  schema.ts                   # describeGlobal + describe per object -> ConnectorSchema/ConnectorField
+  records.ts                  # SOQL queries -> PaginatedRecords + FieldStats computation
+  system-objects.ts           # ~130 system object filter patterns (constant + filter function)
+  default-selection.ts        # Pre-selection logic: custom objects + common CRM objects
+  types.ts                    # Salesforce-specific internal types (SFDescribeResult, SFTokenResponse, etc.)
 
-### Source Code
-
-```text
-src/
-└── lib/
-    └── connectors/
-        └── salesforce/
-            ├── index.ts                   # Public barrel export
-            ├── salesforce-adapter.ts       # ConnectorAdapter implementation
-            ├── salesforce-auth.ts          # OAuth2+PKCE flow (build auth URL, exchange code, refresh token)
-            ├── salesforce-schema.ts        # describeGlobal + describe mapping to ConnectorObject/ConnectorField
-            ├── salesforce-records.ts       # SOQL queries, pagination, field stats
-            ├── salesforce-constants.ts     # System object filter patterns, default CRM objects, env var keys
-            └── salesforce-types.ts         # Adapter-specific types (SalesforceConfig, token response shape)
-
-src/
-└── app/
-    └── api/
-        └── connectors/
-            └── salesforce/
-                ├── auth/
-                │   └── route.ts            # GET: initiate OAuth2 flow (redirect to Salesforce)
-                └── callback/
-                    └── route.ts            # GET: handle OAuth2 callback (exchange code for tokens)
+src/app/api/connectors/salesforce/
+  connect/route.ts            # POST -- initiate OAuth2 flow, return authorization URL
+  callback/route.ts           # GET  -- exchange code for tokens, create connection
+  [connectionId]/
+    disconnect/route.ts       # POST -- revoke tokens, transition to DISCONNECTED
+    schema/route.ts           # GET  -- retrieve full object list (describeGlobal)
+    objects/
+      [apiName]/
+        fields/route.ts       # GET  -- retrieve fields for one object (describe)
+        records/route.ts      # GET  -- paginated records + optional field stats
+        count/route.ts        # GET  -- record count (SELECT COUNT())
 
 tests/
-├── unit/
-│   └── connectors/
-│       └── salesforce/
-│           ├── adapter.test.ts
-│           ├── auth.test.ts
-│           ├── schema.test.ts
-│           └── records.test.ts
-└── fixtures/
-    └── salesforce/
-        ├── describe-global.json           # Realistic describeGlobal response (~50 objects)
-        ├── describe-contact.json          # Realistic Contact describe response
-        └── records-contact.json           # Realistic Contact records
+  unit/adapters/salesforce/
+    auth.test.ts
+    schema.test.ts
+    records.test.ts
+    system-objects.test.ts
+    rate-limit.test.ts
+  fixtures/salesforce/
+    describe-global.json      # Realistic describeGlobal from a Developer Edition
+    describe-contact.json     # Realistic describe for Contact object
+    query-contacts.json       # Realistic SOQL query result
+    token-response.json       # Sample OAuth token response
 ```
 
-**Structure Decision**: Adapter code isolated in `src/lib/connectors/salesforce/`. OAuth routes under `src/app/api/connectors/salesforce/`. Clear separation: auth, schema, records, constants as separate modules for readability.
+## Phases
 
-**Règle — instanciation depuis les services** : Tout code service qui a besoin d'une instance de cet adaptateur DOIT passer par `src/lib/connectors/adapter-factory.ts`. Importer la classe `SalesforceAdapter` directement depuis les services est interdit — cela court-circuite la factory et casse l'ajout de nouveaux adaptateurs.
+### Phase 0: Research
+See `research.md` -- jsforce v3, OAuth2/PKCE, SOQL pagination, rate limits.
+
+### Phase 1: Design
+See `contracts/api.md` (API route contracts). Data model: none new (uses 000 types + 002 Connection entity).
+
+### Phase 2: Implementation
+See `tasks.md` -- 4 phases, 19 tasks.
+
+## Complexity Tracking
+
+> No Constitution violations. This section is intentionally empty.

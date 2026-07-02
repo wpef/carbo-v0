@@ -1,60 +1,122 @@
 # Research: Field Mapping
 
-## Decision 1: Type Compatibility Matrix Implementation
+## Decision 1: Table-Based UI vs SVG Two-Column View
 
-**Options**:
-- **Hardcoded switch/case**: Fast, but hard to maintain and extend.
-- **2D lookup table**: A `Record<string, Record<string, CompatibilityResult>>` map. Simple, declarative, easy to extend.
-- **Database-driven**: Store matrix in DB. Overkill for a fixed set of 5 base types.
+**Decision**: Table-based UI for field mapping. Mapped fields shown in a table with columns: Source Field (name + type badge) -> Dest Field (name + type badge) | Status (OK/Warning/Incompatible) | Actions (Configure, Delete). Unmapped fields shown separately with a "Map to..." dropdown.
 
-**Decision**: 2D lookup table as a TypeScript constant in `src/lib/services/type-compatibility.ts`. The matrix from spec.md (5 types x 5 types = 25 combinations) is small and static. Exposes `getCompatibility(sourceType, destType): { status: 'COMPATIBLE' | 'WARNING' | 'INCOMPATIBLE', section: 'D1' | 'D2' | 'D3' | 'D4', message?: string }`. This service is reused by 013 (migration logic) and 017 (integrity check).
+**Rationale**: Session learning #1 from v3 — the SVG two-column approach was fundamentally broken:
+- Wrong coordinate system (SVG inside bridge column vs full container)
+- Infinite render loops (`useLayoutEffect` with array deps)
+- `hsl()` wrapping `oklch()` CSS values producing invisible colors
 
-## Decision 2: Auto-Match Registry Architecture
+A table layout is more reliable, accessible, maintainable, and works naturally with 200+ fields. The visual link metaphor matters more for object mapping (fewer items, spatial relationships) than for field mapping (many items, data-oriented work).
 
-Mirrors the auto-link registry pattern from 011. A static TypeScript map in `field-auto-match-registry.ts`, keyed by `${sourceAdapterType}:${destinationAdapterType}:${sourceObjectName}:${destinationObjectName}`, returning arrays of `{ sourceField, destinationField }` pairs.
+**Alternatives**: Fixed SVG approach (fragile, re-implementing all session fixes), Canvas (harder to style), drag-and-drop (poor accessibility).
 
-For SF-to-HS Contact-to-Contact: FirstName-firstname, LastName-lastname, Email-email, Phone-phone, etc.
+## Decision 2: Auto-Match Strategy — Registry + Name Fallback
 
-The registry also supports a fallback: if no object-specific entry exists, try matching by `${sourceAdapterType}:${destinationAdapterType}:*:*` for cross-object common fields (e.g., Email-email appears on multiple objects).
+**Decision**: Union of two strategies:
+1. **Registry pairs**: Hardcoded equivalences per adapter combo (e.g., `Website` SF -> `domain` HS)
+2. **Name-based fallback**: Case-insensitive `apiName` match for fields not already covered by the registry
 
-## Decision 3: One-to-One Mapping Enforcement
+Both run in a single pass. Registry pairs take precedence. Fallback only matches fields where neither side is already matched.
 
-Enforced at two levels:
-1. **Database**: Unique indexes on `(objectMappingId, sourceFieldName)` and `(objectMappingId, destinationFieldName)` in the Prisma schema.
-2. **Service**: FieldMappingService checks before creating. Returns a clear error message ("Source field X is already mapped to Y").
+**Rationale**: Session learnings #2-3 from v3:
+- Registry-only was too narrow (only 4 of 12 fields matched for a typical object)
+- Name-only missed semantic equivalences (e.g., `Website` != `domain`)
+- The union approach catches both explicit semantic pairs AND obvious name matches
+- Case-insensitive matching is essential (`Phone` vs `phone` — session learning #3)
 
-The same source field CAN appear in different ObjectMappings (e.g., if Contact is mapped to both Contacts and Leads). The constraint is per-ObjectMapping, not global.
+**Known registry pairs for `salesforce:hubspot`**:
+- Contact: `FirstName->firstname`, `LastName->lastname`, `Email->email`, `Phone->phone`, `Title->jobtitle`, `Website->website`
+- Account/Company: `Name->name`, `Website->domain`, `Phone->phone`, `Industry->industry`, `AnnualRevenue->annualrevenue`
+- Opportunity/Deal: `Name->dealname`, `Amount->amount`, `CloseDate->closedate`, `StageName->dealstage`
 
-## Decision 4: Link Color Status Computation
+**Alternatives**: ML-based matching (overkill, violates Principle IX), edit distance (false positives on short names), schema metadata matching (connectors don't expose enough metadata).
 
-The spec defines five states: GREEN (validated), ORANGE (defined not validated), RED_SOLID (no logic), RED_DASHED (incompatible), BROKEN (integrity issue per 017 — referenced source/destination object or field is absent from the current snapshot, or its type became incompatible after a refresh).
+## Decision 3: Type Compatibility Matrix
 
-This is a **computed state**, not stored in the database. Derived at render time from:
-1. Integrity issue presence (from 017 IntegrityIssue records) — takes precedence over all others
-2. `typeCompatibility.status` (from the matrix)
-3. Whether MigrationLogic exists for this FieldMapping
-4. If exists, whether MigrationLogic.status is VALIDATED
+**Decision**: A 5x5 matrix mapping normalized type pairs to `CompatibilityStatus`:
 
-```typescript
-function getLinkStatus(
-  fieldMapping: FieldMapping,
-  migrationLogic?: MigrationLogic,
-  integrityIssue?: IntegrityIssue,
-): LinkStatus {
-  if (integrityIssue) return 'BROKEN';
-  if (fieldMapping.compatibilityStatus === 'INCOMPATIBLE') return 'RED_DASHED';
-  if (!migrationLogic) return 'RED_SOLID';
-  if (migrationLogic.status === 'VALIDATED') return 'GREEN';
-  return 'ORANGE';
-}
+| | Text | Number | Date | Picklist | Boolean |
+|---|---|---|---|---|---|
+| **Text** | COMPATIBLE | INCOMPATIBLE | INCOMPATIBLE | WARNING | INCOMPATIBLE |
+| **Number** | COMPATIBLE | COMPATIBLE | INCOMPATIBLE | WARNING | INCOMPATIBLE |
+| **Date** | COMPATIBLE | INCOMPATIBLE | COMPATIBLE | WARNING | INCOMPATIBLE |
+| **Picklist** | COMPATIBLE | INCOMPATIBLE | INCOMPATIBLE | COMPATIBLE | WARNING |
+| **Boolean** | COMPATIBLE | COMPATIBLE | INCOMPATIBLE | WARNING | COMPATIBLE |
+
+- **COMPATIBLE**: Direct copy or trivial conversion (D4 informational message)
+- **WARNING**: Requires migration logic (D1 value equivalence or D2 LLM prompt)
+- **INCOMPATIBLE**: Cannot be linked meaningfully (D3 error, CSV fallback)
+
+**Rationale**: Spec assumption states the matrix is 5x5 with text, number, date, picklist, boolean. This aligns with the Type Compatibility Matrix in spec 013. The matrix is symmetric for COMPATIBLE/INCOMPATIBLE but not for WARNING (direction matters for picklist conversions).
+
+**Type normalization table** (30+ raw types -> 5 canonical categories):
+
+| Canonical | Raw types (Salesforce) | Raw types (HubSpot) |
+|---|---|---|
+| text | `string`, `textarea`, `url`, `email`, `phone`, `id`, `reference`, `address`, `encryptedstring` | `string`, `phonenumber`, `enumeration` (when single) |
+| number | `int`, `double`, `currency`, `percent`, `long` | `number` |
+| date | `date`, `datetime`, `time` | `date`, `datetime` |
+| picklist | `picklist`, `multipicklist`, `combobox` | `enumeration` (when multiple options) |
+| boolean | `boolean` | `bool`, `boolean` |
+
+Unknown types default to `text` (most permissive — Spec assumption).
+
+**Alternatives**: Strict unknown-type rejection (too restrictive — many custom field types would fail), per-connector matrices (unnecessary duplication — normalization handles differences).
+
+## Decision 4: LinkStatus Computation
+
+**Decision**: `LinkStatus` is a computed enum, not a stored field. Derived at query time from:
+
+```
+if (field/object absent from current schema) -> BROKEN
+if (compatibilityStatus === INCOMPATIBLE)    -> RED_DASHED
+if (no migration logic exists)               -> RED_SOLID
+if (logic exists but not validated)           -> ORANGE
+if (logic exists and validated)              -> GREEN
 ```
 
-## Decision 5: Fill Rate Data Source
+Precedence: BROKEN > RED_DASHED > RED_SOLID > ORANGE > GREEN.
 
-Fill rate (percentage of records with a value) comes from FieldStats provided by the connector interface (feature 010). If field stats are not yet computed, the fill rate shows "N/A". Fill rate is displayed on source field cards only (destination fields don't have source data).
+**Rationale**: Spec assumption states "Link color status is derived from: (1) type compatibility, (2) whether migration logic exists, and (3) whether that logic is validated. This is a computed state, not stored separately." Storing it would create cache invalidation problems (logic changes, schema refresh, drift detection all affect status).
 
-If feature 010 is not implemented yet, the field card gracefully handles missing stats by showing "--" instead of a percentage.
+**Alternatives**: Stored enum (stale data risk, requires update triggers), event-sourced status (over-engineering for a read-heavy, write-light scenario).
 
-## Decision 6: Field List Performance
+## Decision 5: Migration Preview Architecture
 
-With 200+ fields per side (400+ DOM nodes + SVG links), we use the same strategy as 011: simple scrollable divs with client-side search/filter. The search input filters by field name or type. No virtualization needed at this scale.
+**Decision**: Client-side preview computation. The sidebar:
+1. Loads 25 source records via existing `getRecords` API (page 1, pageSize 25)
+2. For each mapped field, applies value equivalences (if any) as a simple lookup: `sourceValue -> equivalenceMap[sourceValue] || sourceValue`
+3. Renders a two-column Source | Destination view. Transformed values highlighted in amber.
+4. No JS transforms, no LLM classification in preview (those require server-side execution).
+
+**Rationale**: Client-side computation keeps the preview instant and reactive. Value equivalences are small lookup tables (typically <50 entries) that can be applied in-memory. Limiting to 25 records keeps the payload manageable. The preview is a confidence tool, not a full migration simulation.
+
+**Alternatives**: Server-side preview with full transform pipeline (too slow for interactive use), real-time LLM classification (expensive, slow, not needed for preview confidence).
+
+## Decision 6: One-to-One Constraint Enforcement
+
+**Decision**: Enforce 1:1 at both the database level (unique constraints) and the API validation level.
+
+```prisma
+@@unique([objectMappingId, sourceFieldName])    // one source field maps to at most one destination
+@@unique([objectMappingId, destinationFieldName]) // one destination receives at most one source
+```
+
+**Rationale**: FR-005 requires strict 1:1 within an object mapping. The same source field CAN appear in different object mappings (e.g., if Contact is mapped to both Contacts and Leads). Database-level constraints make violations impossible even under concurrent requests.
+
+**Alternatives**: Application-level only (race condition risk), allow many-to-many (contradicts spec).
+
+## Decision 7: Drift Flags Orthogonal to LinkStatus
+
+**Decision**: `driftFlag` is a separate property on the field mapping row, independent of `linkStatus`. Both are rendered simultaneously (badge stack). Drift flags are informational (no editability impact except when `linkStatus=BROKEN`, which is handled by existing logic).
+
+**Rationale**: FR-Drift-FM-2 explicitly states drift flags are orthogonal to linkStatus. A mapping can be `GREEN` (logic validated) AND have `driftFlag='Desormais obligatoire'`. Merging them into a single status would lose information.
+
+Coverage categories:
+- **Already covered by linkStatus**: `OBJECT_REMOVED`, `FIELD_REMOVED`, `FIELD_TYPE_CHANGED` (to incompatible) -> BROKEN
+- **New driftFlag needed**: `FIELD_TYPE_CHANGED` (still compatible), `FIELD_BECAME_REQUIRED`, `FIELD_BECAME_OPTIONAL`, `FIELD_LABEL_CHANGED`, `PICKLIST_VALUE_ADDED/REMOVED`, `FIELD_READONLY_CHANGED`, `FIELD_UNIQUE_CHANGED`, `FIELD_ADDED`
+
+**Alternatives**: Single merged status (loses granularity), separate drift page (too disconnected from field mapping context).

@@ -1,72 +1,56 @@
-# API Contract: Destination Field Retrieval
+# Contracts: Destination Field Retrieval
 
-**Base path**: `/api/plans/[planId]/destination-fields`
+## API Routes
 
-## POST /api/plans/[planId]/destination-fields
+### POST /api/plans/[planId]/destination/fields
 
-Retrieve fields for all destination objects in the CURRENT schema snapshot.
+Trigger field retrieval for all objects in the destination's CURRENT schema snapshot.
 
-**Request**: No body required.
+**Request**: No body required. The endpoint resolves the destination connection and CURRENT snapshot from the plan.
 
-**Response 201**:
+**Response (200)**:
 ```json
 {
-  "objectsWithFields": [
-    {
-      "objectApiName": "contacts",
-      "objectLabel": "Contacts",
-      "fieldCount": 45,
-      "fields": [
-        {
-          "id": "uuid",
-          "apiName": "email",
-          "label": "Email",
-          "dataType": "string",
-          "isRequired": true,
-          "isReadOnly": false,
-          "isUnique": true,
-          "isAccessible": true,
-          "referenceTo": null,
-          "relationshipType": null
-        }
-      ]
-    }
+  "totalFields": 147,
+  "objectResults": [
+    { "objectApiName": "contacts", "fieldCount": 42, "status": "success" },
+    { "objectApiName": "companies", "fieldCount": 35, "status": "success" },
+    { "objectApiName": "deals", "fieldCount": 28, "status": "success" },
+    { "objectApiName": "custom_object_1", "fieldCount": 0, "status": "error", "error": "Permission denied" }
   ],
-  "totalFieldCount": 312,
-  "failedObjects": []
+  "durationMs": 4200
 }
 ```
 
-**Response 200** (partial failure):
-```json
-{
-  "objectsWithFields": [ "..." ],
-  "totalFieldCount": 280,
-  "failedObjects": [
-    { "objectApiName": "custom_obj", "error": "Permission denied" }
-  ]
-}
-```
+**Error Responses**:
+- `404`: Plan not found, or no destination connection, or no CURRENT snapshot
+- `409`: Field retrieval already in progress for this connection
+- `500`: Unexpected server error
 
-**Response 400**: No destination schema snapshot exists.
-```json
-{ "error": "No destination schema. Retrieve schema first." }
-```
+**Side Effects**:
+- Creates `ObjectField` rows for each object's fields in the database
+- Logs `DESTINATION_FIELDS_RETRIEVED` to audit trail (FR-003)
 
-## GET /api/plans/[planId]/destination-fields
+**Notes**: This endpoint is typically called as part of the full chain (schema -> fields) from 007. It should not normally be called in isolation, but it is exposed as a separate endpoint for resilience (retry on partial failure).
 
-Get persisted fields. Optional `object` query param to filter by object.
+---
 
-**Query params**:
-- `object` (optional): Filter by object API name (e.g., `?object=contacts`)
+### GET /api/plans/[planId]/destination/fields
 
-**Response 200**:
+Retrieve persisted field metadata for destination objects.
+
+**Query Parameters**:
+- `objectId` (optional): Filter fields by a specific object ID
+- `objectApiName` (optional): Filter fields by object API name
+
+**Response (200)**:
 ```json
 {
   "fields": [
     {
-      "id": "uuid",
-      "objectApiName": "contacts",
+      "id": "clx...",
+      "objectId": "clx...",
+      "snapshotId": "clx...",
       "apiName": "email",
       "label": "Email",
       "dataType": "string",
@@ -76,15 +60,97 @@ Get persisted fields. Optional `object` query param to filter by object.
       "isAccessible": true,
       "referenceTo": null,
       "relationshipType": null
+    },
+    {
+      "id": "clx...",
+      "objectId": "clx...",
+      "snapshotId": "clx...",
+      "apiName": "company_id",
+      "label": "Associated Company",
+      "dataType": "string",
+      "isRequired": false,
+      "isReadOnly": false,
+      "isUnique": false,
+      "isAccessible": true,
+      "referenceTo": "companies",
+      "relationshipType": "lookup"
     }
-  ]
+  ],
+  "totalCount": 42
 }
 ```
 
-## Audit Trail Events
+**Error Responses**:
+- `404`: Plan not found, or no destination connection, or no CURRENT snapshot
 
-| Event | Payload |
-|-------|---------|
-| `destination.fields.retrieved` | `{ planId, connectionId, objectCount, totalFieldCount }` |
-| `destination.fields.partial_failure` | `{ planId, connectionId, failedObjects }` |
-| `destination.fields.failed` | `{ planId, connectionId, error }` |
+---
+
+### GET /api/plans/[planId]/destination/objects/[objectId]/fields
+
+Convenience route: retrieve fields for a single destination object.
+
+**Response (200)**:
+```json
+{
+  "object": {
+    "id": "clx...",
+    "apiName": "contacts",
+    "label": "Contacts"
+  },
+  "fields": [ /* same shape as above */ ],
+  "totalCount": 42
+}
+```
+
+**Error Responses**:
+- `404`: Plan, connection, snapshot, or object not found
+
+## Service Interface
+
+```typescript
+// src/features/destination/services/destination-field-service.ts
+
+/**
+ * Retrieve fields for ALL objects in the destination's CURRENT snapshot.
+ * Called as part of the full chain (schema -> fields).
+ * Delegates to the shared field-service for per-object retrieval.
+ */
+async function retrieveDestinationFields(params: {
+  connectionId: string
+  snapshotId: string
+  planId: string
+}): Promise<RetrieveFieldsResult>
+
+/**
+ * Get persisted fields for a specific destination object.
+ */
+async function getDestinationFieldsByObject(params: {
+  snapshotId: string
+  objectId: string
+}): Promise<ObjectField[]>
+
+/**
+ * Get all persisted fields for the destination's CURRENT snapshot.
+ */
+async function getAllDestinationFields(params: {
+  snapshotId: string
+}): Promise<ObjectField[]>
+```
+
+## Shared Field Service Interface
+
+```typescript
+// src/features/shared/services/field-service.ts
+
+/**
+ * Retrieve and persist fields for a single object via the adapter.
+ * Shared between source (005) and destination (008).
+ */
+async function retrieveAndPersistFieldsForObject(params: {
+  connectionId: string
+  snapshotId: string
+  objectId: string
+  objectApiName: string
+  adapterType: string
+}): Promise<{ fieldCount: number; status: 'success' | 'error'; error?: string }>
+```

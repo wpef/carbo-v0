@@ -1,67 +1,65 @@
 # Research: Record Preview
 
-## Key Decisions
+## Decision 1: Table Library — TanStack Table vs Custom vs ag-Grid
 
-### 1. Unified Route vs. Separate Source/Destination Routes
+**Decision**: TanStack Table (headless, `@tanstack/react-table`).
 
-**Decision**: Single unified route with `role` query parameter.
+**Rationale**: The record preview needs dynamic columns (every object has different fields), pagination, column resizing, and cell-level rendering control. TanStack Table is headless (renders via our own shadcn/ui markup), zero-opinion on styling (compatible with Tailwind), and handles dynamic columns natively. It adds no visual dependencies and keeps us in full control of the UI.
 
-`GET /api/plans/:planId/records/:objectApiName?role=source&page=1&pageSize=50`
+**Alternatives**: Custom table (`<table>` + manual state) would require reimplementing pagination, column visibility, and resize logic. ag-Grid is heavyweight (200KB+), opinionated styling, and overkill for a read-only preview. shadcn/ui DataTable is built on TanStack Table already, so adopting TanStack directly aligns with the shadcn ecosystem.
 
-The route resolves the correct connection from the plan based on `role`. This avoids duplicating the route for source and destination while keeping the API clean. The service is fully connection-agnostic.
+## Decision 2: Records Not Persisted
 
-### 2. Pagination Strategy
+**Decision**: Records are fetched on-demand and never stored in the local database.
 
-**Decision**: Cursor-based internally, page-number exposed to UI.
+**Rationale**: Spec assumption explicitly states records are not persisted. Records can be large (100K+ rows, 200 fields). Persisting them would bloat the tenant database, create synchronization issues (records change in the source), and add no value since the preview is read-only. The connector adapter handles pagination server-side.
 
-Most external APIs (Salesforce SOQL, HubSpot search) use cursor/offset pagination internally. The adapter translates between page number + page size and the underlying cursor mechanism. The `PaginatedRecords` type from 000 exposes: `records`, `totalCount`, `pageSize`, `currentPage`, `hasNextPage`.
+**Alternatives**: Cache records in Redis or in-memory (adds infrastructure complexity for ephemeral data), persist in a separate table (storage bloat, staleness risk).
 
-**Salesforce**: Uses SOQL `LIMIT` + `OFFSET` or `queryMore()` with `nextRecordsUrl`.
-**HubSpot**: Uses `after` cursor with `limit`. Total count via separate search API.
+## Decision 3: Pagination — Server-Side via Adapter
 
-### 3. Total Record Count
+**Decision**: Server-side pagination. The API route passes `page` and `pageSize` to `ConnectorAdapter.getRecords()`. The client never fetches all records.
 
-**Decision**: Fetched alongside first page, cached client-side.
+**Rationale**: Objects can have 100K+ records. Client-side pagination (fetch all, paginate locally) would require loading gigabytes of data. The connector adapter already provides paginated access (see 000 `PaginatedRecords` type). 1-indexed pagination per FR-012 of 000.
 
-The adapter's `getRecordCount(objectApiName)` is called on the first page load. The count is returned with the first page response and cached in the React hook state. Subsequent page navigations do not re-fetch the count.
+**Alternatives**: Client-side pagination (impossible at scale), cursor-based pagination (connector interface uses page-based, not cursor-based).
 
-For Salesforce: `SELECT COUNT() FROM Object`
-For HubSpot: Search API with `limit: 0` returns `total` count.
+## Decision 4: Null and Empty Display Strategy
 
-### 4. Relationship Field Resolution
+**Decision**: Explicit visual markers: null values render as a styled `null` label (italic, muted color), empty strings render as an empty cell with a visible `""` indicator, binary/blob fields render as `[binary data]`.
 
-**Decision**: Best-effort via adapter.
+**Rationale**: FR-005 requires nulls to be "explicitly shown as null" and empty strings "shown as empty, not hidden." A blank cell is ambiguous (is it null? empty? not loaded?). Distinct visual treatments for null vs empty vs binary eliminate ambiguity. This directly supports Principle III (data fidelity).
 
-Per spec FR-006: relationship fields should display a meaningful reference. The adapter attempts to resolve lookup IDs to display names where possible:
-- Salesforce: `Name` field on related records via SOQL relationship query
-- HubSpot: Associated record labels via associations API
+**Implementation**: `cell-formatters.ts` inspects each value: `null` -> `<span class="text-muted italic">null</span>`, `""` -> `<span class="text-muted">""</span>`, `instanceof Uint8Array` or detected binary -> `[binary data]`, string > 200 chars -> truncated with expand button.
 
-If resolution fails or is too expensive, the raw ID is shown with a tooltip indicating it's an unresolved reference.
+## Decision 5: Long Text Truncation Threshold
 
-### 5. Long Text Truncation
+**Decision**: Truncate text values at 200 characters in the table cell. Show an "expand" button that opens a popover with the full value.
 
-**Decision**: Truncate at 200 characters in the table cell. Full value available via click-to-expand (modal or inline expansion).
+**Rationale**: FR-007 requires truncation for large text (10K+ chars). 200 characters provides enough context to identify the content while keeping the table row height manageable. A popover (not a modal or separate page) keeps the consultant in context.
 
-### 6. Binary/Blob Data
+**Implementation**: `expandable-text.tsx` renders truncated text + "..." + a `shadcn/ui Popover` with the full value on click. Values under 200 chars render directly without truncation controls.
 
-**Decision**: Display `[binary data]` placeholder. No attempt to render or download.
+## Decision 6: Relationship Field Display
 
-### 7. No Local Persistence
+**Decision**: Display the resolved reference value returned by the connector adapter. If the adapter returns a raw foreign key, display it with a relationship icon.
 
-**Decision**: Records are NEVER stored in the local database. Every page navigation triggers a fresh API call to the external system. This avoids stale data and storage bloat.
+**Rationale**: FR-006 requires "meaningful reference (name or ID of the related record)." The `ConnectorAdapter.getRecords()` returns `ConnectorRecord` which is a `Record<string, unknown>`. For Salesforce, SOQL queries can include relationship fields (e.g., `Account.Name`). The adapter implementation is responsible for including resolved references in the record data. The preview layer displays whatever the adapter provides.
 
-## Trade-offs
+**Implementation**: The `cell-formatters.ts` checks if the field's `referenceTo` is set (from field metadata). If so, the cell gets a relationship icon prefix. The actual display value comes from the record data as-is.
 
-| Choice | Pro | Con |
-|--------|-----|-----|
-| Unified route with role param | DRY, one component for both | Slightly more complex route logic |
-| Page-number UI over cursor | Familiar UX (page 1, 2, 3) | Adapter must translate to cursor |
-| No local persistence | Always fresh data | Every page = API call to external |
-| Best-effort relationship resolution | Meaningful display when possible | Inconsistent across connectors |
+## Decision 7: Side Parameter — Source vs Destination
 
-## Performance Considerations
+**Decision**: The record preview is accessible for both source and destination objects via a `[side]` route parameter (`"source"` or `"destination"`).
 
-- Page size default of 50 balances load time vs. data visibility
-- For Salesforce objects with 100+ fields, the response can be large; consider field selection in future
-- HubSpot has a 10-second timeout on search API; adapter must handle gracefully
-- Rate limiting: Salesforce (100 req/day for bulk, unlimited for REST), HubSpot (100 req/10sec for private apps)
+**Rationale**: The spec says "any selected object" — this includes both source and destination. The consultant needs to preview destination data too (e.g., to check existing records before migration). The service resolves the correct connection based on the side parameter. Sharing the same UI components for both sides avoids duplication.
+
+**Implementation**: Route pattern: `/api/plans/[planId]/[side]/records/[objectApiName]`. The service validates `side` is `"source"` or `"destination"` and resolves the corresponding connection.
+
+## Decision 8: Audit Trail Granularity
+
+**Decision**: One audit entry per page view: log when the consultant opens the preview (first page) and when they navigate to a new page.
+
+**Rationale**: FR-008 requires logging "record preview events (object, page, record count)." Per-page-view granularity is meaningful for traceability (which objects did the consultant inspect? how deep did they paginate?) without being excessive (not per-cell or per-record).
+
+**Implementation**: The API route logs `RECORD_PREVIEW_VIEWED` with `{ planId, side, objectApiName, page, pageSize, recordCount }` on every successful GET request for records.

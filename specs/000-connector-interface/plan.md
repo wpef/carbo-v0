@@ -1,65 +1,55 @@
 # Implementation Plan: Connector Interface
 
-**Branch**: `000-connector-interface` | **Date**: 2026-04-02 | **Spec**: `specs/000-connector-interface/spec.md`
+**Branch**: `000-connector-interface` | **Date**: 2026-05-18 | **Spec**: `specs/000-connector-interface/spec.md`
 
 ## Summary
 
-Define the abstract TypeScript types and interfaces that all connectors must implement. This is a pure type-level package with zero runtime dependencies. It defines ConnectorConnection, ConnectorSchema, ConnectorObject, ConnectorField, ConnectorRecord, FieldStats, PaginatedRecords, SchemaDiffResult, capability flags, and the ConnectorAdapter method signatures. Downstream features (001+, adapters) depend on these types.
+Define the abstract TypeScript types and interfaces that all connectors must implement. This is a compile-time-only package: no runtime code, no dependencies, no database. Every downstream feature (001-022) depends on these types.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x
-**Primary Dependencies**: None (pure types, zero runtime deps)
-**Storage**: N/A (no data persistence in this feature)
-**Testing**: Vitest (compile-time type checks + contract test suite)
-**Target Platform**: Next.js 14+ (App Router), Node.js
-**Project Type**: Shared type library within monolithic Next.js project
-**Performance Goals**: N/A (compile-time only)
-**Constraints**: Zero runtime dependencies. No concrete classes. No imports from external packages.
-**Scale/Scope**: ~8 type definitions + 1 adapter interface + 1 contract test suite
+**Language/Version**: TypeScript 5.x (strict mode)
+**Primary Dependencies**: None (zero runtime dependencies — FR-011)
+**Storage**: N/A (types only)
+**Testing**: Vitest — compile-time type checks + contract test suite with a mock connector
+**Target Platform**: Next.js project (types imported by all layers)
+**Project Type**: Type library (no runtime, no API routes, no UI)
+**Constraints**: Must remain system-agnostic; data types as strings not enums (Assumptions)
 
 ## Constitution Check
 
-| # | Principle | Status | Justification |
-|---|-----------|--------|---------------|
-| I | Spec-First | PASS | spec.md approved and complete |
-| II | Readability | PASS | Pure types with explicit names, no abstractions beyond what's needed |
-| III | Data fidelity | PASS | ConnectorField includes all metadata; unknown types preserved as strings |
-| IV | Tests on real data | PASS | Contract test suite validates every type and method signature |
-| V | Idempotence | N/A | No operations to replay |
-| VI | Traceability | N/A | No operations to log (adapters handle their own logging) |
-| VII | Observability | N/A | No runtime code |
-| VIII | Modularity | PASS | Self-contained type package; no internal deps; public interface is `src/lib/connectors/types.ts` |
-| IX | Human-in-the-loop | N/A | Type definitions only — no runtime behavior, no automation surface |
+| # | Principle | Status | Notes |
+|---|-----------|--------|-------|
+| I | Spec-First | PASS | spec.md approved |
+| II | Readability | PASS | Pure types with explicit names; no abstractions to obscure |
+| III | Data fidelity | PASS | ConnectorField preserves all metadata; unknown types kept as strings |
+| IV | Tests on real data | N/A | Type library — contract tests verify structural conformance |
+| V | Idempotence | N/A | No mutations |
+| VI | Traceability | N/A | No operations to log |
+| VII | Observability | N/A | No runtime |
+| VIII | Modularity | PASS | Self-contained types package at `src/lib/types/connector.ts` |
+| IX | Human-in-the-loop | N/A | No automation |
 
-## Project Structure
+## Architecture
 
-### Documentation (this feature)
-
-```text
-specs/000-connector-interface/
-├── spec.md
-├── plan.md              # This file
-├── research.md
-├── data-model.md        # Skipped (no Prisma entities)
-├── quickstart.md
-├── contracts/           # Skipped (no API routes)
-└── tasks.md
+```
+src/lib/types/
+└── connector.ts    # All connector interface types (single file)
 ```
 
-### Source Code
-
-```text
-src/
-└── lib/
-    └── connectors/
-        ├── types.ts              # All connector types + interfaces
-        └── index.ts              # Public barrel export
-
-tests/
-└── unit/
-    └── connectors/
-        └── contract.test.ts      # Contract test suite (type + mock validation)
+All types are exported from a single file. Downstream features import specific types:
+```typescript
+import type { ConnectorField, ConnectorObject } from '@/lib/types/connector'
 ```
 
-**Structure Decision**: Single `types.ts` file for all connector types. A barrel `index.ts` re-exports everything. No subdirectories needed — the entire feature is ~200 lines of type definitions.
+## Phases
+
+### Phase 0: Research
+See `research.md` — minimal for a type-only feature.
+
+### Phase 1: Design
+See `data-model.md` (type definitions), `contracts/api.md` (interface signatures).
+
+### Phase 2: Implementation
+Single task: create the types file + contract test suite.
+See `tasks.md`.

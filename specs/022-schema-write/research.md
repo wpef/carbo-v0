@@ -1,61 +1,114 @@
 # Research: Schema Write
 
-## Decision: API route nesting
+## Decision 1: ConnectorAdapter Extension for modifyField
 
-**Chosen**: Routes nested under `/plans/[planId]/connections/[connectionId]/schema-write/...`.
+**Decision**: Extend the `ConnectorAdapter` interface (000) with an optional `modifyField` method alongside the existing `createObject` and `createField`.
 
-**Rationale**: Schema writes are scoped to a specific destination connection within a plan. The route path makes ownership explicit. The connectionId identifies which adapter to use for the write operation.
+**Rationale**: The spec requires modifying existing destination fields (US-2: name, type, picklist values, description, group). The current interface only has `createObject?` and `createField?`. A `modifyField?` method is needed.
 
-**Rejected**: Routes under `/api/connectors/[connectionId]/schema-write`. Loses the plan context, which is needed for audit trail and access control.
+```typescript
+// Addition to ConnectorAdapter (000):
+modifyField?(
+  connectionId: string,
+  objectApiName: string,
+  fieldApiName: string,
+  updates: Partial<Omit<ConnectorField, 'apiName' | 'isReadOnly' | 'isUnique'>>
+): Promise<ConnectorField>
+```
 
-## Decision: Pre-submit validation vs. post-submit error handling
+All three write methods remain optional, gated by `capabilities.canWriteSchema`. If `canWriteSchema=false`, these methods are `undefined` and the UI hides all schema write features (FR-001).
 
-**Chosen**: Both. Pre-submit validation checks name uniqueness against the local schema snapshot and type compatibility against the adapter's supported types. Post-submit error handling catches API-level errors (tier limits, reserved words, network failures).
+**Alternatives**: Separate `canModifyField` capability flag (over-granular for v0 -- HubSpot supports all three if it supports any), single `writeSchema(operation)` method with union types (less discoverable, harder to type).
 
-**Rationale**: Pre-validation catches obvious errors without a network round-trip (SC-006). But the destination system may have additional constraints not visible locally (reserved words, tier limits), so robust error handling after the API call is also required.
+## Decision 2: Pre-Validation Before API Call
 
-## Decision: LLM field description context
+**Decision**: Validate field name uniqueness and type compatibility locally before sending the request to the destination system.
 
-**Chosen**: The LLM receives a structured prompt with: (1) a metaprompt about the company/market (from plan metadata), (2) the object type, (3) the field name and type, (4) sample values if GDPR-compliant. Returns a 1-2 sentence description.
+**Rationale**: FR-008 requires "validate inputs before submitting: name uniqueness (against known schema), type compatibility (against destination's supported types), required fields." Catching these errors locally provides instant feedback (~0ms) vs. a round-trip to the external API (~2-5s). The local check uses the current schema snapshot -- if the snapshot is stale, the remote API will catch the conflict as a second line of defense.
 
-**Implementation**: Reuse the same `@anthropic-ai/sdk` client pattern from 018, but with a different prompt template. Model: `claude-sonnet-4-20250514`, `max_tokens: 200`, `temperature: 0.3`.
+Local validation catches:
+- Name already exists in snapshot (field or object)
+- Type not in the destination connector's supported types list
+- Missing required fields (name, type, picklist values when type is picklist)
 
-**Rejected**: Reusing the 018 rule-description service directly. The prompt context is different (field description vs. rule explanation). A separate function in `field-description.ts` is cleaner.
+**Alternatives**: Only remote validation (slower UX, no instant feedback), optimistic creation with rollback (destination APIs don't support transactional rollback).
 
-## Decision: Schema snapshot refresh after write
+## Decision 3: LLM Description Generation Strategy
 
-**Chosen**: After a successful schema write, the service calls the adapter's `getFields()` for the affected object and updates the local schema snapshot in the database.
+**Decision**: Use the Claude API (`@anthropic-ai/sdk`) with a structured prompt that includes: company/market metaprompt (configured at project level), object type context, field name and type, and sample values (when GDPR-compliant).
 
-**Rationale**: The local snapshot must reflect the newly created/modified field immediately so that the field mapping view shows it. Partial refresh (only the affected object) is more efficient than a full schema re-retrieval.
+**Rationale**: FR-005 specifies the exact context elements for LLM generation. The Claude API is already in the tech stack (constitution). The prompt is assembled server-side to avoid exposing the API key to the client.
 
-**Rejected**: Full schema re-retrieval. Too slow for a single field creation -- would re-fetch all objects and fields.
+Prompt structure:
+```
+System: You are a CRM data migration expert. Generate a clear, professional field description.
+User: 
+Company context: {metaprompt}
+Object: {objectLabel} ({objectApiName})
+Field: {fieldName} (type: {fieldType})
+{sampleValues ? `Sample values: ${sampleValues.join(', ')}` : ''}
 
-## Decision: "Copy from source field" implementation
+Generate a 1-2 sentence description for this field that a business user would understand.
+```
 
-**Chosen**: A client-side operation. The UI reads the selected source field's metadata (name, type, picklist values, description) and pre-fills the creation form. No additional API call needed -- source field data is already loaded in the field mapping view.
+**Alternatives**: OpenAI API (not in the stack), local LLM (not available in v0), template-based descriptions (too rigid, can't adapt to context).
 
-**Rationale**: Source field metadata is already available in the React state from the field mapping view. Pre-filling is a pure UI operation.
+## Decision 4: Snapshot Refresh After Write
 
-## Decision: Capability gating
+**Decision**: After a successful schema write, automatically refresh the local schema snapshot for the affected connection (FR-011).
 
-**Chosen**: The `canWriteSchema` flag is checked both on the frontend (to show/hide UI elements) and on the backend (to reject API calls). Defense in depth.
+**Rationale**: The newly created or modified field/object must appear in the destination field list immediately. Without a refresh, the consultant would see stale data until the next manual refresh. The refresh is the same operation used by features 003/007 -- we call the existing refresh service.
 
-**Frontend**: The "Add field" button and field edit modal are conditionally rendered based on the connection's capability flags.
+The refresh triggers the integrity check (017), but since we just added a field/object (not removed one), the check should find no new issues. Edge case: if the destination system returns unexpected data after the write (e.g., type normalization differs from what was requested), the integrity check would catch it.
 
-**Backend**: Every schema-write route handler checks `canWriteSchema` before proceeding and returns 403 if false.
+**Alternatives**: Optimistic local update without refresh (snapshot diverges from reality), manual refresh required (bad UX -- consultant just created a field and can't see it).
 
-## Decision: Adapter type list for field creation
+## Decision 5: Supported Field Types Per Connector
 
-**Chosen**: The available field types for creation/modification come from a new adapter method `getSupportedFieldTypes(): string[]` that returns the types the destination system supports.
+**Decision**: Each connector adapter exposes a `getSupportedFieldTypes()` method (or a static list) that the UI uses to populate the type dropdown in the creation form.
 
-**Rationale**: Different systems support different type sets (HubSpot has "string", "number", "date", "enumeration", etc.; Salesforce has "Text", "Number", "Currency", "Picklist", etc.). The adapter knows its system's capabilities.
+**Rationale**: FR-008 requires type compatibility validation "against destination's supported types." HubSpot supports ~15 field types, Salesforce supports ~30. The creation form must only offer types the destination can handle.
 
-**Fallback**: If the adapter does not implement `getSupportedFieldTypes()`, use a default set: text, number, date, boolean, picklist.
+Implementation: Add a `supportedFieldTypes?: string[]` property to `ConnectorCapabilities` (or a separate method). The DemoAdapter sets this to a sensible default list. Real adapters populate it from their API documentation.
 
-## Constraint: Source connections are read-only
+```typescript
+// Addition to ConnectorCapabilities (000):
+supportedFieldTypes?: string[]  // e.g., ['string', 'number', 'date', 'datetime', 'enumeration', 'bool']
+```
 
-Schema write features are ONLY available for destination connections. The service rejects any attempt to write to a source connection. The UI does not show write options for source connections.
+**Alternatives**: Hardcode type lists per connector in the UI (not extensible), allow any type and let the API reject (poor UX).
 
-## Constraint: GDPR configuration for sample values
+## Decision 6: Copy-From-Source Field Pre-fill
 
-Sample values are only sent to the LLM when a GDPR compliance flag is enabled (plan-level or system-level setting). When disabled, the prompt omits sample values entirely. The LLM still generates a useful description from the field name, type, and object context.
+**Decision**: When "Copy from source field" is selected, the form pre-fills name, type, picklist values, and description from the selected source field. The type is mapped to the nearest equivalent destination type using the compatibility matrix.
+
+**Rationale**: FR-003 specifies exact pre-fill behavior. The type mapping is necessary because source and destination systems use different type vocabularies (e.g., Salesforce "Picklist" -> HubSpot "enumeration").
+
+The mapping uses the same type normalization used in 012 (both types normalized to canonical categories, then the canonical category maps to the destination's native type name).
+
+**Alternatives**: Copy raw type name (would fail if type names differ between systems), always set type to "text" (loses information).
+
+## Decision 7: Property Groups
+
+**Decision**: The creation and modification forms include an optional "group" field for property groups (HubSpot) or field groups (Salesforce). If the specified group does not exist, behavior depends on the connector:
+- HubSpot: The API creates the group automatically if it doesn't exist.
+- Salesforce: The API returns an error. The form should pre-populate the group dropdown from existing groups.
+
+**Rationale**: FR-002 includes "group (optional)" in the field creation form. The group behavior is connector-specific and delegated to the adapter implementation.
+
+The form populates the group dropdown by reading existing groups from the schema snapshot (if available) or allowing free-text input.
+
+**Alternatives**: Always omit group (loses organization capability), require group to exist beforehand (too restrictive for HubSpot which auto-creates).
+
+## Decision 8: Error Handling Strategy
+
+**Decision**: Three-layer error handling:
+1. **Local validation** (instant): name conflicts, missing required fields, unsupported types.
+2. **Remote API errors** (after submission): tier limits, reserved words, system-specific rejections.
+3. **Network errors** (transient): timeout, connection drop.
+
+All three layers produce user-facing error messages (FR-009). All errors (including successful operations) are logged to SchemaWriteOperation for audit (FR-010).
+
+**Rationale**: The spec lists specific error scenarios: "Custom property limit reached", "reserved word conflict", "destination temporarily unavailable", "network drops during write". Each maps to one of the three layers.
+
+**Alternatives**: Single error handler (loses granularity for UX feedback), retry logic for network errors (spec says "allows retry" implicitly via the form staying open, not automatic retry).

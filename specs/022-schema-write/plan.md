@@ -1,105 +1,96 @@
 # Implementation Plan: Schema Write
 
-**Branch**: `022-schema-write` | **Date**: 2026-04-02 | **Spec**: `specs/022-schema-write/spec.md`
+**Branch**: `022-schema-write` | **Date**: 2026-05-18 | **Spec**: `specs/022-schema-write/spec.md`
 
 ## Summary
 
-Allow consultants to create and modify fields and objects in the destination system directly from the field mapping view. The feature is gated by the adapter's `canWriteSchema` capability flag. Supports "New field" and "Copy from source field" creation modes, field property modification, LLM-generated field descriptions, and custom object creation. Every write operation is logged to the audit trail and the local schema snapshot is refreshed after success.
+Allow consultants to create new fields, modify existing fields, and create new objects on the destination system directly from the mapping workspace. Operations are gated by `ConnectorAdapter.capabilities.canWriteSchema` and routed through the adapter's `createObject`, `createField`, and `modifyField` methods. Includes LLM-generated field descriptions via the Claude API. Every schema write is audited and triggers an automatic local snapshot refresh.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x
-**Primary Dependencies**: @anthropic-ai/sdk (for LLM field descriptions), Connector Interface (canWriteSchema, createField, modifyField, createObject)
-**Storage**: Neon Postgres via Prisma -- new `SchemaWriteOperation` audit entity (isolated per tenant)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js 14+ (App Router) sur Vercel
-**Project Type**: Domain service + API routes + UI components within monolithic Next.js project
-**Performance Goals**: Field creation <10s; field modification <10s; LLM description <10s
-**Constraints**: Only available for destination connections with canWriteSchema=true; adapter methods must exist
-**Scale/Scope**: 1 service, 3 API routes, 3 UI components (create form, modify modal, object create form), 1 Prisma model
+**Language/Version**: TypeScript 5.x (strict mode)
+**Primary Dependencies**: Prisma ORM (audit records), ConnectorAdapter (000 interface -- `createObject`, `createField`, `modifyField`), @anthropic-ai/sdk (LLM descriptions), existing schema snapshot models (003/007)
+**Storage**: Neon Postgres via Prisma -- `SchemaWriteOperation` audit table; destination schema snapshots updated after each write
+**Testing**: Vitest -- unit tests for validation logic + integration tests with DemoAdapter (canWriteSchema=true variant); Playwright E2E for the creation form
+**Target Platform**: Next.js Route Handlers (API) + React components (UI forms and modals)
+**Project Type**: Full-stack feature (API + UI + connector integration)
+**Constraints**: Writes only on destination connections (FR-012); gated by capability flag (FR-001); LLM optional (FR-006)
 
 ## Constitution Check
 
-| # | Principle | Status | Justification |
-|---|-----------|--------|---------------|
-| I | Spec-First | PASS | spec.md approved and complete |
-| II | Readability | PASS | Separate components per user story; service methods named after operations |
-| III | Data fidelity | PASS | Schema snapshot refreshed after every write; name conflicts detected before submit |
-| IV | Tests on real data | PASS | Tests use realistic field definitions with types, picklist values, groups |
-| V | Idempotence | PASS | Creating an already-existing field returns a clear error, not a duplicate |
-| VI | Traceability | PASS | Every write operation (success or failure) logged to SchemaWriteOperation audit entity |
-| VII | Observability | PASS | Console logs for each write attempt, result, and schema refresh |
-| VIII | Modularity | PASS | Consumes connector adapter via abstract interface; own audit entity; UI components isolated |
-| IX | Human-in-the-loop | PASS | **Opération destructive distante** — création d'objet/champ destination explicitement confirmée via UI ; LLM descriptions sont des **suggestions** modifiables avant submit ; chaque write tracée dans `SchemaWriteOperation` (Principe VI) ; aucune écriture déclenchée automatiquement par le système |
+| # | Principle | Status | Notes |
+|---|-----------|--------|-------|
+| I | Spec-First | PASS | spec.md approved with 4 user stories |
+| II | Readability | PASS | Service layer with explicit validation steps; no magic |
+| III | Data fidelity | PASS | Pre-validation catches conflicts before API call; no silent field creation |
+| IV | Tests on real data | PASS | Realistic fixtures: HubSpot-like field types, picklist values, group names |
+| V | Idempotence | PASS | Creating a field that already exists returns a clear error (FR-008), not a duplicate |
+| VI | Traceability | PASS | Every write operation (success or failure) logged to SchemaWriteOperation + AuditLog |
+| VII | Observability | PASS | Console logging at each step: validation, API call, snapshot refresh, result |
+| VIII | Modularity | PASS | Isolated service at `src/lib/services/schema-write/`; connector-agnostic via adapter interface |
+| IX | Human-in-the-loop | PASS | All writes are consultant-initiated (button click + form submission); no auto-creation |
 
-## Project Structure
+## Architecture
 
-### Documentation (this feature)
-
-```text
-specs/022-schema-write/
-├── spec.md
-├── plan.md              # This file
-├── research.md
-├── data-model.md
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
 ```
-
-### Source Code
-
-```text
 src/
-├── lib/
-│   └── services/
-│       └── schema-write/
-│           ├── index.ts                    # Public barrel export
-│           ├── schema-write.service.ts     # Core service: create field, modify field, create object
-│           ├── field-description.ts        # LLM-powered field description generation
-│           ├── validation.ts               # Pre-submit validation (name uniqueness, type compatibility)
-│           └── types.ts                    # CreateFieldInput, ModifyFieldInput, CreateObjectInput, SchemaWriteResult
-│
-├── app/
-│   └── api/
-│       └── plans/
-│           └── [planId]/
-│               └── connections/
-│                   └── [connectionId]/
-│                       └── schema-write/
-│                           ├── fields/
-│                           │   └── route.ts          # POST: create field
-│                           ├── fields/
-│                           │   └── [fieldApiName]/
-│                           │       └── route.ts      # PATCH: modify field
-│                           ├── objects/
-│                           │   └── route.ts          # POST: create object
-│                           └── describe-field/
-│                               └── route.ts          # POST: generate field description via LLM
-│
-├── components/
-│   └── schema-write/
-│       ├── create-field-form.tsx           # "Add field" form with New/Copy toggle
-│       ├── modify-field-modal.tsx          # Field property edit modal
-│       ├── create-object-form.tsx          # Custom object creation form
-│       └── generate-description-button.tsx # LLM description trigger with loading state
-│
-└── hooks/
-    └── use-schema-write.ts                 # React hook for schema write operations + optimistic UI
-
-prisma/
-└── schema.prisma                           # SchemaWriteOperation model
-
-tests/
-├── unit/
-│   └── services/
-│       └── schema-write/
-│           ├── validation.test.ts          # Name uniqueness, type compatibility checks
-│           ├── field-description.test.ts   # LLM call, fallback, missing key
-│           └── service.test.ts             # Create/modify/object operations
-└── integration/
-    └── schema-write.test.ts                # Full create+refresh cycle with mocked adapter
+  lib/
+    services/
+      schema-write/
+        write-service.ts          # createField, modifyField, createObject orchestration
+        field-validator.ts        # Pre-validation: name uniqueness, type compatibility, required fields
+        description-generator.ts  # LLM description generation via Claude API
+        index.ts                  # Public API barrel
+    types/
+      schema-write.ts             # SchemaWriteOperation types, DTOs, form types
+  app/
+    api/
+      connections/
+        [connectionId]/
+          schema/
+            fields/
+              route.ts            # POST -> create field
+              [fieldApiName]/
+                route.ts          # PATCH -> modify field
+            objects/
+              route.ts            # POST -> create object
+            describe/
+              route.ts            # POST -> LLM description generation
+  components/
+    schema-write/
+      CreateFieldForm.tsx         # Field creation form (new or copy-from-source)
+      ModifyFieldModal.tsx        # Field modification modal (click on dest field card)
+      CreateObjectForm.tsx        # Object creation form
+      DescriptionGenerator.tsx    # LLM description button + preview
 ```
 
-**Structure Decision**: Service in `src/lib/services/schema-write/` with separated validation, LLM description, and core operations. API routes nested under connection ID since schema writes target a specific destination connection. UI components in `src/components/schema-write/` with a shared React hook.
+### Data Flow (Field Creation)
+
+```
+Consultant clicks "Add field" on destination column
+  -> CreateFieldForm opens (mode: "new" or "copy-from-source")
+  -> If copy: pre-fill from selected source field
+  -> Consultant edits and submits
+  -> POST /api/connections/[connectionId]/schema/fields
+    -> fieldValidator.validate(connectionId, fieldData)
+      -> Check name uniqueness against current snapshot
+      -> Check type is supported by destination connector
+    -> writeService.createField(connectionId, objectApiName, fieldData)
+      -> adapter.createField(connectionId, objectApiName, fieldData)
+      -> Log to SchemaWriteOperation (success or failure)
+      -> Log to AuditLog
+      -> Trigger snapshot refresh for the connection (003/007)
+    -> Return created field
+  -> UI refreshes destination field list
+```
+
+## Phases
+
+### Phase 0: Research
+See `research.md` -- ConnectorAdapter extension, LLM context assembly, type support per connector.
+
+### Phase 1: Design
+See `data-model.md` (SchemaWriteOperation Prisma model), `contracts/api.md` (API routes + DTOs).
+
+### Phase 2: Implementation
+See `tasks.md` -- 5 phases: types + model, service layer, API routes, UI components, tests.

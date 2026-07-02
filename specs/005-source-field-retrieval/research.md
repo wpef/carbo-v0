@@ -1,78 +1,55 @@
 # Research: Source Field Retrieval
 
-## Decision 1: Retrieval strategy (batch vs. on-demand)
+## Decision 1: Retrieval Strategy — Sequential vs Parallel per Object
 
-**Options**:
-- (A) Retrieve fields for all selected objects in one batch operation
-- (B) Retrieve fields on-demand per object when the consultant expands it
+**Decision**: Parallel retrieval with bounded concurrency (5 objects at a time).
 
-**Decision**: (A) Batch retrieval. Reasons:
-- Fields are needed by downstream features (mapping, rules) for ALL selected objects
-- Batch retrieval ensures completeness: the consultant cannot accidentally skip objects
-- Progress indicator shows per-object progress during the batch
-- The expand-to-preview in 004 is informational only; this is the authoritative field store
+**Rationale**: SC-001 requires 50 objects in under 60 seconds. Sequential retrieval at ~2s per object would take ~100s. Parallel with concurrency of 5 brings this to ~20s. Full parallelism (50 at once) risks rate-limiting on external APIs (Salesforce has concurrent API call limits). A concurrency pool of 5 balances speed and safety.
 
-**Implementation**: Sequential per-object retrieval (adapter.getFields(apiName)) with progress tracking. Parallel would risk rate limits on external APIs. Each object's fields are persisted as they complete, enabling partial success.
+**Implementation**: Use `Promise.allSettled` with a concurrency limiter (e.g., `p-limit` or a manual semaphore). Each object's retrieval is independent — `allSettled` naturally supports FR-006 (partial failure handling).
 
-## Decision 2: Field storage granularity
+**Alternatives**: Sequential (too slow), unbounded parallel (rate-limit risk), chunked batches of 10 (less granular failure isolation).
 
-**Options**:
-- (A) One ObjectField row per field per object (normalized)
-- (B) Store fields as a JSON array on the SchemaObject (denormalized)
+## Decision 2: Persistence Granularity — One Row per Field vs JSON Blob
 
-**Decision**: (A) Normalized rows. Reasons:
-- Individual fields are referenced by mapping features (011, 012)
-- Enables field-level queries (e.g., "find all required fields across all objects")
-- Supports field-level diff if needed in future
-- Consistent with SchemaObject being a normalized entity
+**Decision**: One Prisma row per field (`ObjectField` model).
 
-## Decision 3: Handling inaccessible fields (FR-004)
+**Rationale**: Individual rows enable querying fields by type, filtering by accessibility, joining with mapping tables downstream (011, 012), and updating individual fields on re-retrieval. A JSON blob on `SchemaObject` would require deserializing the entire payload for any operation and would not support relational joins.
 
-The adapter reports fields with an `isAccessible` flag. Inaccessible fields (due to field-level security) are still stored and displayed, but marked with a "no access" badge.
+**Alternatives**: JSON column on `SchemaObject` (no relational queries), separate document store (violates Postgres-only constraint).
 
-**Approach**: The ObjectField model includes `isAccessible: Boolean @default(true)`. The UI renders a red "No Access" badge on inaccessible fields. These fields are still available for mapping but will generate a warning during mapping validation.
+## Decision 3: Handling Inaccessible Fields (FR-004)
 
-## Decision 4: Data type representation
+**Decision**: Store inaccessible fields in the database with `isAccessible=false`. Display in UI with a "no access" badge.
 
-Per spec assumption: "The field data type is a string representation provided by the connector adapter (not a predefined enum)."
+**Rationale**: The spec explicitly requires inaccessible fields to be listed, not omitted. The `ConnectorAdapter.getFields()` method returns all fields including inaccessible ones (per spec assumption). Storing them allows the mapping layer to warn the consultant if they attempt to map an inaccessible field.
 
-**Approach**: `dataType` is stored as `String`. The UI displays it as-is. Common types (string, number, boolean, date, picklist, lookup) get recognizable icons. Unknown types get a generic icon with a "may require special handling" tooltip.
+**Implementation**: The `ObjectField` model includes an `isAccessible` boolean (default true). The connector adapter sets it to false for fields blocked by field-level security. The `ConnectorField` type from 000 does not include `isAccessible` — this is a persistence-layer enrichment. The adapter implementation must determine accessibility and pass it through a connector-specific mechanism (e.g., Salesforce `describe` returns `accessible` per field).
 
-## Decision 5: Partial failure handling (FR-006)
+**Note**: The `ConnectorField` interface (000) does not include `isAccessible`. Two approaches: (a) extend `ConnectorField` to add an optional `isAccessible?: boolean`, or (b) have each adapter return a richer type and map it to `ObjectField` at the service layer. Decision: extend `ConnectorField` with `isAccessible?: boolean` (defaults to true when not provided). This is a backward-compatible addition.
 
-If field retrieval fails for object A but succeeds for objects B and C:
-1. B and C fields are persisted normally
-2. A is flagged with an error state (no fields, error message stored)
-3. The UI shows which objects failed and offers a "Retry" button for individual objects
-4. The overall retrieval is considered complete (not failed) -- partial results are useful
+## Decision 4: Re-retrieval on Selection Change (FR-008)
 
-**Implementation**: The service returns a result object:
-```typescript
-{ 
-  succeeded: { objectApiName: string; fieldCount: number }[]
-  failed: { objectApiName: string; error: string }[]
-}
-```
+**Decision**: On selection change, delete fields for deselected objects and retrieve fields for newly selected objects. Do not re-retrieve fields for objects that remain selected.
 
-## Decision 6: Field update on selection change (FR-008)
+**Rationale**: FR-008 requires updating persisted fields when selection changes. Re-retrieving all fields would be wasteful. A diff between the previous and new selection identifies additions and removals. Fields for deselected objects are deleted (cascade from `SchemaObject.isSelected=false`). Fields for newly selected objects are retrieved fresh.
 
-When the consultant changes object selection (004):
-- Newly selected objects: fields are NOT auto-retrieved. The consultant must trigger retrieval again (or the system prompts "New objects selected. Retrieve fields?").
-- Deselected objects: fields are retained in the database but excluded from mapping scope. This avoids data loss if the consultant re-selects the object later.
-- Permanent cleanup: fields for deselected objects are only deleted on explicit schema refresh or disconnect.
+**Implementation**: The `field-retrieval-service.ts` accepts a list of `objectApiNames` to retrieve. The caller (004 selection confirmation or a re-trigger endpoint) computes the delta.
 
-This is simpler and safer than auto-retrieval on every selection toggle.
+## Decision 5: dataType as String
 
-## Decision 7: Relationship metadata
+**Decision**: Store `dataType` as a plain string, not an enum.
 
-For fields with relationships (e.g., Salesforce Lookup, MasterDetail), the adapter returns:
-- `referenceTo`: the API name of the referenced object (e.g., "Account")
-- `relationshipType`: the type of relationship (e.g., "Lookup", "MasterDetail", "Hierarchy")
+**Rationale**: Consistent with 000 `ConnectorField.dataType` design (see 000 research, Decision 2). System-specific types are preserved as-is. The mapping layer (012) normalizes types into canonical categories — the field retrieval layer stays permissive.
 
-These are stored as nullable strings on ObjectField. The UI displays them inline with the field type.
+## Decision 6: Relationship Fields (FR-003)
 
-## API Design
+**Decision**: Store `referenceTo` and `relationshipType` as optional string fields on `ObjectField`.
 
-- `POST /api/plans/[planId]/source/fields` -- trigger batch field retrieval for all selected objects
-- `GET /api/plans/[planId]/source/fields` -- get all persisted fields grouped by object
-- `GET /api/plans/[planId]/source/fields/[objectId]` -- get fields for a specific object
+**Rationale**: Matches the `ConnectorField` type from 000. `referenceTo` is the API name of the target object. `relationshipType` is a string enum (`lookup`, `master-detail`, `external`). Both are null for non-relationship fields. Storing them allows the mapping layer to render relationship context.
+
+## Decision 7: Audit Trail Granularity (FR-007)
+
+**Decision**: One audit entry per retrieval batch (not per object, not per field). The entry includes a JSON summary: total objects attempted, succeeded, failed, and field count per object.
+
+**Rationale**: Logging per-field would create thousands of audit rows for a single retrieval. Per-batch with a structured summary provides traceability (Principle VI) without storage bloat. Failed objects are listed individually in the summary.

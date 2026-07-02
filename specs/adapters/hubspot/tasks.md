@@ -1,105 +1,105 @@
 # Tasks: HubSpot Adapter
 
 **Input**: `specs/adapters/hubspot/`
-**Prerequisites**: 000-connector-interface (types.ts must exist), plan.md, spec.md, research.md, contracts/api.md
+**Prerequisites**: 000-connector-interface (types + registry implemented)
 
-## Phase 1: Setup
+## Phase 1: Adapter Core (types, constants, auth)
 
-- [ ] T001 Install @hubspot/api-client: `npm install @hubspot/api-client`
-- [ ] T002 [P] Create adapter-specific types at `src/lib/connectors/hubspot/hubspot-types.ts`: HubSpotConfig (discriminated union: private-app vs oauth2), HubSpotTokenResponse, CreatablePropertyType union, PropertyCreateInput, ObjectCreateInput
+- [ ] T001 Create HubSpot-specific internal types (`HubSpotConnectionConfig`, `HSAccountInfo`, `HSObjectSchema`, `HSPropertyDefinition`, `HSPropertyOption`, `HSSearchResponse`, `HSRecord`, `HSCreatePropertyRequest`, `HSCreateObjectRequest`, `HSCreatableType`, `CursorCache`) in `src/lib/adapters/hubspot/types.ts`. These are internal to the adapter; the public surface uses 000 interface types.
+- [ ] T002 [P] Create constants (`STANDARD_OBJECTS`, `CREATABLE_PROPERTY_TYPES`, `NON_CREATABLE_TYPES`, `HUBSPOT_OAUTH_SCOPES`) in `src/lib/adapters/hubspot/constants.ts`. Standard objects: contacts, companies, deals, tickets, line_items. Creatable types: string, number, date, datetime, enumeration, bool. Non-creatable types: calculation, score, rich_text, object_coordinates.
+- [ ] T003 Implement authentication module (`validatePrivateAppToken`, `buildOAuthAuthorizationUrl`, `exchangeCodeForTokens`, `refreshOAuthToken`) in `src/lib/adapters/hubspot/auth.ts`. `validatePrivateAppToken` calls `GET /account-info/v3/details` via the SDK to verify the token and extract portal info. `buildOAuthAuthorizationUrl` generates the authorization URL with required scopes and CSRF state. `exchangeCodeForTokens` calls `POST /oauth/v1/token` with `grant_type=authorization_code`. `refreshOAuthToken` calls `POST /oauth/v1/token` with `grant_type=refresh_token`. (FR-002, FR-012)
+- [ ] T004 Implement rate limiter (`withRateLimit`) in `src/lib/adapters/hubspot/rate-limiter.ts`. Wraps any async function. On 429 response: reads `Retry-After` header, waits the specified duration + random jitter (0-500ms), retries. Exponential backoff on subsequent retries (2x multiplier). Max 3 retries. Logs each rate limit event to audit trail. (FR-011)
 
-## Phase 2: Authentication (US1 — Connect to HubSpot)
-
-**Goal**: Consultant can authenticate via Private App token or OAuth2.
-
-**Independent Test**: Private App token validated; OAuth2 flow completes; portal name displayed.
-
-### Implementation
-
-- [ ] T003 Create auth module at `src/lib/connectors/hubspot/hubspot-auth.ts`: validatePrivateAppToken(accessToken) calls account info endpoint and returns portal details, buildOAuthUrl(config, state) generates HubSpot authorization URL, exchangeOAuthCode(config, code) exchanges code for tokens, refreshOAuthToken(config, refreshToken) refreshes access token. Use @hubspot/api-client for token validation.
-- [ ] T004 Create Private App auth route at `src/app/api/connectors/hubspot/auth/route.ts`: POST handler validates Private App token, GET handler initiates OAuth2 flow. Both log to audit trail.
-- [ ] T005 Create OAuth2 callback route at `src/app/api/connectors/hubspot/callback/route.ts`: GET handler exchanges code for tokens, validates, logs to audit trail, redirects to plan page.
-
-**Checkpoint**: Both auth methods work. Connection established.
+**Checkpoint**: Types compile. Constants defined. Private App token validation works against a real HubSpot portal. Rate limiter catches 429 and retries.
 
 ---
 
-## Phase 3: Schema Retrieval (US2 — Browse HubSpot schema)
+## Phase 2: Schema Retrieval (objects + properties)
 
-**Goal**: After auth, retrieve all objects (standard + custom) and properties.
+- [ ] T005 Implement object retrieval (`getSchema`) in `src/lib/adapters/hubspot/schema.ts`. Builds the object list from two sources: (1) hardcoded `STANDARD_OBJECTS` mapped to `ConnectorObject` with `isCustom=false`; (2) custom objects from Schemas API (`client.crm.schemas.coreApi.getAll()`) mapped with `isCustom=true`. If Schemas API returns 403 (non-Enterprise portal), log informational message and continue with standard objects only -- no exception propagated. (FR-003, FR-004)
+- [ ] T006 Implement property retrieval (`getFields`) in `src/lib/adapters/hubspot/schema.ts`. Calls `client.crm.properties.coreApi.getAll(objectType)`. Maps `HSPropertyDefinition` to `ConnectorField`: `name` -> apiName, `label` -> label, `type` -> dataType (raw HubSpot type), `modificationMetadata.readOnlyValue` -> isReadOnly, `hasUniqueValue` -> isUnique, `isRequired` = false (HubSpot enforces at form level, not API level). Adds `isCreatable` flag: true if type is in `CREATABLE_PROPERTY_TYPES` and not calculated. Adds `groupName`, `fieldType`, `description` as extended metadata. For enumeration types, includes `options` array. (FR-005)
 
-### Implementation
-
-- [ ] T006 Create constants at `src/lib/connectors/hubspot/hubspot-constants.ts`: STANDARD_OBJECTS list (contacts, companies, deals, tickets, line_items with labels), CREATABLE_PROPERTY_TYPES list, DEFAULT_PROPERTY_GROUPS map, env var key constants
-- [ ] T007 Create schema module at `src/lib/connectors/hubspot/hubspot-schema.ts`: getStandardObjects() returns hardcoded ConnectorObject list, getCustomObjects(client) calls Schemas API with 403 graceful degradation, getProperties(client, objectType) calls Properties API and maps to ConnectorField[]. Handle property types (string, number, date, datetime, enumeration, boolean) and read-only detection.
-
-**Checkpoint**: Schema retrieval returns standard + custom objects with properties.
+**Checkpoint**: `getSchema()` returns 5 standard objects (+ custom if Enterprise). `getFields("contacts")` returns all contact properties with correct types and metadata. Non-Enterprise portals gracefully degrade.
 
 ---
 
-## Phase 4: Records & Stats (US3 — Preview records)
+## Phase 3: Records + Stats
 
-**Goal**: Query records via Search API and compute property stats.
+- [ ] T007 Implement record retrieval (`getRecords`) in `src/lib/adapters/hubspot/records.ts`. Uses HubSpot Search API (`client.crm.{objectType}.searchApi.doSearch`). Page is 1-indexed per feature 000 FR-012. Internally uses cursor-based pagination: page 1 = no `after` param; page N = look up cached cursor from page N-1's response. Implements cursor cache (`Map<number, string | undefined>`) per connection+object, with 30-minute TTL. `pageSize` max 100 (HubSpot limit). Returns `PaginatedRecords`. Null property values preserved as `null` in response. (FR-006)
+- [ ] T008 Implement record count (`getRecordCount`) in `src/lib/adapters/hubspot/records.ts`. Uses Search API with `limit=0` to get `total` without fetching records. Returns `number`.
+- [ ] T009 Implement field stats computation (`getFieldStats`) in `src/lib/adapters/hubspot/records.ts`. Accepts field API names, fetches a sample via Search API (default 200 records, max 2000). Computes per-field: nullCount (count of null or empty string values), distinctCount, sampleValues (up to 5 unique non-null). Returns `FieldStats[]`. (FR-007)
 
-### Implementation
-
-- [ ] T008 Create records module at `src/lib/connectors/hubspot/hubspot-records.ts`: searchRecords(client, objectType, properties, page, pageSize) uses Search API with cursor pagination, mapToConnectorRecords(searchResults) converts to ConnectorRecord[], calculateFieldStats(records, fields) computes null count/distinct count/sample values per property. Handle cursor-to-page mapping for PaginatedRecords.
-
-**Checkpoint**: Record queries return PaginatedRecords; stats computed.
+**Checkpoint**: `getRecords("contacts", 1, 25)` returns 25 records with correct pagination. Cursor cache enables page 2+ without re-walking. `getFieldStats("contacts", ["firstname", "email"])` returns accurate stats.
 
 ---
 
-## Phase 5: Schema Write (US4 — Create properties and objects)
+## Phase 4: Schema Write (properties + custom objects)
 
-**Goal**: Create new properties and custom objects in HubSpot.
+- [ ] T010 Implement property creation (`createField`) in `src/lib/adapters/hubspot/schema-write.ts`. Local validation before API call (FR-010): (1) name uniqueness check against cached property list from `getFields`, (2) type in `CREATABLE_PROPERTY_TYPES`, (3) required fields present (name, label, type, fieldType, groupName). Calls `client.crm.properties.coreApi.create(objectType, propertyInput)`. Maps HubSpot response to `ConnectorField`. Handles: 409 Conflict (property exists -- return existing property details), 400 Bad Request (invalid type/missing fields), custom property limit (forward HubSpot error). Logs creation to audit trail. (FR-008, FR-010)
+- [ ] T011 Implement custom object creation (`createObject`) in `src/lib/adapters/hubspot/schema-write.ts`. Calls `client.crm.schemas.coreApi.create(objectInput)`. Maps response to `ConnectorObject`. Handles: 403 (non-Enterprise -- return clear tier requirement error per FR-009), 409 (object exists), 400 (invalid input). Logs creation to audit trail. (FR-009)
 
-### Implementation
-
-- [ ] T009 Create schema write module at `src/lib/connectors/hubspot/hubspot-schema-write.ts`: createProperty(client, objectType, input) validates locally (name uniqueness against cached schema, type validity), then calls Properties API. createCustomObject(client, objectDef) calls Schemas API with Enterprise tier detection. Both log to audit trail.
-
-**Checkpoint**: Properties and custom objects can be created.
+**Checkpoint**: `createField("contacts", { name: "migration_source_id", ... })` creates the property in HubSpot and returns a `ConnectorField`. Duplicate name is caught locally before API call. `createObject(...)` works on Enterprise or returns clear error on non-Enterprise.
 
 ---
 
-## Phase 6: Adapter Integration (US5 — Full adapter)
+## Phase 5: API Routes + Adapter Registration
 
-**Goal**: Wire all modules into a single ConnectorAdapter implementation.
+- [ ] T012 Create `POST /api/connectors/hubspot/connect` route in `src/app/api/connectors/hubspot/connect/route.ts`. Accepts `{ accessToken }` in body. Calls `validatePrivateAppToken`. Creates ConnectorConnection with `authMethod: "private_app"`, status CONNECTED, portal info. Returns connection object. Logs to audit trail. (FR-002)
+- [ ] T013 Create `GET /api/connectors/hubspot/oauth` route in `src/app/api/connectors/hubspot/oauth/route.ts`. Validates env vars (`HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI`). Calls `buildOAuthAuthorizationUrl`. Returns `{ authorizationUrl }`. Logs to audit trail. (FR-002)
+- [ ] T014 Create `GET /api/connectors/hubspot/oauth/callback` route in `src/app/api/connectors/hubspot/oauth/callback/route.ts`. Verifies CSRF `state`. Calls `exchangeCodeForTokens`. Validates account via SDK. Creates ConnectorConnection with `authMethod: "oauth2"`, status CONNECTED, portal info. Redirects to `/plans/{planId}/destination?connected=hubspot`. Logs to audit trail. (FR-002)
+- [ ] T015 [P] Create `POST /api/connectors/hubspot/{connectionId}/disconnect` route. Clears stored tokens, transitions status to DISCONNECTED. Returns `{ status: "DISCONNECTED" }`. Logs to audit trail. (FR-013)
+- [ ] T016 [P] Create `GET /api/connectors/hubspot/{connectionId}/objects` route. Calls adapter `getSchema`. Returns `ConnectorObject[]` with `customObjectsNote` when custom objects are unavailable. Logs to audit trail. (FR-003, FR-004)
+- [ ] T017 [P] Create `GET /api/connectors/hubspot/{connectionId}/objects/{apiName}/fields` route. Calls adapter `getFields`. Returns `ConnectorField[]` with extended metadata (groupName, fieldType, isCreatable, options). Logs to audit trail. (FR-005)
+- [ ] T018 [P] Create `GET /api/connectors/hubspot/{connectionId}/objects/{apiName}/records` route. Validates `page >= 1` and `pageSize <= 100`. Calls adapter `getRecords`. Optionally includes field stats if `includeStats=true`. Returns `PaginatedRecords`. Logs to audit trail. (FR-006, FR-007, 000 FR-012: page is 1-indexed)
+- [ ] T019 [P] Create `POST /api/connectors/hubspot/{connectionId}/schema-write/property` route. Validates request body. Calls adapter `createField`. Returns created `ConnectorField`. Logs to audit trail. (FR-008, FR-010)
+- [ ] T020 [P] Create `POST /api/connectors/hubspot/{connectionId}/schema-write/object` route. Validates request body. Calls adapter `createObject`. Returns created `ConnectorObject`. Logs to audit trail. (FR-009)
+- [ ] T021 Register HubSpot adapter in `src/lib/adapters/registry.ts` as `"hubspot"` -> `hubspotAdapter`. Import from `src/lib/adapters/hubspot/hubspot-adapter.ts`.
+- [ ] T022 Create adapter entry point `src/lib/adapters/hubspot/hubspot-adapter.ts`. Composes all modules into a `ConnectorAdapter` implementation. Sets capabilities: `{ canRead: true, canWrite: false, canWriteSchema: true }`. Implements all required methods + optional `createObject` and `createField`. Wraps all SDK calls with `withRateLimit` and token refresh logic (OAuth2: attempt refresh on 401; Private App: transition to EXPIRED on 401). Exports the adapter object. (FR-001, FR-011, FR-012, FR-014)
 
-### Implementation
-
-- [ ] T010 Create main adapter at `src/lib/connectors/hubspot/hubspot-adapter.ts`: implements ConnectorAdapter with canRead=true, canWrite=false, canWriteSchema=true. Methods delegate to auth, schema, records, and schema-write modules. Includes rate limit handling (detect 429, read Retry-After, exponential backoff), token lifecycle (OAuth2 refresh, Private App EXPIRED), and audit logging on every operation.
-- [ ] T011 Create barrel export at `src/lib/connectors/hubspot/index.ts`: export HubSpotAdapter class and HubSpotConfig type.
-
-**Checkpoint**: HubSpotAdapter is a complete ConnectorAdapter implementation.
+**Checkpoint**: All API routes respond correctly. Adapter registered in registry. Both auth flows work end-to-end: Private App connect -> objects -> fields -> records -> disconnect. OAuth2 connect -> callback -> objects -> fields -> records -> disconnect. Schema write routes create properties and objects.
 
 ---
 
-## Phase 7: Tests
+## Phase 6: Tests + Fixtures
 
-- [ ] T012 [P] Create test fixtures at `tests/fixtures/hubspot/objects-standard.json` (5 standard objects), `properties-contacts.json` (~60 properties of varied types), `records-contacts.json` (25 records with nulls/varied values)
-- [ ] T013 [P] Create auth unit tests at `tests/unit/connectors/hubspot/auth.test.ts`: test Private App token validation (valid, invalid, revoked), test OAuth2 URL generation, test OAuth2 code exchange
-- [ ] T014 [P] Create schema unit tests at `tests/unit/connectors/hubspot/schema.test.ts`: test standard objects list, test custom objects with 403 graceful degradation, test property mapping (types, read-only, group)
-- [ ] T015 [P] Create records unit tests at `tests/unit/connectors/hubspot/records.test.ts`: test Search API pagination (cursor to page mapping), test field stats calculation
-- [ ] T016 [P] Create schema write unit tests at `tests/unit/connectors/hubspot/schema-write.test.ts`: test property creation with local validation (duplicate name, invalid type), test custom object creation, test Enterprise tier detection
-- [ ] T017 Create adapter integration test at `tests/unit/connectors/hubspot/adapter.test.ts`: test full adapter with mocked @hubspot/api-client (connect -> getSchema -> getFields -> getRecords -> createField flow), verify audit logging, verify rate limit handling
+- [ ] T023 Create realistic HubSpot test fixtures in `tests/fixtures/hubspot/`: `account-info.json` (portal details response), `objects-standard.json` (5 standard objects), `objects-custom.json` (Schemas API response with 2 custom objects), `properties-contacts.json` (full contacts property list with ~30 properties including enumerations, read-only, calculated), `search-contacts.json` (25 contact records with nulls, various property types), `create-property-response.json` (successful property creation response), `create-object-response.json` (successful custom object creation response). (Constitution IV)
+- [ ] T024 [P] Create unit tests for auth module in `tests/unit/adapters/hubspot/auth.test.ts`: Private App token validation (success, invalid token, network error), OAuth2 URL generation (correct scopes, state param), code exchange (success, invalid code, state mismatch), token refresh (success, expired refresh token).
+- [ ] T025 [P] Create unit tests for schema module in `tests/unit/adapters/hubspot/schema.test.ts`: standard object list (always 5), custom object retrieval (Enterprise), custom object graceful degradation (non-Enterprise 403), property mapping to ConnectorField (all types), isCreatable flag logic, enumeration options mapping. Uses fixtures.
+- [ ] T026 [P] Create unit tests for records module in `tests/unit/adapters/hubspot/records.test.ts`: Search API pagination (cursor caching, page 1 vs page N), 1-indexed page validation, pageSize capped at 100, field stats computation (null count, distinct count, sample values), empty result handling. Uses fixtures.
+- [ ] T027 [P] Create unit tests for schema-write module in `tests/unit/adapters/hubspot/schema-write.test.ts`: property creation (success, duplicate name caught locally, invalid type rejected, 409 from API), custom object creation (success, 403 Enterprise tier error). Uses fixtures.
+- [ ] T028 [P] Create unit tests for rate limiter in `tests/unit/adapters/hubspot/rate-limiter.test.ts`: 429 detection, Retry-After header parsing, backoff timing (1x, 2x, 4x), max retry limit (3), jitter application.
+- [ ] T029 Create contract test suite in `tests/unit/adapters/hubspot/contract.test.ts`: validate HubSpot adapter against `ConnectorAdapter` interface. Verify: all required methods exist, capabilities = `{ canRead: true, canWrite: false, canWriteSchema: true }`, optional methods `createObject` and `createField` are defined (not undefined), `getRecords` with page=1 returns currentPage=1.
 
-**Checkpoint**: All tests pass.
+**Checkpoint**: All unit tests and contract tests pass. Fixtures represent realistic HubSpot data. Feature complete.
 
 ---
 
 ## Dependencies & Execution Order
 
-- **T001**: No deps
-- **T002**: Can run in parallel with T001 (just type definitions)
-- **T003**: Depends on T002 (types)
-- **T004**: Depends on T003 (auth module)
-- **T005**: Depends on T003 (auth module). Can run in parallel with T004.
-- **T006**: No deps on auth. Can run in parallel with Phase 2.
-- **T007**: Depends on T006 (constants), depends on 000-connector-interface types
-- **T008**: Depends on 000-connector-interface types. Can run in parallel with T007.
-- **T009**: Depends on T007 (schema module for cached schema validation)
-- **T010**: Depends on T003, T007, T008, T009 (all modules). Central integration point.
-- **T011**: Depends on T010
-- **T012**: No code deps — can run in parallel with any task
-- **T013-T016**: Depend on their respective modules. Parallel-safe with each other.
-- **T017**: Depends on T010 (full adapter)
+- **T001**: No deps -- start immediately
+- **T002**: No deps -- parallel with T001
+- **T003**: Depends on T001 (types) + T002 (constants for scopes)
+- **T004**: Depends on T001 (types). Can parallel with T003.
+- **T005**: Depends on T002 (constants) + T003 (auth for SDK client) + T004 (rate limiter)
+- **T006**: Depends on T002 (constants) + T003 (auth) + T004 (rate limiter). Can parallel with T005.
+- **T007**: Depends on T001 (types) + T003 (auth) + T004 (rate limiter)
+- **T008, T009**: Depend on T007 (same file, cursor cache). Sequential after T007.
+- **T010**: Depends on T006 (getFields for uniqueness check) + T002 (creatable types)
+- **T011**: Depends on T005 (getSchema for object context) + T004 (rate limiter)
+- **T012**: Depends on T003 (auth)
+- **T013, T014**: Depend on T003 (auth). Sequential (OAuth setup before callback).
+- **T015-T020**: Depend on T005-T011 (adapter methods). All parallel-safe.
+- **T021, T022**: Depend on T005-T011 (all adapter methods implemented).
+- **T023**: No deps -- can start early. Ideally before T024-T029.
+- **T024-T029**: Depend on T023 (fixtures) + respective source modules. All parallel-safe.
+
+### Parallel Opportunities
+
+```
+Phase 1: [T001 | T002] -> [T003 | T004]
+Phase 2: [T005 | T006] (after Phase 1)
+Phase 3: T007 -> [T008 | T009]
+Phase 4: [T010 | T011] (after Phase 2/3)
+Phase 5: T012, T013 -> T014, [T015 | T016 | T017 | T018 | T019 | T020] parallel, T021 + T022 after all
+Phase 6: T023 first, then [T024 | T025 | T026 | T027 | T028 | T029] all parallel
+```

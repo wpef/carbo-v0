@@ -2,96 +2,216 @@
 
 ## Base URL
 
-`/api/plans`
+All routes are Next.js Route Handlers under `/api/plans`.
 
 ---
 
 ## GET /api/plans
 
-List all migration plans.
+**Purpose**: List all migration plans (FR-002).
 
-**Response** `200 OK`
-
-```typescript
-{
-  plans: {
-    id: string;
-    name: string;
-    description: string | null;
-    status: "DRAFT" | "READY" | "BROKEN";
-    currentStep: string;
-    createdAt: string; // ISO 8601
-    updatedAt: string; // ISO 8601
-  }[];
-}
+**Response** `200 OK`:
+```json
+[
+  {
+    "id": "string (uuid)",
+    "name": "string",
+    "description": "string | null",
+    "status": "DRAFT | READY | BROKEN",
+    "currentStep": "SOURCE | DESTINATION | OBJECT_MAPPING | FIELD_MAPPING | DOCUMENTS",
+    "createdAt": "ISO 8601",
+    "updatedAt": "ISO 8601"
+  }
+]
 ```
 
-**Errors**: None expected (empty array if no plans).
+**Notes**: Returns an empty array if no plans exist. Ordered by `updatedAt` descending (most recently modified first). Does not include connection data (lightweight for list view).
+
+**Audit**: No audit log for list operations.
 
 ---
 
 ## POST /api/plans
 
-Create a new migration plan.
+**Purpose**: Create a new migration plan (FR-001).
 
-**Request Body**
-
-```typescript
+**Request Body**:
+```json
 {
-  name: string;        // required, non-empty
-  description?: string;
+  "name": "string (required, non-empty)",
+  "description": "string (optional)"
 }
 ```
 
-**Response** `201 Created`
-
-```typescript
+**Response** `201 Created`:
+```json
 {
-  id: string;
-  name: string;
-  description: string | null;
-  status: "DRAFT";
-  currentStep: "SOURCE_CONNECTION";
-  createdAt: string;
-  updatedAt: string;
+  "id": "string (uuid)",
+  "name": "string",
+  "description": "string | null",
+  "status": "DRAFT",
+  "currentStep": "SOURCE",
+  "sourceConnectionId": null,
+  "destinationConnectionId": null,
+  "objectAutoLinkedAt": null,
+  "createdAt": "ISO 8601",
+  "updatedAt": "ISO 8601"
 }
 ```
 
 **Errors**:
-- `400 Bad Request` — missing or empty `name`
+- `400 Bad Request`: `name` is missing or empty. Body: `{ "error": "Name is required" }`.
+
+**Audit**: Logs `PLAN_CREATED` with `entity: "MigrationPlan"`, `entityId: <new plan id>`, `details: { name, description }`.
 
 ---
 
 ## GET /api/plans/[planId]
 
-Get a single plan by ID.
+**Purpose**: Get plan detail with connection data (FR-004, FR-009).
 
-**Response** `200 OK`
-
-```typescript
+**Response** `200 OK`:
+```json
 {
-  id: string;
-  name: string;
-  description: string | null;
-  status: "DRAFT" | "READY" | "BROKEN";
-  currentStep: string;
-  sourceConnectionId: string | null;
-  destinationConnectionId: string | null;
-  createdAt: string;
-  updatedAt: string;
+  "id": "string (uuid)",
+  "name": "string",
+  "description": "string | null",
+  "status": "DRAFT | READY | BROKEN",
+  "currentStep": "SOURCE | DESTINATION | OBJECT_MAPPING | FIELD_MAPPING | DOCUMENTS",
+  "sourceConnectionId": "string | null",
+  "destinationConnectionId": "string | null",
+  "objectAutoLinkedAt": "ISO 8601 | null",
+  "sourceConnection": {
+    "id": "string",
+    "adapterType": "string (e.g. salesforce, hubspot)",
+    "status": "CONNECTED | EXPIRED | ERROR"
+  } | null,
+  "destinationConnection": {
+    "id": "string",
+    "adapterType": "string",
+    "status": "CONNECTED | EXPIRED | ERROR"
+  } | null,
+  "createdAt": "ISO 8601",
+  "updatedAt": "ISO 8601"
 }
 ```
 
+**Notes**: `sourceConnection` and `destinationConnection` are included via Prisma relation include. Returns `null` for each if no connection exists yet. The `adapterType` and `status` fields are used by the plan header (FR-009) to display connector labels and connection dots.
+
 **Errors**:
-- `404 Not Found` — plan does not exist
+- `404 Not Found`: Plan does not exist. Body: `{ "error": "Plan not found" }`.
+
+**Audit**: No audit log for read operations.
 
 ---
 
 ## DELETE /api/plans/[planId]
 
-Delete a plan and all associated data (cascade).
+**Purpose**: Delete a plan and all associated data (FR-003).
 
-**Response** `204 No Content`
+**Response** `204 No Content`: Empty body.
 
 **Errors**:
-- `404 Not Found` — plan does not exist
+- `404 Not Found`: Plan does not exist. Body: `{ "error": "Plan not found" }`.
+
+**Cascade**: Deleting a plan removes all associated connections, schemas, snapshots, object selections, object mappings, field mappings, rules, filters, documents, and audit logs. This is enforced at the database level via `onDelete: Cascade` on all FK relations pointing to `MigrationPlan.id`.
+
+**Audit**: Logs `PLAN_DELETED` with `entity: "MigrationPlan"`, `entityId: <plan id>`, `details: { name }` **before** the delete operation (since audit logs are cascade-deleted with the plan, this log is written then immediately deleted — acceptable for v0; if persistent audit is needed, log to an external system).
+
+---
+
+## PATCH /api/plans/[planId]/step
+
+**Purpose**: Advance the plan to the next workflow step (FR-008).
+
+**Request Body**:
+```json
+{
+  "targetStep": "DESTINATION | OBJECT_MAPPING | FIELD_MAPPING | DOCUMENTS"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "id": "string (uuid)",
+  "currentStep": "string (the new step)",
+  "status": "DRAFT | READY | BROKEN",
+  "updatedAt": "ISO 8601"
+}
+```
+
+**Validation**:
+- `targetStep` must be a valid step name.
+- `targetStep` index must be strictly greater than the current `currentStep` index (forward-only, Clarification 4).
+- If `targetStep` is `DOCUMENTS` and all prior steps are complete, status transitions to `READY`.
+
+**Errors**:
+- `400 Bad Request`: Invalid step name or not strictly forward. Body: `{ "error": "Target step must be after current step" }`.
+- `404 Not Found`: Plan does not exist.
+
+**Audit**: Logs `STEP_ADVANCED` with `entity: "MigrationPlan"`, `entityId: <plan id>`, `details: { from: <old step>, to: <new step> }`.
+
+---
+
+## Error Response Format
+
+All error responses follow a consistent shape:
+
+```json
+{
+  "error": "string (human-readable message)"
+}
+```
+
+HTTP status codes used: `400` (validation), `404` (not found), `500` (internal server error — logged with stack trace in dev).
+
+---
+
+## TypeScript Types (shared)
+
+```typescript
+// src/features/plans/types.ts
+
+interface PlanListItem {
+  id: string
+  name: string
+  description: string | null
+  status: 'DRAFT' | 'READY' | 'BROKEN'
+  currentStep: 'SOURCE' | 'DESTINATION' | 'OBJECT_MAPPING' | 'FIELD_MAPPING' | 'DOCUMENTS'
+  createdAt: string
+  updatedAt: string
+}
+
+interface PlanDetail extends PlanListItem {
+  sourceConnectionId: string | null
+  destinationConnectionId: string | null
+  objectAutoLinkedAt: string | null
+  sourceConnection: {
+    id: string
+    adapterType: string
+    status: 'CONNECTED' | 'EXPIRED' | 'ERROR'
+  } | null
+  destinationConnection: {
+    id: string
+    adapterType: string
+    status: 'CONNECTED' | 'EXPIRED' | 'ERROR'
+  } | null
+}
+
+interface CreatePlanInput {
+  name: string
+  description?: string
+}
+
+interface AdvanceStepInput {
+  targetStep: 'DESTINATION' | 'OBJECT_MAPPING' | 'FIELD_MAPPING' | 'DOCUMENTS'
+}
+
+interface AdvanceStepResponse {
+  id: string
+  currentStep: string
+  status: 'DRAFT' | 'READY' | 'BROKEN'
+  updatedAt: string
+}
+```

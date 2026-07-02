@@ -1,78 +1,99 @@
 # Tasks: Object Mapping
 
-**Input**: Design documents from `specs/011-object-mapping/`
-**Prerequisites**: Features 000 (Connector Interface), 001 (Migration Plan), 005 (Source Field Retrieval), 008 (Destination Field Retrieval)
+**Input**: `specs/011-object-mapping/`
+**Prerequisites**: 001 (MigrationPlan), 002/006 (Connections), 003/005/007/008 (Schema + Fields)
 
-## Phase 1: Setup
+## Phase 1: Data Layer
 
-- [ ] T001 [P] Add ObjectMapping model to `prisma/schema.prisma` with unique constraint, indexes, and relations to MigrationPlan. Run `npx prisma migrate dev --name add-object-mapping`.
-- [ ] T002 [P] Create mapping types in `src/lib/types/mapping.ts`: ObjectMappingDTO, CreateObjectMappingInput, AutoLinkResult, ObjectDetailDTO, LinkState enum.
+- [ ] T001 Add `ObjectMapping` model to Prisma schema per data-model.md. Include `@@unique([migrationPlanId, sourceObjectName, destinationObjectName])`, `@@index([migrationPlanId])`, `@@map("object_mappings")`. Add relation to `MigrationPlan`. Run `prisma migrate dev`.
+- [ ] T002 Create `src/features/011-object-mapping/types/object-mapping.types.ts`: export `ObjectMappingRow`, `PredictablePair`, `ObjectMappingWithStats`, `AutoLinkResult` per data-model.md TypeScript Types section.
+- [ ] T003 Create `src/features/011-object-mapping/service/auto-link-registry.ts`: export `getAutoLinkPairs(sourceAdapterType: string, destAdapterType: string): PredictablePair[]`. Initial registry: `"salesforce:hubspot"` with pairs Account->Company, Contact->Contact, Opportunity->Deal, Lead->Contact. Unknown combos return `[]`.
+- [ ] T004 [Depends: T001, T002, T003] Create `src/features/011-object-mapping/service/object-mapping.service.ts`: implement `ObjectMappingService` interface per contracts/api.md. Methods: `listMappings`, `createMapping` (with fan-in warning detection), `deleteMapping` (cascade via Prisma), `autoLink` (one-shot gated by `objectAutoLinkedAt`, single transaction), `getMappingStats` (aggregate query). All mutating operations log to AuditLog (Principle VI). Emit console.log for key operations (Principle VII).
 
----
-
-## Phase 2: Foundational (Service Layer)
-
-- [ ] T003 Create ObjectMappingService in `src/lib/services/object-mapping.ts`: CRUD operations (list, create, delete with cascade), fan-in detection, detail computation (record count, fields-to-validate, filter count). Cascade deletion explicitly deletes FieldMappings, MigrationLogicRules, MigrationFilters, FieldExclusions before removing the ObjectMapping, logging each step to audit trail.
-- [ ] T004 Create auto-link registry in `src/lib/services/auto-link-registry.ts`: static map keyed by `${sourceAdapterType}:${destinationAdapterType}` returning predictable object pairs. Initial entry: `salesforce:hubspot` with Account-Company, Contact-Contact, Opportunity-Deal, Lead-Contact pairs. Expose `getAutoLinkPairs(sourceType, destType)` function.
-- [ ] T005 Create auto-link logic in `src/lib/services/object-mapping.ts` (or same file): `autoLink(planId)` checks existing mappings, creates missing predictable pairs, returns created/skipped summary. Idempotent.
-
-**Checkpoint**: Service layer complete. All business logic testable without UI.
+**Checkpoint**: Service layer tests pass. Auto-link creates pairs and sets timestamp. Duplicate prevention works. Cascade delete works.
 
 ---
 
-## Phase 3: US1 + US2 + US3 - Object Mapping View with Links (Priority: P1)
+## Phase 2: API Routes
 
-**Goal**: Two-column layout with visual links, auto-linking, and manual link creation.
+- [ ] T005 [Depends: T004] Create `app/api/plans/[planId]/object-mappings/route.ts`: GET handler (list mappings), POST handler (create mapping). Validate plan exists, objects exist in schema snapshots. Return 400/404/409 per contracts/api.md.
+- [ ] T006 [Depends: T004] Create `app/api/plans/[planId]/object-mappings/[mappingId]/route.ts`: DELETE handler (cascade delete). Validate plan and mapping exist. Return deletion summary.
+- [ ] T007 [Depends: T004] Create `app/api/plans/[planId]/object-mappings/auto-link/route.ts`: POST handler. Call `autoLink` service method. Return `AutoLinkResult`.
+- [ ] T008 [Depends: T004] Create `app/api/plans/[planId]/object-mappings/[mappingId]/stats/route.ts`: GET handler. Return `ObjectMappingWithStats`.
 
-### Implementation
-
-- [ ] T006 Create API route handlers in `src/app/api/plans/[planId]/object-mappings/route.ts`: GET (list all), POST (create with duplicate check + fan-in warning). Delegates to ObjectMappingService.
-- [ ] T007 [P] Create API route handler in `src/app/api/plans/[planId]/object-mappings/[mappingId]/route.ts`: DELETE (cascade delete with confirmation response).
-- [ ] T008 [P] Create API route handler in `src/app/api/plans/[planId]/object-mappings/auto-link/route.ts`: POST (trigger auto-linking).
-- [ ] T009 Create React hook in `src/hooks/use-object-mapping.ts`: manages link state machine (IDLE -> SOURCE_SELECTED -> IDLE), fetches object mappings, provides createLink/deleteLink/autoLink actions.
-- [ ] T010 [P] Create ObjectCard component in `src/components/mapping/ObjectCard.tsx`: displays object name, connection circle (right for source, left for destination), click handler on circle. Highlighted state when selected as link source.
-- [ ] T011 [P] Create ObjectLink component in `src/components/mapping/ObjectLink.tsx`: SVG bezier path between two cards. Accepts source/destination positions. Click handler for future link detail (013).
-- [ ] T012 [P] Create ObjectSearchFilter component in `src/components/mapping/ObjectSearchFilter.tsx`: text input that filters object list by name (client-side).
-- [ ] T013 Create ObjectMappingView component in `src/components/mapping/ObjectMappingView.tsx`: two-column layout (source left, destination right), renders ObjectCards, SVG overlay for ObjectLinks, search filters per column. Triggers auto-link on first mount if no mappings exist.
-- [ ] T014 Create mapping page in `src/app/plans/[planId]/mapping/page.tsx`: fetches source objects, destination objects, and existing mappings; renders ObjectMappingView.
-
-**Checkpoint**: Consultant can view objects, auto-link fires on first visit, manual linking works.
+**Checkpoint**: All API routes respond correctly. Postman/curl tests pass.
 
 ---
 
-## Phase 4: US4 - Object Detail Modal (Priority: P2)
+## Phase 3: UI Components
 
-**Goal**: Detail modal with record count, field validation progress, filter count.
+- [ ] T009 [P] Create `src/features/011-object-mapping/components/ObjectCard.tsx`: A2 component. Display object label, connection circle (right for source, left for destination). Circle is clickable (starts/completes link creation). Highlight state when selected as link source. Props: `object: SchemaObject`, `side: 'source' | 'destination'`, `isMapped: boolean`, `isLinkSource: boolean`, `onCircleClick`, `onCardClick`.
+- [ ] T010 [P] Create `src/features/011-object-mapping/components/ObjectSearch.tsx`: text search input + category filter dropdown (All, Mapped, Unmapped, Standard, Custom). Independent per column. Props: `search: string`, `onSearchChange`, `filter: CategoryFilter`, `onFilterChange`.
+- [ ] T011 [Depends: T009] Create `src/features/011-object-mapping/components/ObjectLink.tsx`: SVG path between two object cards. Accepts source/dest bounding rects. Renders bezier curve with stroke color. Supports click for selection (hover highlight). Use `var(--primary)` for stroke color (not `hsl(var(--primary))` — session learning #1).
+- [ ] T012 [Depends: T009, T010, T011] Create `src/features/011-object-mapping/hooks/useSvgLinks.ts`: compute SVG path coordinates from card DOM refs. `useLayoutEffect` depends on primitive values (search strings, mapping count) not array references (session learning #2). Single `setSvgLayout()` call (session learning #2).
+- [ ] T013 [Depends: T009, T010, T011, T012] Create `src/features/011-object-mapping/components/ObjectMappingView.tsx`: A1 component. Two scrollable columns with ObjectCards. SVG overlay for links. Search/filter per column. Click-to-connect flow: click source circle -> highlight -> click dest circle -> create mapping. Fan-in warning toast. Confirmation dialog on link delete.
+- [ ] T014 [Depends: T013] Create `src/features/011-object-mapping/components/ObjectDetailModal.tsx`: A3 component. Modal with object name (title), source/destination label (subtitle), record count, fields remaining to validate (clickable -> navigate to `/plans/[planId]/field-mapping?object=<apiName>`), migration filter count.
+- [ ] T015 [Depends: T005, T006, T007, T008] Create `src/features/011-object-mapping/hooks/useObjectMappings.ts`: React Query hooks — `useObjectMappings(planId)` for list, `useCreateMapping`, `useDeleteMapping`, `useAutoLink`, `useMappingStats(planId, mappingId)`. Invalidate queries on mutation.
 
-- [ ] T015 Create API route handler in `src/app/api/plans/[planId]/object-mappings/[mappingId]/detail/route.ts`: GET returns sourceRecordCount, fieldsToValidate, totalSourceFields, migrationFilterCount.
-- [ ] T016 Create ObjectDetailModal component in `src/components/mapping/ObjectDetailModal.tsx`: shows object name (title), source/destination label, record count, fields-to-validate (clickable -> navigates to field mapping), filter count. Fetches data from detail endpoint.
+**Checkpoint**: Object mapping page renders with cards, links, search/filter, detail modal.
 
 ---
 
-## Phase 5: US5 - Remove Object Link (Priority: P2)
+## Phase 4: Page Integration
 
-**Goal**: Confirmation dialog for link removal with cascade deletion feedback.
+- [ ] T016 [Depends: T013, T014, T015] Create `app/plans/[planId]/mapping/page.tsx`: server component that fetches plan data, renders `ObjectMappingView` as client component. Pass source/destination schema objects. Call auto-link on first render if `objectAutoLinkedAt` is null.
+- [ ] T017 [Depends: T016] Create `app/plans/[planId]/mapping/loading.tsx`: Suspense fallback with skeleton UI (two columns of card placeholders).
 
-- [ ] T017 Create LinkConfirmDialog component in `src/components/mapping/LinkConfirmDialog.tsx`: warns about cascade deletion (field mappings, migration logic, filters), shows counts of child entities to be deleted, confirm/cancel buttons. On confirm, calls DELETE endpoint.
+**Checkpoint**: Full page loads, auto-link fires on first visit, manual link/unlink works end-to-end.
 
-**Checkpoint**: All user stories complete. Full object mapping workflow functional.
+---
+
+## Phase 5: Drift Highlighting
+
+- [ ] T018 [Depends: T013] Add drift rendering to `ObjectMappingView.tsx`: consume `PlanDriftContext`. For `OBJECT_ADDED`: "Nouveau" badge + green outline on card. For `OBJECT_REMOVED`: red dashed-border card + "Supprime en source/destination" badge + dashed red SVG link + "Supprimer ce mapping" action button. No auto-removal (Principle IX).
+- [ ] T019 [Depends: T014] Add drift indicator to `ObjectDetailModal.tsx`: if the object is flagged as removed, show warning banner in modal header.
+
+**Checkpoint**: Drift badges render correctly for OBJECT_ADDED and OBJECT_REMOVED.
+
+---
+
+## Phase 6: Tests
+
+- [ ] T020 [P] Create `src/features/011-object-mapping/__tests__/object-mapping.service.test.ts`: integration tests against real DB. Test: listMappings (empty, populated), createMapping (success, duplicate rejection, fan-in warning), deleteMapping (cascade verification), autoLink (first run creates pairs + sets timestamp, second run is no-op), getMappingStats.
+- [ ] T021 [P] Create `src/features/011-object-mapping/__tests__/auto-link-registry.test.ts`: unit tests. Test: known combo returns pairs, unknown combo returns empty, registry is extensible.
+- [ ] T022 [Depends: T016] Create E2E test `tests/e2e/object-mapping.spec.ts` (Playwright): full flow — open mapping page, verify auto-link creates expected pairs, manually create a link, delete a link with cascade confirmation, search/filter objects, open detail modal.
+
+**Checkpoint**: All tests pass. Feature complete.
 
 ---
 
 ## Dependencies & Execution Order
 
-- **Phase 1** (T001-T002): No dependencies, parallel.
-- **Phase 2** (T003-T005): Depends on Phase 1.
-- **Phase 3** (T006-T014): Depends on Phase 2. T006 first, then T007/T008 parallel, T009-T012 parallel, T013 depends on T009-T012, T014 depends on T013.
-- **Phase 4** (T015-T016): Depends on Phase 3.
-- **Phase 5** (T017): Depends on Phase 3 (DELETE endpoint in T007).
+- **T001**: No deps (schema migration) — start immediately
+- **T002, T003**: Depend on T001 (need model types). Parallel-safe.
+- **T004**: Depends on T001, T002, T003 (service uses model + types + registry)
+- **T005, T006, T007, T008**: Depend on T004 (routes call service). Parallel-safe.
+- **T009, T010**: No service deps (pure UI components). Parallel-safe with Phase 2.
+- **T011**: Depends on T009 (SVG needs card component)
+- **T012**: Depends on T009, T010, T011 (hook coordinates cards)
+- **T013**: Depends on T009, T010, T011, T012 (view assembles all)
+- **T014**: Depends on T013 (modal opened from view)
+- **T015**: Depends on T005-T008 (hooks call API routes)
+- **T016**: Depends on T013, T014, T015 (page assembles components + hooks)
+- **T017**: Depends on T016 (loading state for page)
+- **T018, T019**: Depend on T013/T014 (drift on existing components)
+- **T020, T021**: Can start once T004 is done. Parallel-safe.
+- **T022**: Depends on T016 (E2E needs full page)
 
 ### Parallel Opportunities
 
 ```
-Phase 1: T001 | T002 (parallel)
-Phase 2: T003 → T004 → T005 (sequential, same service file)
-Phase 3: T006 → [T007 | T008] (parallel), [T010 | T011 | T012] (parallel) → T013 → T014
-Phase 4: T015 | T016 (parallel, different layers)
-Phase 5: T017 (standalone)
+Phase 1:  T001 -> [T002 | T003] -> T004
+Phase 2:  T004 -> [T005 | T006 | T007 | T008]
+Phase 3:  [T009 | T010] -> T011 -> T012 -> T013 -> T014
+          T015 (parallel with T009-T014, depends on Phase 2)
+Phase 4:  T016 -> T017
+Phase 5:  [T018 | T019]
+Phase 6:  [T020 | T021] (parallel, after T004)
+          T022 (after T016)
 ```

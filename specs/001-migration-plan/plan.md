@@ -1,96 +1,112 @@
 # Implementation Plan: Migration Plan
 
-**Branch**: `001-migration-plan` | **Date**: 2026-04-02 | **Spec**: `specs/001-migration-plan/spec.md`
+**Branch**: `001-migration-plan` | **Date**: 2026-05-18 | **Spec**: `specs/001-migration-plan/spec.md`
 
 ## Summary
 
-Implement CRUD for Migration Plans — the top-level container for the entire migration workflow. This includes the Prisma data model, API route handlers, a plan list home page, a plan detail page with vertical step workflow, and cascade deletion. Every plan operation is logged to an audit trail.
+The Migration Plan is the top-level container for an entire migration project. It provides CRUD operations (create, list, delete), a step-by-step workflow (Source → Destination → Object Mapping → Field Mapping → Documents), a persistent layout with sidebar and header, and plan-level drift detection that fires once per "plan visit" to alert the consultant of schema changes. This is the first feature with a database, UI, and API routes.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x
-**Primary Dependencies**: Next.js 14+ (App Router), Prisma ORM, Tailwind CSS, shadcn/ui
-**Storage**: Neon Postgres via Prisma ORM (DB-per-tenant — one Neon database per consultant)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js sur Vercel (dev sur localhost)
-**Project Type**: Web application (unified Next.js project)
-**Performance Goals**: Plan list loads < 1s; CRUD operations < 500ms (after Neon cold start)
-**Constraints**: All features are scoped to a plan. No content exists outside a plan context. All plan rows are physically isolated in the tenant's own Neon database.
-**Scale/Scope**: ~50 plans per tenant in v0; horizontally scalable via tenant provisioning (cf. roadmap §Infrastructure & Tenancy Model)
+**Language/Version**: TypeScript 5.x (strict mode), Next.js 14+ App Router
+**Primary Dependencies**: Prisma ORM, Tailwind CSS, shadcn/ui, React 18+
+**Storage**: Neon Postgres (via Prisma) — MigrationPlan + AuditLog tables
+**Testing**: Vitest (unit + integration), Playwright (E2E)
+**Target Platform**: Vercel (serverless)
+**Project Type**: Full-stack web application (Next.js unified)
+**Performance Goals**: Plan list loads in <1s (SC-002), CRUD in <30s user time (SC-001)
+**Constraints**: DB-per-tenant (Neon), cascade-delete must remove 100% associated data (SC-003)
+**Scale/Scope**: Tens of plans per consultant, 5 workflow steps per plan
 
 ## Constitution Check
 
-| # | Principle | Status | Justification |
-|---|-----------|--------|---------------|
-| I | Spec-First | PASS | spec.md approved and complete |
-| II | Readability | PASS | Standard Next.js patterns: route handlers, server components, Prisma queries |
-| III | Data fidelity | PASS | Cascade delete ensures no orphaned data; status transitions are explicit |
-| IV | Tests on real data | PASS | Integration tests with realistic plan data (names, descriptions, multiple plans) |
-| V | Idempotence | PASS | Creating a plan with the same name produces a new UUID — no conflicts. Deletion is idempotent (404 if already deleted). |
-| VI | Traceability | PASS | All plan operations (create, delete, status change) logged to AuditLog table |
-| VII | Observability | PASS | Console logs for plan operations; Prisma query logging in dev |
-| VIII | Modularity | PASS | Plan module exposes types + service; downstream features import only the plan ID |
-| IX | Human-in-the-loop | PASS | Suppression de plan confirmée via dialog ; cascade delete tracée via AuditLog ; aucune décision auto sur le contenu d'un plan |
+| # | Principle | Status | Notes |
+|---|-----------|--------|-------|
+| I | Spec-First | PASS | spec.md approved with 16 FRs + 9 acceptance scenarios |
+| II | Readability | PASS | Standard Next.js App Router patterns; no custom abstractions |
+| III | Data fidelity | PASS | Cascade-delete guarantees no orphaned data (FR-003); drift detection preserves mapping decisions |
+| IV | Tests on real data | PASS | Integration tests target real Postgres (Neon branch or Docker); Playwright E2E for CRUD |
+| V | Idempotence | PASS | Plan creation is not idempotent (UUID per creation); delete is idempotent (cascade) |
+| VI | Traceability | PASS | All plan operations logged to AuditLog (FR-006) |
+| VII | Observability | PASS | Console logs for CRUD operations, step advancement, drift detection |
+| VIII | Modularity | PASS | Plan module isolated at `src/features/plans/`; public interface via types + service exports |
+| IX | Human-in-the-loop | PASS | Drift banner is non-blocking (FR-011); no auto-remediation of broken mappings; `objectAutoLinkedAt` gates auto-link to first-time only |
 
-## Project Structure
+## Architecture
 
-### Documentation (this feature)
+### Source Code Layout
 
-```text
-specs/001-migration-plan/
-├── spec.md
-├── plan.md              # This file
-├── research.md
-├── data-model.md
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
 ```
-
-### Source Code
-
-```text
-prisma/
-├── schema.prisma                          # MigrationPlan + AuditLog models
-
 src/
 ├── app/
-│   ├── page.tsx                           # Home page — plan list
-│   ├── layout.tsx                         # Root layout (modify existing)
+│   ├── page.tsx                              # Home page (plan list)
 │   ├── plans/
+│   │   ├── new/page.tsx                      # Plan creation form
 │   │   └── [planId]/
-│   │       └── page.tsx                   # Plan detail — step workflow
-│   └── api/
-│       └── plans/
-│           ├── route.ts                   # GET (list), POST (create)
-│           └── [planId]/
-│               └── route.ts              # GET (detail), DELETE
-├── components/
+│   │       ├── layout.tsx                    # Persistent layout (header + sidebar + main)
+│   │       └── page.tsx                      # Plan detail (metadata + current step CTA)
+├── features/
 │   └── plans/
-│       ├── plan-list.tsx                  # Plan list component
-│       ├── plan-card.tsx                  # Single plan card
-│       ├── create-plan-dialog.tsx         # Creation form dialog
-│       ├── step-workflow.tsx              # Vertical step indicator
-│       └── delete-plan-dialog.tsx         # Delete confirmation dialog
+│       ├── components/
+│       │   ├── plan-list.tsx                 # Home page plan list
+│       │   ├── plan-card.tsx                 # Single plan card in list
+│       │   ├── plan-form.tsx                 # Create plan form
+│       │   ├── plan-header.tsx               # Persistent header (FR-007, FR-009)
+│       │   ├── step-sidebar.tsx              # Workflow sidebar (FR-004, FR-008)
+│       │   ├── drift-banner.tsx              # Drift detection banner (FR-010 to FR-016)
+│       │   └── drift-badge.tsx               # Sidebar severity badge (FR-014)
+│       ├── hooks/
+│       │   ├── use-plans.ts                  # Plan list fetching
+│       │   ├── use-plan.ts                   # Single plan fetching
+│       │   └── use-drift-detection.ts        # Drift check on plan visit (FR-010)
+│       ├── services/
+│       │   └── plan-service.ts               # Server-side plan CRUD + step advancement
+│       ├── contexts/
+│       │   └── plan-drift-context.tsx         # PlanDriftContext provider (FR-015)
+│       └── lib/
+│           ├── steps.ts                      # Workflow step definitions + ordering
+│           └── drift-utils.ts                # Drift report merging, per-step counting
 ├── lib/
-│   ├── db/
-│   │   └── prisma.ts                     # Prisma client singleton
-│   ├── services/
-│   │   ├── plan-service.ts               # Plan CRUD business logic
-│   │   └── audit-service.ts              # Audit trail logging
+│   ├── prisma.ts                             # Prisma client singleton
+│   ├── audit.ts                              # Audit trail logging utility
 │   └── types/
-│       └── plan.ts                       # Plan-specific TypeScript types
-└── hooks/
-    └── use-plans.ts                       # Client-side plan data fetching
-
+│       └── connector.ts                      # From 000-connector-interface
+├── api/
+│   └── plans/
+│       ├── route.ts                          # GET (list) + POST (create)
+│       └── [planId]/
+│           ├── route.ts                      # GET (detail) + DELETE
+│           └── step/route.ts                 # PATCH (advance step)
+prisma/
+└── schema.prisma                             # MigrationPlan + AuditLog models
 tests/
-├── unit/
-│   └── services/
-│       └── plan-service.test.ts
-└── integration/
-    └── api/
-        └── plans.test.ts
+├── integration/
+│   └── plans/
+│       ├── plan-crud.test.ts
+│       └── plan-step.test.ts
+└── e2e/
+    └── plans/
+        └── plan-workflow.spec.ts
 ```
 
-**Structure Decision**: Standard Next.js App Router layout. Plan pages under `app/plans/[planId]`. API routes mirror the page structure. Business logic in `lib/services/`. Prisma client singleton in `lib/db/`.
+### Key Dependencies Between Files
+
+- `plan-service.ts` → `prisma.ts` + `audit.ts`
+- `layout.tsx` → `plan-header.tsx` + `step-sidebar.tsx` + `drift-banner.tsx` + `plan-drift-context.tsx`
+- `use-drift-detection.ts` → `drift-utils.ts` + calls `detectLiveDrift` (from features 003/007)
+- `step-sidebar.tsx` → `steps.ts` (step definitions) + `drift-badge.tsx`
+
+## Phases
+
+### Phase 0: Research
+See `research.md` — decisions on layout strategy, step state machine, drift architecture.
+
+### Phase 1: Design
+See `data-model.md` (Prisma schema), `contracts/api.md` (route specifications).
+
+### Phase 2: Implementation
+See `tasks.md` — ordered by: infrastructure → CRUD → layout → step workflow → drift detection.
+
+## Complexity Tracking
+
+No constitution violations identified. All principles are satisfied by the design.

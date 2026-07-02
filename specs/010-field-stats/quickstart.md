@@ -1,56 +1,94 @@
 # Quickstart: Field Stats
 
+## What this feature provides
+
+Per-field data quality statistics computed from records displayed in the record preview (009). Shows null count (with percentage), distinct value count, and up to 5 sample unique values for each field. Helps the consultant spot null-heavy fields, low-cardinality fields, and unexpected patterns before creating the mapping plan.
+
 ## Prerequisites
 
-- Feature 009 (Record Preview) implemented — `useRecordPreview` hook and record-preview component working
-- `FieldStats` type from 000-connector-interface
+- Feature 009 (Record Preview) -- records are loaded and visible in the preview table
+- Records are fetched (at least one page loaded)
 
-## Setup
+## How stats are computed
 
-No additional setup. This is a pure client-side feature.
-
-```bash
-npm run dev
-```
-
-## Dev Workflow
-
-```bash
-# Run unit tests for computation logic
-npx vitest run tests/unit/utils/compute-field-stats.test.ts
-```
-
-## Manual Testing
-
-1. Open a plan with a connected system and records available
-2. Navigate to record preview for an object
-3. Click "Show field stats" toggle
-4. Verify per-field stats: null count, distinct count, sample values
-5. Verify scope label: "Based on N records"
-6. Navigate to next page — stats recompute for new page
-7. Test edge cases:
-   - Object with zero records: "No data to analyze"
-   - Field with all nulls: null count = N, distinct = 0, no samples
-   - Field with all same value: distinct = 1, sample shows that value
-   - Field with binary placeholder: shows "N/A"
-
-## Example Usage
+Stats are computed client-side from the currently displayed records. No API call is made. When the consultant navigates to a new page or changes the page size, stats recompute from the new record set.
 
 ```typescript
-import { computeFieldStats } from "@/utils/compute-field-stats";
-import type { ConnectorRecord, FieldStats } from "@/lib/connectors/types";
+// Pure computation function (no side effects)
+import { computeFieldStats } from '@/features/010-field-stats/lib/compute-field-stats'
 
-const records: ConnectorRecord[] = [
-  { Id: "001", Name: "John", Email: null, Status: "Active" },
-  { Id: "002", Name: "Jane", Email: "jane@co.com", Status: "Active" },
-  { Id: "003", Name: "Bob", Email: "bob@co.com", Status: "Inactive" },
-];
-
-const stats: FieldStats[] = computeFieldStats(records);
-// [
-//   { fieldApiName: "Id", nullCount: 0, distinctCount: 3, sampleValues: ["001", "002", "003"] },
-//   { fieldApiName: "Name", nullCount: 0, distinctCount: 3, sampleValues: ["John", "Jane", "Bob"] },
-//   { fieldApiName: "Email", nullCount: 1, distinctCount: 2, sampleValues: ["jane@co.com", "bob@co.com"] },
-//   { fieldApiName: "Status", nullCount: 0, distinctCount: 2, sampleValues: ["Active", "Inactive"] },
-// ]
+const result = computeFieldStats(records, fieldMetadata, totalCount)
+// result.stats: ComputedFieldStats[] -- one entry per field
+// result.scope: { analyzedCount, totalCount, isFullDataset, label }
 ```
+
+## How to use the React hook
+
+```typescript
+import { useFieldStats } from '@/features/010-field-stats/hooks/use-field-stats'
+
+function RecordPreviewWithStats({ planId, side, objectApiName }) {
+  // From 009's hook
+  const { records, fieldMetadata } = useRecords({ planId, side, objectApiName })
+  const { totalCount } = useRecordCount({ planId, side, objectApiName })
+
+  // Compute stats (memoized -- recomputes only when records change)
+  const { stats, scope, isComputing } = useFieldStats(records, fieldMetadata, totalCount)
+
+  return (
+    <>
+      <RecordTable records={records} fieldMetadata={fieldMetadata} />
+      <FieldStatsPanel stats={stats} scope={scope} isComputing={isComputing} />
+    </>
+  )
+}
+```
+
+## Key types
+
+```typescript
+// ComputedFieldStats -- per-field stats with display metadata
+interface ComputedFieldStats {
+  fieldApiName: string
+  nullCount: number
+  distinctCount: number
+  sampleValues: unknown[]          // up to 5 unique non-null values
+  totalRecords: number
+  nullPercentage: number           // e.g., 33.3
+  isComputable: boolean            // false for binary fields
+  truncatedSampleValues: string[]  // stringified, max 100 chars each
+}
+
+// StatsScope -- scope labeling
+interface StatsScope {
+  analyzedCount: number
+  totalCount: number | null
+  isFullDataset: boolean
+  label: string                    // e.g., "Based on 50 of 10,000 records"
+}
+
+// FieldStatsResult -- full return type
+interface FieldStatsResult {
+  stats: ComputedFieldStats[]
+  scope: StatsScope
+}
+```
+
+## UI behavior
+
+- Stats panel appears below the record table, with one stat card per field column
+- Each card shows: null count (red if >50%), distinct count, sample values as chips
+- Scope label always visible at the top: "Based on N records" or "Based on N of M records" (FR-003)
+- Binary/blob fields: card shows "N/A" (FR-005)
+- Zero records: "No data to analyze" message instead of empty stats
+- All-null field: null count = total, distinct count = 0, no sample values (acceptance scenario 3)
+- All-same-value field: distinct count = 1, single sample value (acceptance scenario 2)
+- High cardinality: distinct count shown, only first 5 unique values displayed
+- Long sample values: truncated at 100 characters with "..." (FR-006)
+- Stats panel is collapsible (collapsed by default to avoid overwhelming the view)
+- Stats recompute on every page navigation (new records -> new stats)
+
+## Dependencies
+
+- **Depends on**: 000 (FieldStats type), 009 (Record Preview -- provides records and field metadata)
+- **Used by**: None currently. Future: mapping suggestions could leverage field stats to recommend transformations.

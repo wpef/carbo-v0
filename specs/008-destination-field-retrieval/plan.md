@@ -1,82 +1,100 @@
 # Implementation Plan: Destination Field Retrieval
 
-**Branch**: `008-destination-field-retrieval` | **Date**: 2026-04-02 | **Spec**: `specs/008-destination-field-retrieval/spec.md`
+**Branch**: `008-destination-field-retrieval` | **Date**: 2026-05-18 | **Spec**: `specs/008-destination-field-retrieval/spec.md`
 
 ## Summary
 
-Retrieve all fields/properties for each destination object so the consultant can see what they can map to. Follows the same pattern as 005-source-field-retrieval, reusing `ObjectField` entity and the field retrieval service. Key difference: fields are retrieved for ALL destination objects (no selection step), not just selected ones.
+Retrieve and persist field metadata for all destination objects after schema retrieval (007). Mirrors the source-side pattern (005) but with two key differences: (1) no object-selection step -- fields are retrieved for all objects in the destination schema, and (2) fields carry destination-specific badges (read-only, required) that are critical for downstream mapping validation. The feature reuses the existing `ConnectorAdapter.getFields()` interface and the `ObjectField` Prisma model established by 005.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x
-**Primary Dependencies**: Next.js 14+ (App Router), Prisma ORM
-**Storage**: Neon Postgres via Prisma — reuses `ObjectField` table from 005 (isolated per tenant)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js 14+ (App Router) sur Vercel
-**Project Type**: Web application (unified Next.js project)
-**Performance Goals**: Field retrieval for all destination objects completes in under 60 seconds
-**Constraints**: All destination objects have fields retrieved (no selection gate). Fields include: label, apiName, dataType, isRequired, isReadOnly, isUnique, referenceTo.
-**Scale/Scope**: 1 API route, service reuse from 005, 1 UI page section
+**Language/Version**: TypeScript 5.x (strict mode), Next.js 14+ App Router
+**Primary Dependencies**: Prisma ORM, Tailwind CSS, shadcn/ui, React 18+
+**Storage**: Neon Postgres (via Prisma) -- ObjectField table (same model as 005, scoped by connectionId/snapshotId)
+**Testing**: Vitest (unit + integration)
+**Target Platform**: Vercel (serverless)
+**Project Type**: Full-stack web application (Next.js unified)
+**Performance Goals**: Field retrieval for all destination objects completes in <60s for 50 objects (SC from 005 applies)
+**Constraints**: Must follow the same adapter pattern as 005; no object-selection step for destination
 
 ## Constitution Check
 
-| # | Principle | Status | Justification |
-|---|-----------|--------|---------------|
-| I | Spec-First | PASS | spec.md approved |
-| II | Readability | PASS | Mirrors source field retrieval; no new abstractions |
-| III | Data fidelity | PASS | All fields preserved including inaccessible ones (with badge) |
-| IV | Tests on real data | PASS | Integration tests with demo adapter returning realistic field metadata |
-| V | Idempotence | PASS | Re-retrieving fields replaces previous data cleanly |
-| VI | Traceability | PASS | Field retrieval logged to audit trail |
-| VII | Observability | PASS | Console logs for retrieval progress (per-object field count) |
-| VIII | Modularity | PASS | Reuses ObjectField entity; field retrieval service shared with 005 |
-| IX | Human-in-the-loop | PASS | Récupération déclenchée par le consultant ou la chaîne post-OAuth ; aucune décision auto, juste un fetch de métadonnées |
+| # | Principle | Status | Notes |
+|---|-----------|--------|-------|
+| I | Spec-First | PASS | spec.md approved with 3 FRs + 2 acceptance scenarios |
+| II | Readability | PASS | Mirrors 005 patterns; no new abstractions |
+| III | Data fidelity | PASS | All fields retrieved and persisted; no silent omissions (inherited from 005 FR-004) |
+| IV | Tests on real data | PASS | Integration tests with realistic field metadata fixtures |
+| V | Idempotence | PASS | Re-retrieval replaces previous fields atomically; same result on re-run |
+| VI | Traceability | PASS | FR-003: field retrieval logged to audit trail |
+| VII | Observability | PASS | Console logs for retrieval start, per-object progress, completion summary |
+| VIII | Modularity | PASS | Service function in destination feature module; reuses shared field service from 005 |
+| IX | Human-in-the-loop | N/A | No automation decisions -- pure data retrieval |
 
-## Project Structure
+## Architecture
 
-### Documentation (this feature)
+### Source Code Layout
 
-```text
-specs/008-destination-field-retrieval/
-├── spec.md
-├── plan.md              # This file
-├── research.md
-├── data-model.md        # Skipped (reuses ObjectField from 005)
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
 ```
-
-### Source Code
-
-```text
 src/
 ├── app/
-│   ├── api/
-│   │   └── plans/
-│   │       └── [planId]/
-│   │           └── destination-fields/
-│   │               └── route.ts               # POST (retrieve all), GET (fields by object)
+│   └── plans/
+│       └── [planId]/
+│           └── destination/
+│               ├── schema/
+│               │   └── page.tsx                # Object list with field expansion (existing from 007)
+│               └── fields/
+│                   └── page.tsx                # Dedicated fields view per object (optional)
+├── features/
+│   └── destination/
+│       ├── components/
+│       │   ├── destination-field-list.tsx      # Field table with badges (read-only, required)
+│       │   └── destination-object-fields.tsx   # Object expandable panel showing fields
+│       ├── hooks/
+│       │   └── use-destination-fields.ts       # SWR/fetch hook for field retrieval
+│       └── services/
+│           └── destination-field-service.ts    # Server-side: retrieve + persist fields for all objects
+├── features/
+│   └── shared/
+│       └── services/
+│           └── field-service.ts               # Shared field retrieval logic (from 005, reused)
+├── lib/
+│   ├── prisma.ts
+│   ├── audit.ts
+│   └── types/
+│       └── connector.ts                       # ConnectorField type (from 000)
+├── api/
 │   └── plans/
 │       └── [planId]/
 │           └── destination/
 │               └── fields/
-│                   └── page.tsx               # Destination fields UI (object accordion + field table)
-├── components/
-│   └── schema/
-│       └── field-table.tsx                    # Reusable: displays fields with type/constraint badges
-│                                              # (shared with source, from 005)
-├── lib/
-│   └── services/
-│       └── field-retrieval.service.ts         # Shared service from 005 (connection-agnostic)
-
+│                   └── route.ts               # POST (trigger retrieval) + GET (list fields)
+prisma/
+└── schema.prisma                              # ObjectField model (from 005, shared)
 tests/
-├── unit/
-│   └── services/
-│       └── destination-field-retrieval.test.ts
 └── integration/
-    └── destination-field-retrieval.test.ts
+    └── destination/
+        └── destination-fields.test.ts
 ```
 
-**Structure Decision**: Field retrieval service from 005 is generic (works with any connection + schema snapshot). The route handler retrieves fields for all destination objects in one call. The field-table component is shared.
+### Key Dependencies Between Files
+
+- `destination-field-service.ts` -> `field-service.ts` (shared logic) -> `ConnectorAdapter.getFields()`
+- `destination-field-service.ts` -> `prisma.ts` + `audit.ts`
+- `use-destination-fields.ts` -> `GET/POST /api/plans/[planId]/destination/fields`
+- `destination-field-list.tsx` -> field data from hook
+
+## Phases
+
+### Phase 0: Research
+See `research.md` -- decisions on reuse of 005 patterns, no object-selection gate.
+
+### Phase 1: Design
+See `data-model.md` (ObjectField reuse), `contracts/api.md` (API routes).
+
+### Phase 2: Implementation
+See `tasks.md`.
+
+## Complexity Tracking
+
+No constitution violations identified. The feature is a direct mirror of 005 with simplified scope (no object selection).

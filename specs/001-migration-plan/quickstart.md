@@ -1,82 +1,120 @@
 # Quickstart: Migration Plan
 
+## What this feature provides
+
+CRUD operations for migration plans (the top-level container), a persistent plan layout with workflow sidebar, step advancement, and plan-level drift detection on reopen.
+
 ## Prerequisites
 
-- Node.js 18+
-- npm (installed with Node.js)
+- Feature 000 (Connector Interface) types available at `src/lib/types/connector.ts`
+- Prisma configured with Neon Postgres (or local Docker Postgres)
+- `npx prisma migrate dev` run after schema changes
 
-## Setup
+## How to use
 
-### 1. Install dependencies
-
-```bash
-npm install prisma @prisma/client
-npm install -D vitest
-```
-
-### 2. Create `.env`
-
-See [Environment Variables](#environment-variables) below — required before the next step.
-
-### 3. Initialize Prisma
+### 1. Create a plan
 
 ```bash
-npx prisma generate
-npx prisma db push
+curl -X POST http://localhost:3000/api/plans \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Acme Corp Migration", "description": "Salesforce to HubSpot"}'
 ```
 
-This creates the SQLite database at `./dev.db` with the MigrationPlan and AuditLog tables.
+Response:
+```json
+{
+  "id": "clx...",
+  "name": "Acme Corp Migration",
+  "description": "Salesforce to HubSpot",
+  "status": "DRAFT",
+  "currentStep": "SOURCE",
+  "sourceConnectionId": null,
+  "destinationConnectionId": null,
+  "objectAutoLinkedAt": null,
+  "createdAt": "2026-05-18T...",
+  "updatedAt": "2026-05-18T..."
+}
+```
 
-### 4. Install shadcn/ui components
+### 2. List all plans
 
 ```bash
-npx shadcn-ui@latest add card dialog button input badge
+curl http://localhost:3000/api/plans
 ```
 
-## Environment Variables
-
-**Required** — create `.env` at the project root before running `prisma db push` or the dev server:
-
+Response:
+```json
+[
+  {
+    "id": "clx...",
+    "name": "Acme Corp Migration",
+    "description": "Salesforce to HubSpot",
+    "status": "DRAFT",
+    "currentStep": "SOURCE",
+    "createdAt": "2026-05-18T...",
+    "updatedAt": "2026-05-18T..."
+  }
+]
 ```
-DATABASE_URL="file:./dev.db"
-```
 
-Prisma reads `DATABASE_URL` from `.env` via `env("DATABASE_URL")` in `schema.prisma`. Without it, all Prisma calls fail with `PrismaClientInitializationError: Environment variable not found: DATABASE_URL`.
-
-## Run the app
+### 3. Get plan detail
 
 ```bash
-npm run dev
+curl http://localhost:3000/api/plans/clx...
 ```
 
-Open `http://localhost:3000` — the home page shows the plan list.
+Response includes `sourceConnection` and `destinationConnection` data for the header (FR-009).
 
-## Test the feature
-
-### Manual test
-
-1. Click "New Plan" on the home page
-2. Enter name: "Acme Corp Migration", description: "CRM migration Q2 2026"
-3. Submit — redirected to plan detail page with step workflow (all steps pending)
-4. Go back to home — plan appears in the list with DRAFT status
-5. Delete the plan — it disappears from the list
-
-### Automated tests
+### 4. Advance step
 
 ```bash
-# Unit tests
-npx vitest run tests/unit/services/plan-service.test.ts
-
-# Integration tests (API routes)
-npx vitest run tests/integration/api/plans.test.ts
+curl -X PATCH http://localhost:3000/api/plans/clx.../step \
+  -H "Content-Type: application/json" \
+  -d '{"targetStep": "DESTINATION"}'
 ```
 
-## Seed data (optional)
+Returns 200 with the updated plan. Returns 400 if targetStep is not strictly forward.
 
-Create a seed script to pre-populate plans for development:
+### 5. Delete a plan
 
 ```bash
-npx prisma db seed
+curl -X DELETE http://localhost:3000/api/plans/clx...
 ```
 
-Seed file at `prisma/seed.ts` creates 3 sample plans with different statuses.
+Returns 204. All associated data (connections, schemas, mappings, documents, audit logs) is cascade-deleted.
+
+## UI Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Home page — plan list with name, status, current step, dates |
+| `/plans/new` | Plan creation form (name + optional description) |
+| `/plans/[planId]` | Plan detail — metadata + current step CTA (inside persistent layout) |
+| `/plans/[planId]/source` | Source connection page (feature 002) |
+| `/plans/[planId]/destination` | Destination connection page (feature 006) |
+| `/plans/[planId]/mapping` | Object mapping page (feature 011) |
+| `/plans/[planId]/field-mapping` | Field mapping page (feature 012) |
+| `/plans/[planId]/documents` | Documents page (feature 019/020) |
+
+## Persistent Layout (FR-007)
+
+The `layout.tsx` at `/plans/[planId]/` renders:
+- **Header** (fixed top): plan name, status badge, source/destination connector labels with connection dots
+- **Sidebar** (fixed left): vertical step workflow with progress indicators + next-step button pinned at bottom
+- **Main area** (scrollable center): child page content
+- **Drift banner** (below header, above content): shown when drift detected on plan visit
+
+## Drift Detection Flow (FR-010 to FR-016)
+
+1. Consultant navigates to `/plans/[id]/*` from outside the plan
+2. Layout checks `sessionStorage.lastVisitedPlanId`
+3. If different → fires `detectLiveDrift` for source and destination in parallel
+4. Merged DriftReport stored in `PlanDriftContext`
+5. Banner shown if any `critical` or `warning` changes
+6. Sidebar badges updated per step
+7. Consultant can refresh schema or ignore for this visit
+
+## Dependencies
+
+- **Depends on**: 000-connector-interface (types only)
+- **Used by**: 002 (Source Connection), 006 (Destination Connection), 011 (Object Mapping), 012 (Field Mapping), 019/020 (Documents) — all features are scoped to a plan

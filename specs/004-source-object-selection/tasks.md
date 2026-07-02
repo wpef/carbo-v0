@@ -1,64 +1,91 @@
 # Tasks: Source Object Selection
 
 **Input**: `specs/004-source-object-selection/`
-**Prerequisites**: 003-source-schema-retrieval (SchemaSnapshot + SchemaObject models, retrieval API)
+**Prerequisites**: 000-connector-interface (types), 003-source-schema-retrieval (SchemaSnapshot, SchemaObject models), 002-source-connection (ConnectorConnection model, adapter registry)
+
+## Phase 1: Data Model + Service Layer
+
+- [ ] T001 Add `ObjectSelection` model to `prisma/schema.prisma` per data-model.md. Add relation fields on `ConnectorConnection` and `SchemaSnapshot` models. Run `npx prisma generate` (no migration yet -- Neon branch handles schema).
+- [ ] T002 Create `src/features/004-source-object-selection/lib/common-business-objects.ts`: export `CommonBusinessObjectsConfig` with per-connector-type lists (salesforce, hubspot, demo). Per research Decision 2.
+- [ ] T003 Create `src/features/004-source-object-selection/lib/default-selection.ts`: export `computeDefaultSelections(objects: SchemaObject[], adapterType: string): Array<{ objectApiName: string; isSelected: boolean }>`. Selects `isCustom=true` + objects in common business objects list. Per FR-002.
+- [ ] T004 Create `src/features/004-source-object-selection/services/object-selection-service.ts` with:
+  - `getObjectsWithSelection(planId): Promise<{ objects: ObjectSelectionRow[]; summary: SelectionSummary; snapshotId; connectionId }>` -- joins SchemaObject + ObjectSelection, computes category, initializes defaults on first load (FR-001, FR-007, FR-009).
+  - `saveSelections(planId, selections: SaveSelectionPayload): Promise<{ updated: number; summary: SelectionSummary }>` -- upsert in transaction, set selectedAt, log to audit trail (FR-006, FR-007, FR-010).
+  - `migrateSelections(connectionId, oldSnapshotId, newSnapshotId, newObjects: SchemaObject[]): Promise<void>` -- copy selections for surviving objects, apply defaults for new objects, flag orphaned (spec assumption on snapshot migration).
+- [ ] T005 Create `src/features/004-source-object-selection/services/object-expand-service.ts`: export `expandObject(connectionId, objectApiName): Promise<ObjectExpandResult>`. Calls adapter `getRecordCount`, `getFields`, `getRecords(_, _, 1, 5)` in parallel with 30s timeout. Per FR-005. Console log start/end with timing (Principle VII).
+
+**Checkpoint**: Service layer complete. All business logic testable without UI.
 
 ---
 
-## Phase 1: Data Layer
+## Phase 2: API Routes
 
-- [ ] T001 [US1] Add `ObjectSelection` model to `prisma/schema.prisma`: id, snapshotId, objectId, objectApiName, isSelected, selectedAt, createdAt, updatedAt. Add @@unique([snapshotId, objectId]), @@index([snapshotId, isSelected]). Add relations to SchemaSnapshot and SchemaObject. Run `prisma migrate dev`.
+- [ ] T006 Create `src/app/api/plans/[planId]/source/objects/route.ts`:
+  - `GET`: calls `getObjectsWithSelection(planId)`, returns JSON per contracts/api.md.
+  - `PUT`: validates body, calls `saveSelections(planId, payload)`, returns updated summary.
+  - Both: resolve planId -> connectionId -> CURRENT snapshotId; return 404 for missing connection/snapshot.
+- [ ] T007 Create `src/app/api/plans/[planId]/source/objects/[objectApiName]/expand/route.ts`:
+  - `GET`: validates objectApiName exists in CURRENT snapshot, calls `expandObject`, returns JSON.
+  - 404 if object not found, 504 if timeout.
 
----
-
-## Phase 2: Service Layer
-
-- [ ] T002 [US1] Create `src/lib/services/object-selection.ts`: implement `initDefaultSelection(snapshotId, adapterType)` -- creates ObjectSelection rows for all objects in snapshot. Sets isSelected=true for isCustom objects and objects in adapter's commonBusinessObjects list. Logs to audit trail.
-- [ ] T003 [US1] In same service, implement `getObjectsWithSelection(snapshotId, includeSystem)` -- returns all objects joined with their selection status + summary counts (total, selected, system, custom).
-- [ ] T004 [US1] In same service, implement `updateSelection(objectId, isSelected)` and `bulkUpdateSelection(selections[])` -- toggles isSelected, sets selectedAt, logs changes to audit trail.
-- [ ] T005 [US1] In same service, implement `migrateSelection(oldSnapshotId, newSnapshotId)` -- copies selection state from old to new snapshot for matching apiNames, applies defaults for new objects, deletes orphaned selections.
-- [ ] T006 [US1] In same service, implement `expandObject(connectionId, objectApiName)` -- calls adapter.getRecordCount(), adapter.getFields(), adapter.getRecords() in parallel. Returns combined result with 30s timeout.
-- [ ] T007 [US1] Update `src/lib/connectors/registry.ts`: add `commonBusinessObjects` and `systemObjectPrefixes` arrays to adapter metadata for each registered adapter.
+**Checkpoint**: API routes functional. Can test with curl/Postman against demo adapter.
 
 ---
 
-## Phase 3: API Routes
+## Phase 3: UI Components
 
-- [ ] T008 [P] [US1] Create `src/app/api/plans/[planId]/source/objects/route.ts`: implement GET handler -- calls `getObjectsWithSelection`, initializes defaults if no selections exist. Returns objects + summary per contract.
-- [ ] T009 [P] [US1] In same route file, implement PUT handler -- validates body, calls `bulkUpdateSelection`, returns updated summary per contract.
-- [ ] T010 [US1] Create `src/app/api/plans/[planId]/source/objects/[objectId]/route.ts`: implement PATCH handler -- calls `updateSelection`, returns updated selection per contract.
-- [ ] T011 [US1] Create `src/app/api/plans/[planId]/source/objects/[objectId]/expand/route.ts`: implement GET handler -- calls `expandObject`, returns count + fields + records per contract. Handle timeout with 504.
+- [ ] T008 Create `src/features/004-source-object-selection/hooks/use-object-selection.ts`: SWR/fetch hook for GET + mutation for PUT. Optimistic update on toggle. Revalidate on PUT success.
+- [ ] T009 Create `src/features/004-source-object-selection/hooks/use-object-expand.ts`: Lazy fetch hook (only triggers on expand click). Loading + error + timeout states.
+- [ ] T010 [P] Create `src/features/004-source-object-selection/components/object-search.tsx`: controlled input, debounced 100ms, emits filter string. Per FR-004 + SC-002.
+- [ ] T011 [P] Create `src/features/004-source-object-selection/components/system-objects-toggle.tsx`: toggle switch (shadcn/ui Switch), default on (hide system). Emits boolean filter. Per FR-003.
+- [ ] T012 Create `src/features/004-source-object-selection/components/object-row.tsx`: checkbox + label + apiName + custom/business/system badge + truncated description. Expand chevron triggers `use-object-expand`. Per FR-001.
+- [ ] T013 Create `src/features/004-source-object-selection/components/object-expand-panel.tsx`: collapsible panel below object-row. Shows record count, field table (apiName, label, dataType, isRequired, isReadOnly), sample records table. Loading skeleton on fetch. Timeout/error message. Per FR-005.
+- [ ] T014 Create `src/features/004-source-object-selection/components/object-list.tsx`: renders filtered/sorted `ObjectSelectionRow[]` using `object-row.tsx`. Applies search filter (FR-004), system toggle filter (FR-003). Empty state "No objects match your search" (spec edge case). Per FR-001.
+- [ ] T015 [P] Create `src/features/004-source-object-selection/components/bulk-actions-bar.tsx`: "Select all visible" / "Deselect all visible" buttons. Calls PUT with all currently visible objects. Displays "X / Y objects selected" count. Per FR-006, FR-009.
+- [ ] T016 [P] Create `src/features/004-source-object-selection/components/proceed-bar.tsx`: bottom sticky bar with selected count + "Retrieve Fields" button. Button disabled + validation message when selectedCount === 0. Per FR-008.
+- [ ] T017 Create `src/features/004-source-object-selection/components/object-selection-page.tsx`: client orchestrator composing all components. Manages search state, system toggle state, selection state. Wires hooks to components.
+- [ ] T018 Create `src/app/plans/[planId]/source/objects/page.tsx`: server component shell. Renders `<ObjectSelectionPage planId={params.planId} />`.
 
----
-
-## Phase 4: UI Components
-
-- [ ] T012 [P] [US1] Create `src/components/objects/ObjectRow.tsx`: single row with checkbox, label, apiName, isCustom badge, description truncated. Click on row expands. Checkbox toggles selection.
-- [ ] T013 [P] [US1] Create `src/components/objects/ObjectExpandPanel.tsx`: expanded view showing record count, field list (as a table: apiName, label, type, constraints), and sample records (as a mini-table). Loading state while fetching.
-- [ ] T014 [P] [US1] Create `src/components/objects/SelectionToolbar.tsx`: shows "X / Y objects selected" counter. Buttons: "Select all visible", "Deselect all visible". Operates on filtered list.
-- [ ] T015 [P] [US1] Create `src/components/objects/SystemObjectToggle.tsx`: toggle switch "Hide system objects" (default: on). Emits filter change.
-- [ ] T016 [US1] Create `src/components/objects/ObjectSelectionList.tsx`: composes ObjectRow, SelectionToolbar, SystemObjectToggle, and a search input. Client-side search by label/apiName. Handles empty state.
-
----
-
-## Phase 5: Page Integration
-
-- [ ] T017 [US1] Create `src/app/plans/[planId]/source/objects/page.tsx`: object selection step page. Integrates ObjectSelectionList. Shows "Proceed to Field Retrieval" button (disabled if 0 selected). Calls API routes.
-- [ ] T018 [US1] Create `src/hooks/use-object-selection.ts`: React hook wrapping object selection API calls with optimistic updates for toggle, loading states, and search filtering.
+**Checkpoint**: Full UI functional. Consultant can view, search, filter, expand, select/deselect objects, and proceed.
 
 ---
 
-## Phase 6: Cross-feature Integration
+## Phase 4: Integration + Audit
 
-- [ ] T019 [US1] Wire `migrateSelection` into schema retrieval flow: update `src/lib/services/schema-retrieval.ts` to call `migrateSelection(oldSnapshotId, newSnapshotId)` after snapshot rotation, so selection survives schema refresh.
+- [ ] T019 Wire selection migration into schema refresh chain: in the schema refresh flow (003), after creating a new snapshot, call `migrateSelections(connectionId, oldSnapshotId, newSnapshotId, newObjects)`. Ensure orphaned selections are flagged with warning (spec edge case).
+- [ ] T020 Verify audit trail logging: confirm `OBJECT_SELECTION_INITIALIZED` fires on first load and `OBJECT_SELECTION_CHANGED` fires on every toggle/bulk action. Verify logged data matches contracts/api.md audit table.
+
+**Checkpoint**: Feature complete including cross-feature integration.
 
 ---
 
 ## Dependencies & Execution Order
 
-- **Phase 1** (T001): Requires 003 SchemaSnapshot + SchemaObject models.
-- **Phase 2** (T002-T007): Depends on T001. T007 is [P] with T002-T006 (registry update, independent file).
-- **Phase 3** (T008-T011): Depends on Phase 2. T008/T009 are [P] (same file). T010 and T011 are independent routes.
-- **Phase 4** (T012-T016): No backend dependency. T012-T015 are [P]. T016 depends on T012-T015.
-- **Phase 5** (T017-T018): Depends on Phase 3 and Phase 4.
-- **Phase 6** (T019): Depends on T005. Can run anytime after Phase 2.
+- **T001**: No deps within this feature (depends on 003 Prisma models being present).
+- **T002, T003**: Depend on T001 (types). Parallel-safe with each other.
+- **T004**: Depends on T001, T002, T003.
+- **T005**: Depends on T001. Parallel-safe with T002, T003, T004.
+- **T006**: Depends on T004.
+- **T007**: Depends on T005.
+- **T008**: Depends on T006.
+- **T009**: Depends on T007.
+- **T010, T011**: No service deps. Parallel-safe. Can start with Phase 3.
+- **T012**: Depends on T008, T009.
+- **T013**: Depends on T009.
+- **T014**: Depends on T012.
+- **T015, T016**: Depend on T008. Parallel-safe with each other.
+- **T017**: Depends on T014, T015, T016, T010, T011.
+- **T018**: Depends on T017.
+- **T019**: Depends on T004 (migrateSelections function).
+- **T020**: Depends on T006 (API routes must be functional).
+
+### Parallel Opportunities
+
+```
+Phase 1: T001 first, then [T002 | T003 | T005] parallel, then T004
+Phase 2: [T006 | T007] parallel (different routes)
+Phase 3: [T008 | T009] parallel, [T010 | T011] parallel,
+         then T012 + T013, then T014 + [T015 | T016],
+         then T017, then T018
+Phase 4: [T019 | T020] parallel
+```

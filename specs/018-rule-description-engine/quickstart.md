@@ -1,56 +1,93 @@
 # Quickstart: Rule Description Engine
 
+## What this feature provides
+
+A backend service that converts migration logic rules (from feature 013) into human-readable natural language descriptions for use in client-facing documents. No UI -- consumed by features 019 (text document) and 020 (contractual document).
+
 ## Prerequisites
 
-- Node.js 18+
-- Feature 013 (migration-logic) implemented (MigrationLogic, ValueEquivalence, ClassificationPrompt entities available)
+- Feature 013 (Migration Logic) entities available: MigrationLogic, ValueEquivalence, ClassificationPrompt
+- `@anthropic-ai/sdk` installed (`npm install @anthropic-ai/sdk`)
+- Optional: `ANTHROPIC_API_KEY` environment variable set for LLM-powered PROMPT descriptions
 
-## Environment Variables
+## How to use
 
-```bash
-# Required for LLM-powered descriptions (PROMPT logic type)
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: override default timeout (milliseconds)
-RULE_DESCRIPTION_TIMEOUT_MS=15000
-```
-
-If `ANTHROPIC_API_KEY` is not set, PROMPT rules fall back to raw prompt text + "(requires review)". Template-based descriptions (VALUE_EQUIVALENCE, INFORMATIONAL, ERROR) work without any API key.
-
-## Install
-
-```bash
-npm install @anthropic-ai/sdk
-```
-
-## Usage (service layer)
+### 1. Build description inputs from migration logic
 
 ```typescript
-import { generateDescriptions } from '@/lib/services/rule-description';
+import type { DescriptionInput, DescriptionBatchInput } from '@/features/rule-descriptions/types'
 
-const batch = await generateDescriptions(migrationLogicRules);
-// batch.descriptions: RuleDescription[]
-// batch.stats: { templateCount, llmCount, fallbackCount, totalLatencyMs }
-```
+// Example: build inputs from a plan's migration logic rules
+const rules: DescriptionInput[] = [
+  {
+    ruleId: 'ml_001',
+    logicType: 'VALUE_EQUIVALENCE',
+    valueEquivalences: [
+      { sourceValue: 'Web', destinationValue: 'Online' },
+      { sourceValue: 'Referral', destinationValue: 'Partner' },
+      { sourceValue: 'Trade Show', destinationValue: 'Event' },
+    ],
+    unmappedSourceValues: ['Cold Call'],
+  },
+  {
+    ruleId: 'ml_002',
+    logicType: 'PROMPT',
+    promptText: 'Classify this text into one of the following categories based on the content',
+    destinationPicklistValues: ['Support', 'Sales', 'Other'],
+  },
+  {
+    ruleId: 'ml_003',
+    logicType: 'INFORMATIONAL',
+    informationalMessage: 'La valeur sera copiee.',
+  },
+  {
+    ruleId: 'ml_004',
+    logicType: 'ERROR',
+    sourceFieldType: 'Text',
+    destinationFieldType: 'Number',
+  },
+]
 
-## Usage (API route)
-
-```bash
-# Generate descriptions for all rules in a plan
-POST /api/plans/{planId}/rule-descriptions
-
-# Response
-{
-  "descriptions": [
-    { "ruleId": "...", "logicType": "VALUE_EQUIVALENCE", "description": "...", "source": "template" },
-    { "ruleId": "...", "logicType": "PROMPT", "description": "...", "source": "llm", "latencyMs": 2340 }
-  ],
-  "stats": { "templateCount": 8, "llmCount": 2, "fallbackCount": 0, "totalLatencyMs": 4200 }
+const batchInput: DescriptionBatchInput = {
+  planId: 'plan_abc123',
+  rules,
 }
 ```
 
-## Run Tests
+### 2. Generate descriptions
 
-```bash
-npx vitest run tests/unit/services/rule-description/
+```typescript
+import { generateDescriptions } from '@/features/rule-descriptions/services/description-service'
+
+const batch = await generateDescriptions(batchInput)
+
+// batch.descriptions[0].description
+// → "'Web' devient 'Online', 'Referral' devient 'Partner', 'Trade Show' devient 'Event'. 1 valeur source sans equivalence."
+
+// batch.descriptions[1].description
+// → "Les valeurs textuelles sont classifiees par IA dans les categories suivantes : Support, Sales, Other."
+
+// batch.descriptions[2].description
+// → "La valeur sera copiee."
+
+// batch.descriptions[3].description
+// → "Types incompatibles (Text vers Number). Les valeurs seront exportees en CSV pour mise a jour manuelle."
+
+// batch.stats
+// → { templateCount: 3, llmCount: 1, fallbackCount: 0, totalLatencyMs: 1200 }
 ```
+
+### 3. Without API key (graceful degradation)
+
+```typescript
+// If ANTHROPIC_API_KEY is not set:
+// batch.descriptions[1].description
+// → "Classify this text into one of the following categories based on the content (necessite une verification)"
+// batch.descriptions[1].source → "fallback"
+// batch.stats.fallbackCount → 1
+```
+
+## Dependencies
+
+- **Depends on**: 013 (Migration Logic entities)
+- **Used by**: 019 (Text Document), 020 (Contractual Document)

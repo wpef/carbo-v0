@@ -1,67 +1,86 @@
 # Implementation Plan: Source Schema Retrieval
 
-**Branch**: `003-source-schema-retrieval` | **Date**: 2026-04-02 | **Spec**: `specs/003-source-schema-retrieval/spec.md`
+**Branch**: `003-source-schema-retrieval` | **Date**: 2026-05-18 | **Spec**: `specs/003-source-schema-retrieval/spec.md`
 
 ## Summary
 
-After connecting to a source, the consultant retrieves the full list of objects from the connected system. The system persists schema snapshots (max 2: CURRENT + PREVIOUS), computes diffs between them, and displays the results. This feature is the foundation for object selection (004) and field retrieval (005).
+Retrieve the full list of objects from a connected source system, persist as versioned snapshots (CURRENT/PREVIOUS rotation), compute diffs between snapshots, and expose a read-only `detectLiveDrift` service that compares the stored snapshot to a live re-fetch without writing to the DB. The drift detection feeds the plan-reopen banner (001), sidebar badges, and contextual highlighting on mapping pages.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
-**Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: Neon Postgres via Prisma (SchemaSnapshot + SchemaObject tables, isolated per tenant)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js sur Vercel (dev sur localhost)
-**Project Type**: Web application (unified Next.js)
-**Performance Goals**: Full retrieval < 60 seconds for up to 2000 objects
-**Constraints**: Max 2 snapshots per connection; no concurrent retrievals
+**Language/Version**: TypeScript 5.x (strict mode)
+**Primary Dependencies**: Prisma ORM, ConnectorAdapter (000), Next.js Route Handlers
+**Storage**: Neon Postgres via Prisma (SchemaSnapshot, SchemaObject tables)
+**Testing**: Vitest (unit + integration)
+**Target Platform**: Next.js App Router (Vercel)
+**Project Type**: Web application (unified Next.js project)
+**Performance Goals**: Full retrieval < 60s for 2000 objects (SC-001); drift detection < 15s for 20 mapped objects (FR-014)
+**Constraints**: Max 2 snapshots per connection (FR-004); drift detection is read-only (FR-012); concurrency guard (FR-007)
+**Scale/Scope**: Up to 2000 objects per connection, 12 canonical drift modification types
 
 ## Constitution Check
 
 | # | Principle | Status | Notes |
 |---|-----------|--------|-------|
-| I | Spec-First | PASS | spec.md approved |
-| II | Readability | PASS | Snapshot rotation is simple (CURRENT -> PREVIOUS -> delete oldest) |
-| III | Data fidelity | PASS | 100% of adapter-reported objects stored; no silent omissions (SC-002) |
-| IV | Tests on real data | PASS | Diff computation tested with realistic multi-object fixtures |
-| V | Idempotence | PASS | Repeated retrieval replaces PREVIOUS, no cumulative side effects |
-| VI | Traceability | PASS | Every retrieval logged with timestamp, object count, diff summary (FR-008) |
-| VII | Observability | PASS | Console logs for retrieval start/end, object count, errors |
-| VIII | Modularity | PASS | Isolated SchemaService; communicates with 002 via connectionId only |
-| IX | Human-in-the-loop | PASS | Rotation CURRENT→PREVIOUS sans re-binding silencieux des FK ; refresh ne déclenche jamais d'auto-remap ; les mappings cassés sont marqués via 017 (jamais auto-supprimés) |
+| I | Spec-First | PASS | spec.md approved with drift detection FRs |
+| II | Readability | PASS | Service functions with explicit names; canonical taxonomy as typed enum |
+| III | Data fidelity | PASS | 100% objects persisted (SC-002); no silent omissions; unmapped fields raise explicit errors |
+| IV | Tests on real data | PASS | Integration tests against real Postgres with realistic fixtures (50+ objects) |
+| V | Idempotence | PASS | Snapshot rotation is deterministic; `detectLiveDrift` is read-only and idempotent (FR-014) |
+| VI | Traceability | PASS | Every retrieval logged to audit trail (FR-008); drift detection results logged |
+| VII | Observability | PASS | Console logs for retrieval start/end, object counts, diff summary, drift report |
+| VIII | Modularity | PASS | Isolated module at `src/features/003-source-schema-retrieval/`; public interface via types + service functions |
+| IX | Human-in-the-loop | PASS | Drift detection is read-only; no auto-remediation; consultant triggers refresh explicitly |
 
-## Project Structure
+## Architecture
 
-### Source Code
-
-```text
-src/
-├── app/
-│   ├── plans/[planId]/source/schema/    # Schema retrieval step UI (sub-step of source)
-│   └── api/plans/[planId]/source/schema/
-│       └── route.ts                      # POST retrieve, GET current snapshot
-├── components/schema/
-│   ├── ObjectList.tsx                    # List of schema objects with badges
-│   ├── SchemaDiff.tsx                    # Diff display (added/removed/modified)
-│   └── SchemaRetrievalButton.tsx         # Trigger retrieval with loading state
-├── lib/
-│   ├── services/schema-retrieval.ts      # Domain logic: retrieve, snapshot rotation, diff
-│   └── types/schema.ts                   # SchemaSnapshot, SchemaObject, SchemaDiff types
-└── hooks/
-    └── use-schema.ts                     # React hook for schema state
-
-prisma/schema.prisma                      # SchemaSnapshot + SchemaObject models
-
-tests/
-├── unit/services/schema-retrieval.test.ts
-└── integration/api/schema-retrieval.test.ts
+```
+src/features/003-source-schema-retrieval/
+├── services/
+│   ├── retrieveSchema.ts        # FR-001..004: fetch + persist + rotate snapshots
+│   ├── computeSchemaDiff.ts     # FR-005: diff CURRENT vs PREVIOUS
+│   ├── detectLiveDrift.ts       # FR-012..016: live re-fetch vs CURRENT, returns DriftReport
+│   └── concurrencyGuard.ts      # FR-007: prevent concurrent retrievals
+├── types/
+│   └── drift.ts                 # DriftReport, DriftChange, DriftModificationType enum
+└── index.ts                     # Public API barrel export
 ```
 
-**Structure Decision**: Schema retrieval is a sub-step of the source configuration flow. The page lives under `plans/[planId]/source/schema/` to maintain the plan-scoped hierarchy.
+### API Routes
 
-**Règle — instanciation d'adaptateur** : Le service `schema-retrieval.ts` DOIT instancier les adaptateurs exclusivement via la factory canonique `src/lib/connectors/adapter-factory.ts`. Toute factory locale est interdite : elle échoue silencieusement dès qu'un nouvel adaptateur est ajouté sans que le service soit mis à jour (incident constaté en test live SF le 2026-04-23).
+```
+src/app/api/plans/[planId]/source/schema/
+├── route.ts                     # GET (current snapshot) + POST (trigger retrieval)
+└── diff/route.ts                # GET (diff CURRENT vs PREVIOUS)
 
-**Règle — chaîne complète sur tout refresh** (FR-010) : Tout trigger de refresh schema — bouton sur `/source`, bouton sur `/source/schema`, callback OAuth — DOIT exécuter la chaîne schéma → objects → fields, jamais une étape isolée. La page `/source/schema` NE DOIT PAS appeler directement `POST /source/schema` sans enchaîner ensuite `/source/objects` (init/migrate selection) puis `POST /source/fields`. L'orchestration peut se faire côté client (hook `useConnectionSetup` réutilisé) ou côté serveur (endpoint composite), mais une seule règle vaut : **aucun trigger de refresh ne doit produire un snapshot d'objects sans fields**. Bug constaté en test live le 2026-05-12. <!-- Added: 2026-05-12 -->
+src/app/api/plans/[planId]/source/drift/
+└── route.ts                     # GET (live drift detection)
+```
 
-**Règle — hook integrity check** (FR-011) : `retrieveSchema()` (ou la fonction qui orchestre la chaîne complète) DOIT appeler `checkMappingIntegrity(planId)` à la fin du flow, après création du nouveau CURRENT, migration des sélections et récupération des fields. C'est la task T006 de 017. Sans ce hook, les mappings cassés par un refresh restent invisibles : le plan reste en DRAFT alors que des références sont mortes. Aucune remédiation automatique n'est déclenchée — l'integrity check ne fait que **marquer** et update `plan.status` (Principe IX). <!-- Added: 2026-05-12 -->
+### Prisma Schema (additions)
+
+```
+prisma/schema.prisma             # SchemaSnapshot + SchemaObject models
+```
+
+### UI Components (consumed by 002 source page, not owned by 003)
+
+Feature 003 does not own UI pages. The source page (002) calls the 003 API routes. The drift banner and sidebar badges are owned by 001. Feature 003 provides:
+- Service functions (server-side)
+- API routes
+- Types (DriftReport, DriftChange) consumed by 001 and downstream features
+
+## Phases
+
+### Phase 0: Research
+See `research.md` — decisions on snapshot storage, diff algorithm, drift detection scope optimization.
+
+### Phase 1: Design
+See `data-model.md` (Prisma models), `contracts/api.md` (API route signatures).
+
+### Phase 2: Implementation
+See `tasks.md` (ordered task list covering FR-001 through FR-016).
+
+## Complexity Tracking
+
+No constitution violations. All decisions align with principles.

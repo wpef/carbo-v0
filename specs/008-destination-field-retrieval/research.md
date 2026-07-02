@@ -1,50 +1,49 @@
 # Research: Destination Field Retrieval
 
-## Key Decisions
+## Decision 1: Reuse of 005 Field Service vs Separate Service
 
-### 1. Retrieve Fields for All Objects vs. On-Demand
+**Decision**: Extract the shared field retrieval logic from 005 into `src/features/shared/services/field-service.ts` and call it from both the source and destination field services. The shared function handles: adapter call, field normalization, persistence, audit logging.
 
-**Decision**: Retrieve fields for ALL destination objects in a single operation.
+**Rationale**: 005 (source) and 008 (destination) both call `ConnectorAdapter.getFields()`, persist `ObjectField` rows, and log to audit. The only difference is the object scope: source retrieves fields for selected objects (`isSelected=true`), destination retrieves for all objects (no selection step). Extracting the shared core avoids duplication while keeping the callers simple.
 
-Unlike source (where only selected objects get field retrieval), destination objects all need fields available for mapping. The service iterates over all `SchemaObject` records for the destination snapshot and calls `adapter.getFields(objectApiName)` for each.
+**Alternatives**: Full copy-paste into a destination-specific service (violates DRY, doubles maintenance), single service with a `role` parameter (couples source and destination lifecycle).
 
-For a typical HubSpot instance with ~15-30 objects, this is manageable. For larger schemas, retrieval is parallelized with concurrency control (max 5 concurrent calls to avoid rate limits).
+## Decision 2: No Object Selection Gate for Destination
 
-### 2. Shared vs. Separate Field Service
+**Decision**: Destination field retrieval iterates over all objects in the CURRENT schema snapshot. There is no equivalent of the source-side object-selection step (004).
 
-**Decision**: Reuse field retrieval service from 005.
+**Rationale**: Spec 008 assumption: "All destination objects have their fields retrieved (no selection step needed for destination)." The destination side represents the target schema -- the consultant needs to see all available fields to know what they can map to. Filtering is done later at the mapping step (011/012).
 
-The `field-retrieval.service.ts` from 005 should accept a `connectionId` + list of object API names. For source, the list is filtered by selection. For destination, the list is all objects in the snapshot. Same service, different input.
+**Alternatives**: Allow destination object selection (rejected -- spec explicitly states no selection), lazy field retrieval on expand (rejected -- full retrieval needed for downstream mapping auto-suggest).
 
-If 005's service only accepts selected objects, it needs a small refactoring: accept an explicit object list parameter rather than querying selection state internally.
+## Decision 3: ObjectField Model Reuse
 
-### 3. HubSpot Field/Property Retrieval
+**Decision**: Destination fields use the same `ObjectField` Prisma model as source fields. The `connectionId` + `snapshotId` foreign keys naturally partition source and destination fields.
 
-**Decision**: Use `@hubspot/api-client` properties API.
+**Rationale**: The `ObjectField` model from 005 already contains all required columns (apiName, label, dataType, isRequired, isReadOnly, isUnique, isAccessible, referenceTo, relationshipType). Adding a separate `DestinationField` table would duplicate the schema. Since each connection has its own snapshot chain, there is no ambiguity between source and destination fields.
 
-```typescript
-// HubSpot properties for a standard object
-const hubspot = new Client({ accessToken });
-const properties = await hubspot.crm.properties.coreApi.getAll("contacts");
-// Returns: { results: [{ name, label, type, fieldType, options, ... }] }
-```
+**Alternatives**: Separate `DestinationField` model (duplication), discriminator column `role: 'source' | 'destination'` (unnecessary -- already partitioned by connection/snapshot).
 
-HubSpot property metadata maps to `ConnectorField`:
-- `name` -> `apiName`
-- `label` -> `label`
-- `type` + `fieldType` -> `dataType` (e.g., "string/text", "number/number", "enumeration/select")
-- `modificationMetadata.readOnlyValue` -> `isReadOnly`
-- `hasUniqueValue` -> `isUnique`
-- Required is not directly exposed in HubSpot's API; inferred from `required` field in create schemas
+## Decision 4: Field Retrieval Trigger in Full Chain
 
-### 4. Field Accessibility for Destination
+**Decision**: Destination field retrieval is always triggered as part of the full chain (schema -> fields), never independently. The chain is initiated by: (1) post-OAuth auto-trigger (006 FR-016), (2) manual refresh button (006 FR-017 / 007 FR-004), or (3) initial schema retrieval.
 
-**Decision**: All HubSpot properties are accessible (no field-level security like Salesforce). The `isAccessible` flag defaults to `true` for HubSpot. The adapter still includes it for interface compatibility.
+**Rationale**: Spec 007 FR-004 mandates the full chain with no partial execution. The destination schema page must never show objects without fields. Field retrieval is the second and final step of the destination chain (no object-selection step in between).
 
-## Trade-offs
+**Alternatives**: Independent field retrieval endpoint (violates full-chain invariant from 007), lazy per-object retrieval on UI expand (leaves schema incomplete).
 
-| Choice | Pro | Con |
-|--------|-----|-----|
-| Retrieve all at once | Simple UX, all fields ready for mapping | Slower initial load for large schemas |
-| Parallel retrieval (max 5) | Faster than sequential | Must handle partial failures |
-| Shared service with 005 | DRY | Must ensure 005's service is flexible enough |
+## Decision 5: Concurrent Field Retrieval
+
+**Decision**: Retrieve fields for all destination objects in parallel with a concurrency limit (e.g., 5 concurrent adapter calls). Use `Promise.allSettled` to handle partial failures gracefully.
+
+**Rationale**: Destination schemas can have 100+ objects. Sequential retrieval would be too slow. A concurrency limit prevents overwhelming the destination API (e.g., HubSpot rate limits). `Promise.allSettled` allows partial success reporting per 005 FR-006 pattern.
+
+**Alternatives**: Sequential (too slow), unlimited parallel (risk of rate limiting), batch API if available (adapter-specific, not guaranteed).
+
+## Decision 6: Badge Display for Destination Fields
+
+**Decision**: Destination fields display three badge types: `required` (isRequired=true), `read-only` (isReadOnly=true), `unique` (isUnique=true). These are critical because the destination is the write side -- a read-only field cannot be written to, a required field must have a value supplied.
+
+**Rationale**: Spec acceptance scenario 2 explicitly requires "appropriate badges (read-only, required, etc.)." For destination context, these badges carry more weight than on the source side because they affect whether a mapping can succeed at execution time.
+
+**Alternatives**: Show all constraint badges equally (loses the destination-specific emphasis), hide read-only fields entirely (violates data fidelity -- consultant must see them to understand the schema).

@@ -1,57 +1,57 @@
 # Research: Destination Connection
 
-## Key Decisions
+## Decision 1: Shared vs Separate Connection Entity
 
-### 1. Reuse vs. Separate Connection Entity
+**Decision**: Reuse the single `ConnectorConnection` Prisma model. The `MigrationPlan` has two nullable FK columns: `sourceConnectionId` and `destinationConnectionId`, both pointing to `ConnectorConnection`.
 
-**Decision**: Reuse `ConnectorConnection` from 002.
+**Rationale**: The spec states "No new entities — uses ConnectorConnection linked to MigrationPlan.destinationConnectionId." Source and destination connections have identical structure (adapter type, config, status, schema snapshot). A single table avoids duplication and lets the adapter registry work uniformly.
 
-The `ConnectorConnection` entity (id, planId, role, adapterType, status, config, createdAt) is generic. The `role` field distinguishes source from destination. No new table needed.
+**Alternatives**: Separate `SourceConnection` / `DestinationConnection` tables (unnecessary duplication; the only difference is which FK on the plan references them).
 
-### 2. Adapter Registry: Shared or Separate?
+## Decision 2: Shared Schema-Diff Service with 002
 
-**Decision**: Single shared registry with role filtering.
+**Decision**: The `computeSchemaDiff()` and `computeImpactReport()` functions are shared between source (002) and destination (006) reconfiguration. They accept a `side` parameter (`'source' | 'destination'`) that determines which FK columns to query in mappings/rules.
 
-Each registered adapter declares which roles it supports (source, destination, or both). The UI filters the registry by role when displaying available adapters. HubSpot is registered as a destination adapter; Salesforce as a source adapter. Demo adapters exist for both roles.
+**Rationale**: FR-008 explicitly states "same structure as source-side diff in 002 FR-009." Duplicating the logic would violate Principle VIII (modularity) and create drift risk.
 
-```typescript
-// Registry entry shape
-interface AdapterRegistryEntry {
-  type: string;            // "salesforce", "hubspot", "demo"
-  label: string;           // "Salesforce", "HubSpot", "Demo Data"
-  roles: ("source" | "destination")[];
-  capabilities: { canRead: boolean; canWrite: boolean; canWriteSchema: boolean };
-  factory: (config: unknown) => ConnectorAdapter;
-}
-```
+**Alternatives**: Duplicate per-feature (maintenance burden), generic "connection reconfiguration" feature (the spec explicitly rejects this — each side owns its trigger and UX).
 
-### 3. Disconnect Cascade
+## Decision 3: Two-Phase Reconfiguration API
 
-**Decision**: Disconnecting the destination cascades to: schema snapshots, schema objects, object fields. Does NOT affect source-side data or object mappings (those are cleaned up by the mapping feature if applicable).
+**Decision**: Reconfiguration uses a two-step API: preview (dry-run returning diff + impact) then confirm (atomic apply). Both are POST requests to `/reconfigure` with query params.
 
-The service calls `prisma.schemaSnapshot.deleteMany({ where: { connectionId } })` with cascade deletes on related objects/fields.
+**Rationale**: The confirmation dialog (FR-010) needs the impact report before any mutation. A preview endpoint keeps the dialog stateless — no server-side draft to manage, no timeout risk. On confirm, the server re-computes and applies atomically (no TOCTOU risk since the transaction locks the relevant rows).
 
-### 4. Demo Mode
+**Alternatives**: Single endpoint with optimistic UI (risks stale preview), server-side draft with session (complexity, timeout management).
 
-**Decision**: "Use Demo Data" creates a `ConnectorConnection` with `adapterType: "demo-destination"` and `status: CONNECTED`. The demo adapter returns a pre-seeded HubSpot-like schema. Same pattern as source demo mode from 002.
+## Decision 4: MVP Refresh Bypasses Cascade
 
-### 5. HubSpot Authentication
+**Decision**: `POST /refresh` (FR-017) overwrites the schema snapshot directly and marks orphaned field mappings as `linkStatus=BROKEN`. No diff dialog, no deletions.
 
-**Decision**: OAuth 2.0 via `@hubspot/api-client`. The adapter stores the access token in the connection's `config` JSON field. Token refresh is handled by the adapter internally. For v0 (local-first), we use a private app access token (simpler than full OAuth flow).
+**Rationale**: FR-018 explicitly states this is a deliberate Phase 1 simplification. The `linkStatus=BROKEN` mechanism from the data model is sufficient to surface problems. The full cascade (diff + confirmation + atomic apply) will be enabled in Phase 2.
 
-## Trade-offs
+**Alternatives**: Full cascade on every refresh (rejected by spec for MVP — too disruptive for routine schema checks).
 
-| Choice | Pro | Con |
-|--------|-----|-----|
-| Shared adapter registry | Single source of truth, no duplication | Registry grows with each adapter |
-| Private app token (HubSpot) | Simpler setup for v0 | Not production-grade (no OAuth consent) |
-| Reuse ConnectorConnection | No schema changes | Role field must be checked consistently |
+## Decision 5: Post-OAuth Auto-Retrieval Trigger
 
-## API Specifics
+**Decision**: The destination page detects `?connected=<adapterType>` in the URL (set by the OAuth callback redirect) and auto-triggers schema+fields retrieval via `POST /refresh`.
 
-### HubSpot Private App Token
+**Rationale**: FR-016 requires automatic retrieval with no user action. URL query param is the standard OAuth callback mechanism. The page reads the param on mount, calls the refresh endpoint, and shows a loading indicator. The destination chain is simpler than source (no object selection step — schema then fields directly).
 
-- Created in HubSpot Developer Portal > Private Apps
-- Scopes needed: `crm.objects.contacts.read`, `crm.schemas.contacts.read`, etc.
-- Passed as Bearer token in API calls
-- `@hubspot/api-client` accepts it via `new Client({ accessToken })`
+**Alternatives**: WebSocket push from callback handler (over-engineered for a single page reload), polling (unnecessary latency).
+
+## Decision 6: Destination Schema Chain (No Object Selection)
+
+**Decision**: The destination schema retrieval chain is `schema -> fields` only. There is no object selection step (unlike source, which has `schema -> object selection -> fields`).
+
+**Rationale**: FR-016 explicitly states "la chaîne complète est schema->fields uniquement." All destination objects are fetched with their fields. This makes sense because the destination needs to expose all available objects for mapping — the consultant selects which ones to map in the mapping step (011), not in the connection step.
+
+**Alternatives**: Add object selection for destination (rejected by spec — unnecessary friction for the destination side).
+
+## Decision 7: Secret Field Handling
+
+**Decision**: On reconfiguration edit mode, secret fields (API keys, tokens, passwords) are rendered as empty inputs. Submitting with empty secret fields means "keep existing secrets." The server never sends secrets to the client.
+
+**Rationale**: FR-006 requires secrets to "remain empty for re-entry (never round-tripped to client)." This is the only safe approach — it prevents accidental exposure. The "keep existing" semantic for blank fields avoids forcing the user to re-enter credentials on every config change. Open question in spec but this is the pragmatic default.
+
+**Alternatives**: Always require re-entry (poor UX for config-only changes), send masked values (still a round-trip risk).

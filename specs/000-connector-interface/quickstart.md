@@ -1,33 +1,10 @@
 # Quickstart: Connector Interface
 
-## Prerequisites
+## What this feature provides
 
-- Node.js 18+
-- TypeScript 5.x (installed with the project)
+TypeScript types and interfaces that define the contract for all connectors. No runtime code.
 
-## No environment variables needed
-
-This feature is pure types with no runtime behavior.
-
-## Validate types compile
-
-```bash
-npx tsc --noEmit src/lib/connectors/types.ts
-```
-
-## Run contract tests
-
-```bash
-npx vitest run tests/unit/connectors/contract.test.ts
-```
-
-The contract test creates a mock adapter implementing all interfaces and verifies:
-1. The mock compiles without errors (type-level validation).
-2. All required methods exist and return the correct types.
-3. Capability flags are declared.
-4. A mock with `canWriteSchema=false` can omit `createObject` and `createField`.
-
-## Use in downstream features
+## How to use
 
 ```typescript
 import type {
@@ -37,10 +14,36 @@ import type {
   ConnectorObject,
   ConnectorField,
   ConnectorRecord,
-  PaginatedRecords,
   FieldStats,
+  PaginatedRecords,
   SchemaDiffResult,
-} from '@/lib/connectors';
+  ConnectorCapabilities,
+} from '@/lib/types/connector'
 ```
 
-All imports are type-only. No runtime code is pulled in.
+## Implementing a new connector
+
+1. Create a file at `src/lib/adapters/<name>/<name>-adapter.ts`
+2. Implement `ConnectorAdapter` interface
+3. Set capability flags
+4. Register in the adapter registry
+
+```typescript
+import type { ConnectorAdapter } from '@/lib/types/connector'
+
+export const myAdapter: ConnectorAdapter = {
+  capabilities: { canRead: true, canWrite: false, canWriteSchema: false },
+  async connect(config) { /* ... */ },
+  async disconnect(connectionId) { /* ... */ },
+  async getSchema(connectionId) { /* ... */ },
+  async getFields(connectionId, objectApiName) { /* ... */ },
+  async getRecords(connectionId, objectApiName, page, pageSize) { /* ... */ },
+  async getRecordCount(connectionId, objectApiName) { /* ... */ },
+  async getFieldStats(connectionId, objectApiName, fieldApiNames) { /* ... */ },
+}
+```
+
+## Dependencies
+
+- **Depends on**: Nothing
+- **Used by**: 001 (Migration Plan), 002 (Source Connection), 003 (Source Schema), 004-010, adapters/salesforce, adapters/hubspot

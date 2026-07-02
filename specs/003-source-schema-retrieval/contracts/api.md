@@ -1,136 +1,193 @@
-# API Contract: Source Schema Retrieval
+# Contracts: Source Schema Retrieval
 
-Base path: `/api/plans/[planId]/source/schema`
+## API Routes
 
----
+### POST `/api/plans/[planId]/source/schema`
 
-## POST /api/plans/[planId]/source/schema
+Trigger a full schema retrieval for the plan's source connection. Fetches all objects via the connector adapter, persists as a new CURRENT snapshot (rotating previous), and returns the snapshot with diff if a previous snapshot existed.
 
-Trigger schema retrieval from the connected source. Rotates snapshots (CURRENT -> PREVIOUS). Returns the new snapshot and diff (if PREVIOUS exists).
+**FR coverage**: FR-001, FR-002, FR-003, FR-004, FR-007, FR-008, FR-009, FR-010, FR-011
 
-**Request body**: None.
+**Request**: No body. The `planId` identifies the connection.
 
-**Response 201** (first retrieval, no diff):
+**Response** (201 Created):
 ```json
 {
   "snapshot": {
-    "id": "clxyz...",
-    "connectionId": "clxyz...",
+    "id": "clx...",
+    "connectionId": "clx...",
     "status": "CURRENT",
-    "objectCount": 142,
-    "retrievedAt": "2026-04-01T10:00:00Z"
+    "objectCount": 245,
+    "retrievedAt": "2026-05-18T14:30:00.000Z",
+    "objects": [
+      {
+        "id": "clx...",
+        "apiName": "Account",
+        "label": "Account",
+        "description": "Business accounts",
+        "isCustom": false
+      }
+    ]
   },
-  "objects": [
+  "diff": {
+    "addedObjects": ["NewObject__c"],
+    "removedObjects": [],
+    "modifiedObjects": []
+  },
+  "integrityResult": {
+    "brokenMappings": 0,
+    "planStatus": "DRAFT"
+  }
+}
+```
+
+`diff` is `null` when no PREVIOUS snapshot existed (first retrieval).
+`integrityResult` is the output of `checkMappingIntegrity` (017) triggered at the end of the chain.
+
+**Error responses**:
+
+| Status | Condition | Body |
+|--------|-----------|------|
+| 404 | Plan not found or no source connection | `{ "error": "NO_SOURCE_CONNECTION" }` |
+| 409 | Concurrent retrieval in progress (FR-007) | `{ "error": "RETRIEVAL_IN_PROGRESS" }` |
+| 502 | Connector adapter error (network, permissions) | `{ "error": "ADAPTER_ERROR", "message": "..." }` |
+
+---
+
+### GET `/api/plans/[planId]/source/schema`
+
+Return the CURRENT schema snapshot with all objects.
+
+**FR coverage**: FR-003
+
+**Response** (200 OK):
+```json
+{
+  "snapshot": {
+    "id": "clx...",
+    "connectionId": "clx...",
+    "status": "CURRENT",
+    "objectCount": 245,
+    "retrievedAt": "2026-05-18T14:30:00.000Z",
+    "objects": [
+      {
+        "id": "clx...",
+        "apiName": "Account",
+        "label": "Account",
+        "description": "Business accounts",
+        "isCustom": false
+      }
+    ]
+  }
+}
+```
+
+**Error responses**:
+
+| Status | Condition | Body |
+|--------|-----------|------|
+| 404 | No source connection or no CURRENT snapshot | `{ "error": "NO_SNAPSHOT" }` |
+
+---
+
+### GET `/api/plans/[planId]/source/schema/diff`
+
+Return the diff between CURRENT and PREVIOUS snapshots.
+
+**FR coverage**: FR-005, FR-006
+
+**Response** (200 OK):
+```json
+{
+  "diff": {
+    "addedObjects": ["NewObject__c"],
+    "removedObjects": ["OldObject__c"],
+    "modifiedObjects": [
+      {
+        "apiName": "Contact",
+        "addedFields": ["MiddleName"],
+        "removedFields": ["Fax"],
+        "modifiedFields": [
+          {
+            "apiName": "Phone",
+            "changes": { "dataType": { "before": "string", "after": "phone" } }
+          }
+        ]
+      }
+    ]
+  },
+  "hasPrevious": true
+}
+```
+
+When `hasPrevious` is `false`, diff is `null` (only one snapshot exists).
+
+**Error responses**:
+
+| Status | Condition | Body |
+|--------|-----------|------|
+| 404 | No source connection or no CURRENT snapshot | `{ "error": "NO_SNAPSHOT" }` |
+
+---
+
+### GET `/api/plans/[planId]/source/drift`
+
+Run live drift detection without writing to the DB. Compares CURRENT snapshot to a live re-fetch of the connected system.
+
+**FR coverage**: FR-012, FR-013, FR-014, FR-015, FR-016
+
+**Response** (200 OK):
+```json
+{
+  "connectionId": "clx...",
+  "side": "source",
+  "checkedAt": "2026-05-18T14:35:00.000Z",
+  "status": "drift",
+  "changes": [
     {
-      "id": "clxyz...",
-      "apiName": "Account",
-      "label": "Account",
-      "description": "Business account",
-      "isCustom": false
+      "type": "FIELD_REMOVED",
+      "objectApiName": "Contact",
+      "fieldApiName": "Fax",
+      "before": { "dataType": "string", "isRequired": false },
+      "after": null,
+      "severity": "critical",
+      "affectsMapping": true
+    },
+    {
+      "type": "OBJECT_ADDED",
+      "objectApiName": "NewObject__c",
+      "severity": "info",
+      "affectsMapping": false
     }
   ],
-  "diff": null
+  "severitySummary": { "critical": 1, "warning": 0, "info": 1 }
 }
 ```
 
-**Response 201** (refresh, with diff):
-```json
-{
-  "snapshot": { "..." : "..." },
-  "objects": [ "..." ],
-  "diff": {
-    "added": [{ "apiName": "NewObject__c", "label": "New Object", "isCustom": true }],
-    "removed": [{ "apiName": "OldObject__c", "label": "Old Object", "isCustom": true }],
-    "modified": [{
-      "current": { "apiName": "Contact", "label": "Contact (renamed)", "isCustom": false },
-      "previous": { "apiName": "Contact", "label": "Contact", "isCustom": false },
-      "changes": ["label"]
-    }],
-    "unchanged": 140
-  }
-}
-```
+When no drift is detected: `{ "status": "ok", "changes": [], "severitySummary": { "critical": 0, "warning": 0, "info": 0 } }`.
 
-**Response 404**: Plan not found or no source connection.
+When live re-fetch fails (FR-015): `{ "status": "unavailable", "reason": "RATE_LIMIT_EXCEEDED", "changes": [], "severitySummary": { "critical": 0, "warning": 0, "info": 0 } }`.
 
-**Response 409**: Schema retrieval already in progress.
-```json
-{
-  "error": "RETRIEVAL_IN_PROGRESS",
-  "message": "A schema retrieval is already in progress for this connection."
-}
-```
+**Error responses**:
 
-**Response 502**: Adapter failed to retrieve schema.
-```json
-{
-  "error": "ADAPTER_ERROR",
-  "message": "Failed to retrieve schema from Salesforce: connection timeout."
-}
-```
+| Status | Condition | Body |
+|--------|-----------|------|
+| 404 | No source connection or no CURRENT snapshot | `{ "error": "NO_SNAPSHOT" }` |
 
 ---
 
-## GET /api/plans/[planId]/source/schema
+## Service Functions (internal API)
 
-Get the CURRENT schema snapshot with all objects.
+These are imported by other features (001, 002, 005, 007, 017). Not exposed as HTTP routes.
 
-**Response 200**:
-```json
-{
-  "snapshot": {
-    "id": "clxyz...",
-    "connectionId": "clxyz...",
-    "status": "CURRENT",
-    "objectCount": 142,
-    "retrievedAt": "2026-04-01T10:00:00Z"
-  },
-  "objects": [
-    {
-      "id": "clxyz...",
-      "apiName": "Account",
-      "label": "Account",
-      "description": "Business account",
-      "isCustom": false
-    }
-  ]
-}
-```
+### `retrieveSchema(planId: string, side: SnapshotSide): Promise<RetrievalResult>`
 
-**Response 200** (no snapshot yet):
-```json
-{
-  "snapshot": null,
-  "objects": []
-}
-```
+Full chain: fetch objects via adapter -> rotate snapshots (old CURRENT becomes PREVIOUS) -> compute diff -> trigger integrity check (FR-010, FR-011). Used by the POST route and by the source/destination page refresh buttons.
 
-**Response 404**: Plan not found or no source connection.
+### `computeSchemaDiff(current: SchemaObject[], previous: SchemaObject[]): SchemaDiffResult`
 
----
+Pure function. Compares two object lists by `apiName`. Returns added/removed/modified. Used by `retrieveSchema` and by the GET diff route.
 
-## GET /api/plans/[planId]/source/schema/diff
+### `detectLiveDrift(connectionId: string, side: SnapshotSide, planId?: string): Promise<DriftReport>`
 
-Get the diff between CURRENT and PREVIOUS snapshots.
-
-**Response 200** (diff available):
-```json
-{
-  "diff": {
-    "added": [],
-    "removed": [],
-    "modified": [],
-    "unchanged": 142
-  }
-}
-```
-
-**Response 200** (no PREVIOUS snapshot):
-```json
-{
-  "diff": null,
-  "message": "No previous snapshot to compare against."
-}
-```
-
-**Response 404**: Plan not found, no source connection, or no CURRENT snapshot.
+Read-only. Fetches live schema via adapter, compares to CURRENT snapshot (matching `connectionId` + `side`), categorizes changes per canonical taxonomy. When `planId` is provided, field-level inspection is scoped to mapped objects (FR-016). Returns `{ status: 'unavailable', reason }` on failure (FR-015).

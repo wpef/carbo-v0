@@ -1,73 +1,94 @@
 # Implementation Plan: Source Connection
 
-**Branch**: `002-source-connection` | **Date**: 2026-04-02 | **Spec**: `specs/002-source-connection/spec.md`
+**Branch**: `002-source-connection` | **Date**: 2026-05-18 | **Spec**: `specs/002-source-connection/spec.md`
 
 ## Summary
 
-Within a migration plan, the consultant selects a source adapter type (e.g., Salesforce), authenticates, and stores the connection. The feature provides a UI step inside the plan detail page, API routes for connection CRUD, and a demo mode bypass. No new connector logic is built here -- it delegates to adapters via the Connector Interface (000).
+Implement the source connection step within a migration plan: adapter selection, credential entry, authentication, schema retrieval (auto + manual refresh), demo mode, disconnect, and reconfiguration with schema-diff-based impact analysis and atomic cascade. The feature owns the `/plans/[planId]/source` page and its API routes. Phase 1 simplification: auto-refresh and manual refresh bypass the diff/confirmation cascade (FR-019), relying on `linkStatus=BROKEN` for orphaned references.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
-**Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: Neon Postgres via Prisma (SourceConnection table linked to MigrationPlan, isolated per tenant — OAuth tokens chiffrés en colonne `pgcrypto`)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js sur Vercel (dev sur localhost)
-**Project Type**: Web application (unified Next.js)
-**Constraints**: Connection must complete in < 30 seconds excluding external auth
+**Language/Version**: TypeScript 5.x (strict mode)
+**Primary Dependencies**: Next.js 14+ (App Router), Prisma (ORM), shadcn/ui, Tailwind CSS
+**Storage**: Neon Postgres via Prisma (`ConnectorConnection` row linked to `MigrationPlan`)
+**Testing**: Vitest (unit + integration), Playwright (E2E)
+**Target Platform**: Vercel (Next.js App Router)
+**Project Type**: Web application (unified Next.js project)
+**Performance Goals**: Connection < 30s (SC-001), impact preview < 1s for 500 field mappings (SC-006)
+**Constraints**: DB-per-tenant (connection string resolved at runtime); secrets never round-tripped to client
+**Scale/Scope**: Single consultant per tenant, plans with up to 500 field mappings
 
 ## Constitution Check
 
 | # | Principle | Status | Notes |
 |---|-----------|--------|-------|
-| I | Spec-First | PASS | spec.md approved |
-| II | Readability | PASS | Standard Next.js patterns, no abstractions beyond Connector Interface |
-| III | Data fidelity | PASS | Disconnect cascades are explicit (FR-004) |
-| IV | Tests on real data | N/A | No data transformation in this feature |
-| V | Idempotence | PASS | Connecting twice replaces existing connection, no side effects |
-| VI | Traceability | PASS | All connection events logged to audit trail |
-| VII | Observability | PASS | Console logs for connect/disconnect/error |
-| VIII | Modularity | PASS | Feature isolated behind SourceConnection service; communicates via Connector Interface types |
-| IX | Human-in-the-loop | PASS | Connexion établie explicitement par le consultant via OAuth ; déconnexion confirmée ; aucune mutation auto des credentials |
+| I | Spec-First | PASS | spec.md approved and complete |
+| II | Readability | PASS | Standard Next.js patterns; service functions named after business operations (`connectSource`, `reconfigureSource`, `computeSchemaDiff`) |
+| III | Data fidelity | PASS | Schema snapshots stored as JSON; original data never mutated silently; reconfiguration preserves valid mappings (FR-016) |
+| IV | Tests on real data | PASS | Integration tests use realistic schema fixtures (multi-object, multi-field); demo adapter provides representative data |
+| V | Idempotence | PASS | Reconfiguration is atomic (single transaction, FR-013); cancel leaves plan byte-identical (SC-005); no partial writes |
+| VI | Traceability | PASS | Every connection/disconnection/reconfiguration logged to audit trail with full impact report (FR-014) |
+| VII | Observability | PASS | Console logs for connection lifecycle: connect attempt, auth result, schema fetch, diff computation, cascade apply |
+| VIII | Modularity | PASS | Feature isolated in `src/features/002-source-connection/`; communicates with 000 types via `@/lib/types/connector`; downstream entities accessed through abstract service interfaces |
+| IX | Human-in-the-loop | PASS | Destructive reconfiguration requires confirmation dialog (FR-011); auto-refresh Phase 1 relies on BROKEN flags, not silent deletion (FR-019) |
 
-## Project Structure
+## Architecture
 
-### Documentation
-
-```text
-specs/002-source-connection/
-├── plan.md
-├── research.md
-├── data-model.md
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
 ```
-
-### Source Code
-
-```text
 src/
-├── app/
-│   ├── plans/[planId]/source/     # Source connection step page
-│   └── api/plans/[planId]/source/ # Route handlers (POST connect, DELETE disconnect, GET status)
-├── components/source/
-│   ├── AdapterPicker.tsx          # Adapter type selector
-│   ├── ConnectionStatus.tsx       # Status badge (CONNECTED/PENDING/ERROR)
-│   └── DemoModeToggle.tsx         # "Use Demo Data" switch
-├── lib/
-│   ├── services/source-connection.ts  # Domain logic: connect, disconnect, cascade cleanup
-│   ├── connectors/registry.ts         # Adapter registry (returns available adapters)
-│   └── types/connector.ts             # Re-exports from 000-connector-interface
-└── hooks/
-    └── use-source-connection.ts       # React hook for connection state
-
-prisma/schema.prisma                   # SourceConnection model (added to MigrationPlan)
-
-tests/
-├── unit/services/source-connection.test.ts
-└── integration/api/source-connection.test.ts
+├── app/plans/[planId]/source/
+│   └── page.tsx                          # Source connection page (server component shell)
+├── features/002-source-connection/
+│   ├── components/
+│   │   ├── adapter-selector.tsx          # Adapter type picker (FR-002)
+│   │   ├── connection-form.tsx           # Credentials form + demo mode toggle (FR-005, FR-007)
+│   │   ├── connection-status.tsx         # Connected state display + Reconfigurer button (FR-006)
+│   │   ├── schema-refresh-button.tsx     # Manual refresh trigger (FR-018)
+│   │   ├── impact-dialog.tsx             # Reconfiguration confirmation dialog (FR-011)
+│   │   └── source-page-client.tsx        # Client orchestrator (auto-recovery FR-017, state machine)
+│   ├── hooks/
+│   │   └── use-source-connection.ts      # Client-side state + mutations
+│   ├── services/
+│   │   ├── connect-source.ts             # Connect / disconnect logic
+│   │   ├── fetch-schema.ts               # Schema + objects + fields retrieval chain
+│   │   ├── schema-diff.ts                # Pure function: compute diff between two snapshots (FR-009)
+│   │   ├── impact-report.ts              # Compute downstream impact from diff (FR-010)
+│   │   └── apply-reconfiguration.ts      # Atomic transaction: update connection + cascade (FR-013)
+│   └── lib/
+│       └── normalize-type.ts             # Type compatibility bucketing (shared with 012)
+├── lib/types/
+│   └── connector.ts                      # (000) ConnectorAdapter, ConnectorSchema, etc.
+└── lib/adapters/
+    ├── registry.ts                       # (000) Adapter registry
+    └── demo/
+        └── demo-adapter.ts              # (000) Demo adapter
 ```
 
-**Structure Decision**: Single Next.js project. The source connection step is a page under `plans/[planId]/source/`. API routes follow RESTful convention under `api/plans/[planId]/source/`.
+### API Routes
+
+```
+src/app/api/plans/[planId]/source/
+├── route.ts              # GET (current connection), POST (connect), DELETE (disconnect)
+├── reconfigure/
+│   ├── preview/
+│   │   └── route.ts      # POST (compute impact preview without applying)
+│   └── apply/
+│       └── route.ts      # POST (apply reconfiguration atomically)
+└── refresh/
+    └── route.ts          # POST (refresh schema, Phase 1 simplified)
+```
+
+## Phases
+
+### Phase 0: Research
+See `research.md` -- adapter registry integration, schema snapshot storage, diff algorithm.
+
+### Phase 1: Design
+See `data-model.md` (Prisma schema additions), `contracts/api.md` (route specifications).
+
+### Phase 2: Implementation
+See `tasks.md` -- ordered task list with parallel markers and checkpoints.
+
+## Complexity Tracking
+
+No constitution violations. All decisions align with established patterns.

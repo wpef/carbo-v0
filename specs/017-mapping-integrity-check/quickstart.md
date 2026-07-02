@@ -1,44 +1,67 @@
 # Quickstart: Mapping Integrity Check
 
-## Prerequisites
+## What this feature provides
 
-- Features 011 (Object Mapping) and 012 (Field Mapping) implemented
-- At least one plan with field mappings
-- Source or destination connection available for schema refresh
+An automated integrity engine that detects broken mappings after schema refresh. It flags deleted objects/fields, incompatible type changes, orphaned filters, and broken rule references. The plan status transitions to BROKEN until the consultant resolves all issues manually.
 
-## Setup
+## How to use
 
-```bash
-# Run Prisma migration after adding IntegrityIssue model
-npx prisma migrate dev --name add-integrity-issue
+### 1. Check integrity on demand
 
-# Start dev server
-npm run dev
+```typescript
+// GET /api/plans/[planId]/integrity
+const res = await fetch(`/api/plans/${planId}/integrity`)
+const result: IntegrityCheckResult = await res.json()
+
+console.log(result.planStatus)        // 'BROKEN' | 'DRAFT' | 'READY'
+console.log(result.unresolvedIssues)  // number of issues to fix
+console.log(result.issues)            // IntegrityIssueDTO[]
 ```
 
-## Verify
+### 2. Display per-entity broken badges
 
-1. Open a plan with existing field mappings
-2. Simulate a schema change:
-   - Delete a field from the schema snapshot (via DB or test helper)
-   - Or change a field type in the schema snapshot
-3. Trigger integrity check (POST endpoint or via schema refresh)
-4. Verify the plan status changes to BROKEN
-5. Verify IntegrityIssues are displayed in the banner
-6. Fix the broken mapping (remove or remap the field)
-7. Verify the IntegrityIssue is resolved and plan status recovers
+```typescript
+import { getIssuesForEntity } from '@/lib/services/integrity'
 
-## Run Tests
-
-```bash
-npx vitest run tests/unit/services/integrity-check.test.ts
-npx vitest run tests/integration/api/integrity-check.test.ts
+// In a field mapping row component:
+const issues = await getIssuesForEntity(fieldMapping.id)
+const isBroken = issues.length > 0
+// Render red "Broken" badge if isBroken
 ```
 
-## Key Files
+### 3. Resolve a single issue
 
-| File | Purpose |
-|------|---------|
-| `src/lib/services/integrity-check.ts` | Core check logic |
-| `src/components/mapping/IntegrityIssuesBanner.tsx` | Plan-level warning banner |
-| `prisma/schema.prisma` | IntegrityIssue model |
+```typescript
+// PATCH /api/plans/[planId]/integrity/[issueId]
+await fetch(`/api/plans/${planId}/integrity/${issueId}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ action: 'resolve' }),
+})
+```
+
+### 4. Bulk resolve all issues
+
+```typescript
+// POST /api/plans/[planId]/integrity/resolve-all
+await fetch(`/api/plans/${planId}/integrity/resolve-all`, {
+  method: 'POST',
+})
+```
+
+### 5. Automatic trigger after schema refresh
+
+The integrity check is automatically triggered by the schema refresh handler. No manual integration needed -- feature 003/007 refresh handlers call `runIntegrityCheck(planId)` for all affected plans.
+
+## Key behavior
+
+- **apiName resolution**: Mappings are resolved against the current schema snapshot by `apiName`, not by stored FK IDs. This is the only reliable method after snapshot rotation.
+- **No auto-repair**: The system never re-binds FKs, auto-remaps by name similarity, or auto-deletes broken mappings. All resolution is consultant-driven (Principle IX).
+- **Idempotent**: Re-running the check on the same snapshot state produces the same issues. No duplicate issues are created (enforced by unique constraint).
+- **Status gating**: A BROKEN plan blocks document generation (019/020). The consultant must resolve all issues before proceeding.
+
+## Dependencies
+
+- **Depends on**: 001 (MigrationPlan + AuditLog), 011 (ObjectMapping), 012 (FieldMapping + type compatibility matrix), 013 (MigrationLogic + MigrationFilter)
+- **Triggered by**: 003 (source schema refresh), 007 (destination schema refresh)
+- **Gates**: 019 (text documents), 020 (contractual documents) -- BROKEN status blocks generation
+- **Consumed by**: 011 (object mapping view drift badges), 012 (field mapping view broken badges)

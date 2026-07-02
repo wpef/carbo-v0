@@ -1,117 +1,240 @@
 # API Contracts: Migration Logic
 
-Base path: `/api/plans/[planId]/object-mappings/[mappingId]/fields/[fieldMappingId]`
+## Base URL
 
-## GET .../migration-logic
+All routes are Next.js Route Handlers nested under the field mapping resource:
+`/api/plans/[planId]/object-mappings/[objectMappingId]/field-mappings/[fieldMappingId]/migration-logic`
 
-Get existing migration logic for a field mapping (or null if none exists).
+---
 
-**Response 200**:
+## GET /api/plans/[planId]/object-mappings/[objectMappingId]/field-mappings/[fieldMappingId]/migration-logic
+
+**Purpose**: Retrieve the migration logic for a field mapping (FR-001, FR-002).
+
+**Response** `200 OK`:
 ```json
 {
-  "migrationLogic": {
-    "id": "uuid",
-    "sectionType": "VALUE_EQUIVALENCE",
-    "status": "DEFINED",
-    "valueEquivalences": [
-      { "id": "uuid", "sourceValue": "Web", "destinationValue": "Online" },
-      { "id": "uuid", "sourceValue": "Referral", "destinationValue": "Partner" }
-    ],
-    "classificationPrompt": null,
-    "createdAt": "2026-04-02T10:00:00Z"
-  }
-}
-```
-
-**Response 200** (no logic defined yet):
-```json
-{
-  "migrationLogic": null,
-  "suggestedSection": "D1",
-  "sourceFieldType": "picklist",
-  "destinationFieldType": "picklist"
-}
-```
-
-## PUT .../migration-logic
-
-Create or update migration logic for a field mapping.
-
-**Request (D1 - Value Equivalence, Save)**:
-```json
-{
-  "sectionType": "VALUE_EQUIVALENCE",
-  "status": "DEFINED",
+  "id": "string (uuid)",
+  "fieldMappingId": "string",
+  "status": "DRAFT | DEFINED | VALIDATED",
+  "sectionType": "VALUE_EQUIVALENCE | PROMPT | ERROR | INFORMATIONAL",
   "valueEquivalences": [
-    { "sourceValue": "Web", "destinationValue": "Online" },
-    { "sourceValue": "Referral", "destinationValue": "Partner" },
-    { "sourceValue": "Cold Call", "destinationValue": "Outbound" }
+    {
+      "id": "string",
+      "sourceValue": "string",
+      "destinationValue": "string"
+    }
+  ],
+  "classificationPrompt": {
+    "id": "string",
+    "promptText": "string"
+  } | null,
+  "informationalMessage": "string | null",
+  "sourceField": {
+    "name": "string",
+    "type": "string",
+    "picklistValues": ["string"] | null
+  },
+  "destinationField": {
+    "name": "string",
+    "type": "string",
+    "picklistValues": ["string"] | null
+  },
+  "createdAt": "ISO 8601",
+  "updatedAt": "ISO 8601"
+}
+```
+
+**Response** `404 Not Found` (no logic exists yet):
+```json
+{
+  "fieldMappingId": "string",
+  "sectionType": "VALUE_EQUIVALENCE | PROMPT | ERROR | INFORMATIONAL",
+  "sourceField": {
+    "name": "string",
+    "type": "string",
+    "picklistValues": ["string"] | null
+  },
+  "destinationField": {
+    "name": "string",
+    "type": "string",
+    "picklistValues": ["string"] | null
+  },
+  "informationalMessage": "string | null",
+  "valueEquivalences": [],
+  "classificationPrompt": null
+}
+```
+
+**Notes**: When no MigrationLogic record exists, the response still returns field metadata and the computed sectionType so the modal can render the correct section. The `sectionType` is computed from the Type Compatibility Matrix, not stored. `picklistValues` is populated only for picklist/checkbox fields. `informationalMessage` is populated only for D4 sections (e.g., "La valeur sera copiee").
+
+**Audit**: No audit log for read operations.
+
+---
+
+## PUT /api/plans/[planId]/object-mappings/[objectMappingId]/field-mappings/[fieldMappingId]/migration-logic
+
+**Purpose**: Create or update migration logic for a field mapping (FR-012, FR-013).
+
+**Request Body** (D1 -- Value Equivalence):
+```json
+{
+  "action": "SAVE | VALIDATE",
+  "valueEquivalences": [
+    {
+      "sourceValue": "string",
+      "destinationValue": "string"
+    }
   ]
 }
 ```
 
-**Request (D2 - Prompt, Validate)**:
+**Request Body** (D2 -- Classification Prompt):
 ```json
 {
-  "sectionType": "PROMPT",
-  "status": "VALIDATED",
-  "promptText": "Classify this industry description into one of the given categories based on the primary business sector."
+  "action": "SAVE | VALIDATE",
+  "classificationPrompt": "string"
 }
 ```
 
-**Request (D4 - Informational, Validate)**:
+**Request Body** (D4 -- Informational):
 ```json
 {
-  "sectionType": "INFORMATIONAL",
-  "status": "VALIDATED"
+  "action": "VALIDATE"
 }
 ```
 
-**Response 200**:
+**Response** `200 OK`:
 ```json
 {
-  "id": "uuid",
-  "sectionType": "VALUE_EQUIVALENCE",
-  "status": "DEFINED",
-  "updatedAt": "2026-04-02T10:05:00Z"
+  "id": "string (uuid)",
+  "fieldMappingId": "string",
+  "status": "DEFINED | VALIDATED",
+  "createdAt": "ISO 8601",
+  "updatedAt": "ISO 8601"
 }
 ```
 
-## POST .../classify
+**Validation**:
+- `action` must be `SAVE` or `VALIDATE`. SAVE sets status to DEFINED (orange). VALIDATE sets status to VALIDATED (green).
+- For D1: `valueEquivalences` must be an array. Each entry must have non-empty `sourceValue` and `destinationValue`. A source value must not appear more than once (FR-006).
+- For D2: `classificationPrompt` must be a non-empty string.
+- For D4: No additional body fields required -- only `action: "VALIDATE"`.
+- D3 (Error) does NOT accept PUT requests -- the section has no Save/Validate (FR-003).
 
-Preview LLM classification for D2 sections. Stateless -- does not persist.
+**Errors**:
+- `400 Bad Request`: Validation failure. Body: `{ "error": "string" }`.
+- `404 Not Found`: Field mapping does not exist.
+- `409 Conflict`: Attempting to save logic for a D3 (incompatible types) field mapping. Body: `{ "error": "Cannot define migration logic for incompatible field types" }`.
 
-**Request**:
+**Audit**: Logs `MIGRATION_LOGIC_SAVED` or `MIGRATION_LOGIC_VALIDATED` with `entityType: "MigrationLogic"`, `entityId: <logic id>`, `details: { fieldMappingId, sectionType, action, valueEquivalenceCount? }`.
+
+**Transaction**: The upsert is wrapped in a Prisma transaction: delete existing ValueEquivalence rows (if D1), then upsert MigrationLogic + create new ValueEquivalence/ClassificationPrompt.
+
+---
+
+## POST /api/plans/[planId]/object-mappings/[objectMappingId]/field-mappings/[fieldMappingId]/migration-logic/classify
+
+**Purpose**: Generate LLM classification preview for D2 sections (FR-008, FR-009).
+
+**Request Body**:
 ```json
 {
-  "promptText": "Classify this industry description into the appropriate category.",
-  "destinationValues": ["Support", "Sales", "Marketing", "Other"],
-  "sampleSourceValues": [
-    "We need help with our billing system",
-    "Looking to expand our sales pipeline",
-    "Want to set up email campaigns",
-    "General inquiry about pricing"
-  ]
+  "prompt": "string",
+  "destinationValues": ["string"],
+  "sampleSourceValues": ["string (4-5 values)"]
 }
 ```
 
-**Response 200**:
+**Response** `200 OK`:
 ```json
 {
   "classifications": [
-    { "sourceValue": "We need help with our billing system", "classification": "Support" },
-    { "sourceValue": "Looking to expand our sales pipeline", "classification": "Sales" },
-    { "sourceValue": "Want to set up email campaigns", "classification": "Marketing" },
-    { "sourceValue": "General inquiry about pricing", "classification": "Other" }
+    {
+      "sourceValue": "string",
+      "classifiedValue": "string"
+    }
   ]
 }
 ```
 
-**Response 200** (LLM unavailable):
+**Notes**: The `/classify` endpoint is currently a **stub** — when `ANTHROPIC_API_KEY` is absent or the real LLM call is not yet wired, it falls back to a deterministic substring-match classifier (maps each source value to the first destination value whose label contains it, otherwise `destValues[0]`). A `error` field is included in each classification result when the stub is used. The real LLM call via `@anthropic-ai/sdk` is a TODO. This endpoint is stateless — it does not persist anything. The client debounces calls (500ms after last keystroke).
+
+**Errors**:
+- `400 Bad Request`: Missing required fields.
+- `503 Service Unavailable`: LLM API unreachable or API key not configured. Body: `{ "error": "Classification unavailable — check LLM configuration" }`.
+
+**Audit**: No audit log for preview operations (stateless).
+
+---
+
+## Error Response Format
+
+All error responses follow a consistent shape:
+
 ```json
 {
-  "classifications": [
-    { "sourceValue": "We need help...", "classification": null, "error": "Classification unavailable -- check ANTHROPIC_API_KEY" }
-  ]
+  "error": "string (human-readable message)"
+}
+```
+
+HTTP status codes used: `400` (validation), `404` (not found), `409` (conflict), `500` (internal server error), `503` (LLM unavailable).
+
+---
+
+## TypeScript Types (shared)
+
+```typescript
+// src/features/migration-logic/types.ts
+
+type SectionType = 'VALUE_EQUIVALENCE' | 'PROMPT' | 'ERROR' | 'INFORMATIONAL'
+
+type LinkStatus = 'GREEN' | 'ORANGE' | 'RED_SOLID' | 'RED_DASHED' | 'BROKEN'
+
+interface MigrationLogicDetail {
+  id?: string
+  fieldMappingId: string
+  status?: 'DRAFT' | 'DEFINED' | 'VALIDATED'
+  sectionType: SectionType
+  sourceField: {
+    name: string
+    type: string
+    picklistValues: string[] | null
+  }
+  destinationField: {
+    name: string
+    type: string
+    picklistValues: string[] | null
+  }
+  valueEquivalences: ValueEquivalenceItem[]
+  classificationPrompt: { id?: string; promptText: string } | null
+  informationalMessage: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+interface ValueEquivalenceItem {
+  id?: string
+  sourceValue: string
+  destinationValue: string
+}
+
+interface SaveMigrationLogicInput {
+  action: 'SAVE' | 'VALIDATE'
+  valueEquivalences?: ValueEquivalenceItem[]
+  classificationPrompt?: string
+}
+
+interface ClassifyRequest {
+  prompt: string
+  destinationValues: string[]
+  sampleSourceValues: string[]
+}
+
+interface ClassifyResponse {
+  classifications: {
+    sourceValue: string
+    classifiedValue: string
+  }[]
 }
 ```

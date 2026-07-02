@@ -1,123 +1,164 @@
-# API Contracts: Object Mapping
+# Contracts: Object Mapping API
 
-Base path: `/api/plans/[planId]/object-mappings`
+## REST Endpoints
 
-## GET /api/plans/[planId]/object-mappings
+All endpoints are Next.js Route Handlers under `app/api/plans/[planId]/object-mappings/`.
 
-List all object mappings for a plan.
+---
 
-**Response 200**:
-```json
+### GET /api/plans/[planId]/object-mappings
+
+List all object mappings for a migration plan.
+
+**Response** `200 OK`:
+```typescript
 {
-  "objectMappings": [
-    {
-      "id": "uuid",
-      "sourceObjectName": "Account",
-      "destinationObjectName": "Company",
-      "autoCreated": true,
-      "fieldMappingCount": 12,
-      "migrationFilterCount": 2,
-      "createdAt": "2026-04-02T10:00:00Z"
-    }
-  ]
+  mappings: ObjectMappingRow[]
 }
 ```
 
-## POST /api/plans/[planId]/object-mappings
+**Error responses**:
+- `404 Not Found` — Plan does not exist.
 
-Create a new object mapping.
+---
 
-**Request**:
-```json
+### POST /api/plans/[planId]/object-mappings
+
+Create a new object mapping (manual link).
+
+**Request body**:
+```typescript
 {
-  "sourceObjectName": "Lead",
-  "destinationObjectName": "Contact"
+  sourceObjectName: string       // apiName of the source object
+  destinationObjectName: string  // apiName of the destination object
 }
 ```
 
-**Response 201**:
-```json
+**Validation**:
+- `sourceObjectName` must exist in the source schema snapshot.
+- `destinationObjectName` must exist in the destination schema snapshot.
+- The pair `(planId, sourceObjectName, destinationObjectName)` must not already exist (FR-006).
+
+**Response** `201 Created`:
+```typescript
 {
-  "id": "uuid",
-  "sourceObjectName": "Lead",
-  "destinationObjectName": "Contact",
-  "autoCreated": false,
-  "createdAt": "2026-04-02T10:00:00Z"
+  mapping: ObjectMappingRow
+  warnings: string[]  // e.g., ["Fan-in: destination 'Contact' is already linked to another source object"]
 }
 ```
 
-**Response 409** (duplicate):
-```json
+**Error responses**:
+- `400 Bad Request` — Validation failed (missing fields, object not in schema).
+- `404 Not Found` — Plan does not exist.
+- `409 Conflict` — Duplicate mapping already exists.
+
+**Side effects**:
+- AuditLog entry: `{ action: 'OBJECT_MAPPING_CREATED', entityType: 'ObjectMapping', entityId: <id>, details: { sourceObjectName, destinationObjectName, manual: true } }`
+
+---
+
+### DELETE /api/plans/[planId]/object-mappings/[mappingId]
+
+Remove an object mapping with cascade delete of all child data.
+
+**Response** `200 OK`:
+```typescript
 {
-  "error": "ObjectMapping already exists for Lead -> Contact in this plan"
-}
-```
-
-**Response 200** (fan-in warning, still created):
-```json
-{
-  "id": "uuid",
-  "sourceObjectName": "Lead",
-  "destinationObjectName": "Contact",
-  "autoCreated": false,
-  "warning": "Multiple source objects map to Contact. Record conflicts may occur during execution."
-}
-```
-
-## DELETE /api/plans/[planId]/object-mappings/[mappingId]
-
-Remove an object mapping and cascade-delete all child data.
-
-**Response 200**:
-```json
-{
-  "deleted": {
-    "objectMapping": "uuid",
-    "fieldMappings": 12,
-    "migrationLogicRules": 8,
-    "migrationFilters": 2,
-    "fieldExclusions": 3
+  deleted: {
+    objectMapping: { id: string; sourceObjectName: string; destinationObjectName: string }
+    fieldMappingsCount: number
+    migrationFiltersCount: number
   }
 }
 ```
 
-**Response 404**:
-```json
+**Error responses**:
+- `404 Not Found` — Mapping or plan does not exist.
+
+**Side effects**:
+- Cascade delete: FieldMappings, MigrationLogic, ValueEquivalences, ClassificationPrompts, MigrationFilters.
+- AuditLog entry: `{ action: 'OBJECT_MAPPING_DELETED', entityType: 'ObjectMapping', entityId: <id>, details: { sourceObjectName, destinationObjectName, cascadedFieldMappings: <count>, cascadedFilters: <count> } }`
+
+---
+
+### POST /api/plans/[planId]/object-mappings/auto-link
+
+Trigger auto-link for predictable object pairs. Runs only if `objectAutoLinkedAt IS NULL`.
+
+**Request body**: None (adapter types are inferred from plan connections).
+
+**Response** `200 OK`:
+```typescript
 {
-  "error": "ObjectMapping not found"
+  result: AutoLinkResult
 }
 ```
 
-## POST /api/plans/[planId]/object-mappings/auto-link
-
-Trigger auto-linking of predictable object pairs. Idempotent -- skips pairs that already exist.
-
-**Response 200**:
-```json
+Where `AutoLinkResult`:
+```typescript
 {
-  "created": [
-    { "sourceObjectName": "Account", "destinationObjectName": "Company" },
-    { "sourceObjectName": "Contact", "destinationObjectName": "Contact" }
-  ],
-  "skipped": [
-    { "sourceObjectName": "Opportunity", "destinationObjectName": "Deal", "reason": "already exists" }
-  ]
+  createdMappings: ObjectMappingRow[]
+  skippedPairs: { source: string; dest: string; reason: string }[]
+  alreadyLinkedAt: string | null  // non-null if auto-link was already run (no-op)
 }
 ```
 
-## GET /api/plans/[planId]/object-mappings/[mappingId]/detail
+**Behavior**:
+- If `objectAutoLinkedAt` is non-null: returns `alreadyLinkedAt` timestamp, creates nothing.
+- If `objectAutoLinkedAt` is null: creates mappings for all predictable pairs, sets `objectAutoLinkedAt = NOW()` in the same transaction (FR-004).
+- Pairs where one side does not exist in the current schema are skipped (returned in `skippedPairs`).
+- Pairs that already exist as manual mappings are skipped.
 
-Get detail info for an object mapping (for detail modal).
+**Side effects**:
+- AuditLog entry: `{ action: 'AUTO_LINK_EXECUTED', entityType: 'MigrationPlan', entityId: <planId>, details: { createdCount, skippedCount, pairs: [...] } }`
 
-**Response 200**:
-```json
+---
+
+### GET /api/plans/[planId]/object-mappings/[mappingId]/stats
+
+Fetch aggregated stats for the object detail modal (A3).
+
+**Response** `200 OK`:
+```typescript
 {
-  "id": "uuid",
-  "sourceObjectName": "Contact",
-  "destinationObjectName": "Contact",
-  "sourceRecordCount": 12340,
-  "fieldsToValidate": 18,
-  "totalSourceFields": 25,
-  "migrationFilterCount": 2
+  stats: ObjectMappingWithStats
+}
+```
+
+**Error responses**:
+- `404 Not Found` — Mapping or plan does not exist.
+
+**Notes**:
+- `sourceRecordCount` and `destRecordCount` are fetched from the connector adapter (cached per session).
+- `totalSourceFields`, `mappedFieldCount`, `validatedFieldCount` are computed from database queries.
+- `filterCount` is a simple count query on `MigrationFilter`.
+
+---
+
+## Service Layer Contract
+
+```typescript
+interface ObjectMappingService {
+  /** List all object mappings for a plan */
+  listMappings(planId: string): Promise<ObjectMappingRow[]>
+
+  /** Create a manual object mapping */
+  createMapping(
+    planId: string,
+    sourceObjectName: string,
+    destinationObjectName: string
+  ): Promise<{ mapping: ObjectMappingRow; warnings: string[] }>
+
+  /** Delete an object mapping with cascade */
+  deleteMapping(
+    planId: string,
+    mappingId: string
+  ): Promise<{ fieldMappingsCount: number; filtersCount: number }>
+
+  /** Execute auto-link (one-shot, gated by objectAutoLinkedAt) */
+  autoLink(planId: string): Promise<AutoLinkResult>
+
+  /** Fetch stats for detail modal */
+  getMappingStats(planId: string, mappingId: string): Promise<ObjectMappingWithStats>
 }
 ```

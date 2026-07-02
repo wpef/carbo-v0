@@ -2,84 +2,120 @@
 
 ## Prisma Schema
 
-### MigrationPlan
-
-The top-level container for an entire migration project.
+### MigrationPlan (FR-001, FR-002, FR-004, FR-005)
 
 ```prisma
-model MigrationPlan {
-  id                     String    @id @default(uuid())
-  name                   String
-  description            String?
-  status                 String    @default("DRAFT")  // DRAFT | READY | BROKEN
-  currentStep            String    @default("SOURCE_CONNECTION")
-  sourceConnectionId     String?
-  destinationConnectionId String?
-  objectAutoLinkedAt     DateTime?  // Set once when 011 auto-link runs; gates re-triggering (Principle IX)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+enum PlanStatus {
+  DRAFT
+  READY
+  BROKEN
+}
 
-  auditLogs              AuditLog[]
+enum PlanStep {
+  SOURCE
+  DESTINATION
+  OBJECT_MAPPING
+  FIELD_MAPPING
+  DOCUMENTS
+}
+
+model MigrationPlan {
+  id                      String      @id @default(uuid())
+  name                    String
+  description             String?
+  status                  PlanStatus  @default(DRAFT)
+  currentStep             PlanStep    @default(SOURCE)
+
+  // Connection FKs (nullable — set by features 002 and 006)
+  sourceConnectionId      String?     @unique
+  destinationConnectionId String?     @unique
+
+  // Auto-link gate (Principle IX — set once by feature 011)
+  objectAutoLinkedAt      DateTime?
+
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  // Relations (defined by downstream features)
+  sourceConnection        ConnectorConnection? @relation("SourceConnection", fields: [sourceConnectionId], references: [id])
+  destinationConnection   ConnectorConnection? @relation("DestinationConnection", fields: [destinationConnectionId], references: [id])
+  objectMappings          ObjectMapping[]       // onDelete: Cascade
+  integrityIssues         IntegrityIssue[]      // onDelete: Cascade (defined by 017)
+  textDocuments           TextDocument[]        // onDelete: Cascade (defined by 019)
+  contractualDocuments    ContractualDocument[] // onDelete: Cascade (defined by 020)
+  auditLogs               AuditLog[]
 }
 ```
 
-**Fields**:
-- `id`: UUID primary key
-- `name`: Plan name (required, not unique — duplicates allowed per spec)
-- `description`: Optional text description
-- `status`: DRAFT (in progress), READY (pre-Run steps complete), BROKEN (schema change broke mappings)
-- `currentStep`: Tracks progress — one of: SOURCE_CONNECTION, OBJECT_SELECTION, DESTINATION_CONNECTION, MAPPING, DOCUMENTS, RUN
-- `sourceConnectionId`: Nullable FK to future connection entity (set by feature 002)
-- `destinationConnectionId`: Nullable FK to future connection entity (set by feature 006)
-- `objectAutoLinkedAt`: Nullable timestamp set exactly once when feature 011's auto-link runs for this plan. Acts as a persistent guard so re-opening the Object Mapping page never re-triggers auto-link, even if the consultant has manually deleted every ObjectMapping (Principle IX — auto-link is a one-shot bootstrap, not a recurring assist).
-- `createdAt`, `updatedAt`: Timestamps
+> Convention : `id = String @id @default(uuid())` — pas de `@@map` (noms de tables PascalCase par défaut).
 
-### AuditLog
-
-Persistent audit trail for all significant operations (Constitution Principle VI).
+### AuditLog (FR-006, Constitution Principle VI)
 
 ```prisma
 model AuditLog {
-  id        String   @id @default(uuid())
+  id        String          @id @default(uuid())
   planId    String?
-  action    String
-  details   String?  // JSON string for structured data
-  createdAt DateTime @default(now())
+  plan      MigrationPlan?  @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  plan      MigrationPlan? @relation(fields: [planId], references: [id], onDelete: Cascade)
+  action    String          // e.g. "PLAN_CREATED", "PLAN_DELETED", "STEP_ADVANCED"
+  entity    String          // type of the affected entity (e.g. "MigrationPlan", "ObjectMapping")
+  entityId  String?         // ID of the affected entity (nullable for plan-level events)
+  details   String          @default("{}") // JSON-serialized context (stored as String, not Json)
+
+  createdAt DateTime        @default(now())
 }
 ```
 
-**Fields**:
-- `id`: UUID primary key
-- `planId`: Nullable FK to MigrationPlan (nullable for system-level events)
-- `action`: Action identifier (e.g., "PLAN_CREATED", "PLAN_DELETED", "CONNECTION_ESTABLISHED")
-- `details`: JSON string with additional context (e.g., plan name, error messages)
-- `createdAt`: Timestamp
+## Field Descriptions
+
+### MigrationPlan
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String (uuid)` | Unique identifier. Plans are identified by UUID, not name (edge case: duplicate names allowed). |
+| `name` | `String` | Plan name, required. No uniqueness constraint. |
+| `description` | `String?` | Optional description provided at creation. |
+| `status` | `PlanStatus` | Overall plan status: DRAFT (in progress), READY (all steps complete), BROKEN (schema drift broke mappings). |
+| `currentStep` | `PlanStep` | Current max step reached in the workflow. Forward-only. Values: SOURCE, DESTINATION, OBJECT_MAPPING, FIELD_MAPPING, DOCUMENTS. |
+| `sourceConnectionId` | `String?` | FK to the source ConnectorConnection. Set by feature 002. Nullable until source is connected. @unique. |
+| `destinationConnectionId` | `String?` | FK to the destination ConnectorConnection. Set by feature 006. Nullable until destination is connected. @unique. |
+| `objectAutoLinkedAt` | `DateTime?` | Timestamp of when auto-link ran for this plan. Set exactly once by feature 011. When non-null, auto-link is gated and will not re-fire (Principle IX). |
+| `createdAt` | `DateTime` | Plan creation timestamp. |
+| `updatedAt` | `DateTime` | Last modification timestamp. Auto-managed by Prisma. |
+
+### AuditLog
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String (uuid)` | Unique identifier. |
+| `planId` | `String?` | FK to the parent plan. Nullable for system-level events. Cascade-deleted with the plan. |
+| `action` | `String` | Semantic action name (e.g. `PLAN_CREATED`, `PLAN_DELETED`, `STEP_ADVANCED`, `DRIFT_DETECTED`). |
+| `entity` | `String` | Type of the affected entity (e.g. `MigrationPlan`, `ObjectMapping`). Note: field is named `entity`, not `entityType`. |
+| `entityId` | `String?` | ID of the affected entity. Nullable for plan-level events. |
+| `details` | `String` | JSON-serialized context payload (stored as String, default `"{}"`). Contains old/new values, error info, drift summary, etc. |
+| `createdAt` | `DateTime` | Event timestamp. |
 
 ## Relationships
 
 ```
-MigrationPlan 1 --- * AuditLog (cascade delete)
+MigrationPlan (1) ──► (N) AuditLog              (cascade delete)
+MigrationPlan (1) ──► (0..1) ConnectorConnection (source, via sourceConnectionId)
+MigrationPlan (1) ──► (0..1) ConnectorConnection (destination, via destinationConnectionId)
+MigrationPlan (1) ──► (N) ObjectMapping          (cascade delete — defined by feature 011)
+MigrationPlan (1) ──► (N) IntegrityIssue         (cascade delete — defined by feature 017)
+MigrationPlan (1) ──► (N) TextDocument           (cascade delete — defined by feature 019)
+MigrationPlan (1) ──► (N) ContractualDocument    (cascade delete — defined by feature 020)
 ```
 
-When a plan is deleted, all its audit logs are cascade-deleted.
+## Constraints
 
-## Step Constants (not in DB)
+- `sourceConnectionId` and `destinationConnectionId` are `@unique` — each connection belongs to exactly one plan.
+- `name` has no uniqueness constraint (edge case: duplicate names are allowed, plans are identified by `id`).
+- `currentStep` defaults to `SOURCE` — new plans always start at the first step.
+- `status` defaults to `DRAFT` — new plans are always in draft state.
+- `objectAutoLinkedAt` is null by default — set once and never cleared.
+- Cascade delete on `AuditLog.planId` ensures audit entries are removed when a plan is deleted (per FR-003).
 
-The step workflow is a UI concern. Steps are defined as a constant array:
+## Indexes
 
-```typescript
-export const PLAN_STEPS = [
-  { id: 'SOURCE_CONNECTION', label: 'Source Connection', order: 1 },
-  { id: 'OBJECT_SELECTION', label: 'Object Selection', order: 2 },
-  { id: 'DESTINATION_CONNECTION', label: 'Destination Connection', order: 3 },
-  { id: 'MAPPING', label: 'Object & Field Mapping', order: 4 },
-  { id: 'DOCUMENTS', label: 'Documents', order: 5 },
-  { id: 'RUN', label: 'Run Migration', order: 6 },
-] as const;
-```
-
-## Future Extensions
-
-Features 002-008 will add related entities (Connection, SchemaSnapshot, ObjectSelection, FieldMapping, etc.) that reference `MigrationPlan.id` as a foreign key. The cascade delete on the plan ensures all related data is cleaned up.
+AuditLog has no explicit `@@index` declarations in the implemented schema. Queries are done via `planId` through the Prisma relation.

@@ -1,60 +1,57 @@
 # Research: Migration Logic
 
-## Decision 1: MigrationLogic Storage Architecture
+## Decision 1: Type Compatibility Matrix Encoding
 
-**Options**:
-- **Single polymorphic table**: One MigrationLogic table with a `sectionType` discriminator and nullable columns for each section type's data.
-- **Table-per-section**: Separate tables for ValueEquivalence data and ClassificationPrompt data, linked to a base MigrationLogic record.
-- **JSON blob**: Store section-specific data as a JSON column.
+**Decision**: A pure function `getSectionType(sourceType: string, destinationType: string): SectionType` backed by a `Map<string, SectionType>` keyed on `${normalizedSource}:${normalizedDest}`. The 5 canonical type categories (text, number, date, picklist, checkbox) produce a 25-entry matrix. Unknown types are normalized to "text" (most permissive fallback, consistent with 012's type normalization).
 
-**Decision**: Table-per-section. A base `MigrationLogic` record holds the common fields (fieldMappingId, sectionType, status). `ValueEquivalence` rows hold individual source-to-destination value pairs. `ClassificationPrompt` holds the prompt text. This is normalized, queryable, and avoids nullable columns.
+**Rationale**: The spec defines a fixed 25-entry matrix (5x5). A Map lookup is O(1), readable, and easily testable. The function is pure -- no side effects, no DB access -- so it can be used on both client and server.
 
-D3 (Error) and D4 (Informational) have no user-defined data -- they only need the base MigrationLogic record with the appropriate sectionType and status.
+**Alternatives**: Nested switch/case (verbose, error-prone), enum-based matrix (TypeScript enums add runtime code), database-stored rules (over-engineered for a fixed matrix).
 
-## Decision 2: D1 Value Equivalence Interaction
+## Decision 2: Section Type Determination
 
-**Options**:
-- **Drag-and-drop lines**: Visual but complex (drag state, drop zones, hit testing).
-- **Click-click (same as field linking)**: Click source value, click destination value. Simple state machine.
-- **Dropdown per source value**: Each source value has a dropdown of destination values.
+**Decision**: Four section types as a union: `VALUE_EQUIVALENCE | PROMPT | ERROR | INFORMATIONAL`. The section type is derived at render time from the type matrix, not stored as a column on MigrationLogic. This keeps the matrix as the single source of truth and avoids stale data if the matrix is updated.
 
-**Decision**: Click-click pattern, consistent with the object and field linking interactions (011, 012). State machine: `idle -> sourceValueSelected(value) -> idle` with equivalence recorded on second click. Lines are drawn as SVG paths between value items, reusing the link rendering pattern.
+**Rationale**: The section type is a function of source/destination field types, which are already stored on the FieldMapping. Storing it redundantly on MigrationLogic would create a sync problem if field types change (e.g., after a schema refresh).
 
-## Decision 3: LLM Classification Integration (D2)
+**Alternatives**: Store sectionType on MigrationLogic (creates redundancy), compute on every API call (acceptable but we already compute on the client).
 
-**Architecture**:
-1. The `classify/` endpoint receives: promptText, destinationPicklistValues, sampleSourceValues (4-5).
-2. It calls Claude API with a structured prompt:
-   ```
-   Given these categories: [destValues]
-   Classify the following text value into one of these categories.
-   User instruction: [promptText]
-   Value: [sampleValue]
-   Respond with only the category name.
-   ```
-3. One API call per sample value (parallel). Total: 4-5 calls.
-4. Returns: `[{ sourceValue, classification, confidence? }]`.
+## Decision 3: Auto-Equivalence Algorithm (D1)
 
-**Fallback**: If `ANTHROPIC_API_KEY` is not set or API fails, return `{ sourceValue, classification: null, error: "Classification unavailable" }`. The prompt can still be saved.
+**Decision**: Case-insensitive exact match. When the D1 section opens for the first time (no existing equivalences), the system compares source picklist values to destination picklist values using `value.toLowerCase().trim()`. Matches are pre-populated as initial equivalences. The consultant can adjust before saving.
 
-**Debounce**: When the consultant edits the prompt, debounce 1 second before re-triggering classification. Avoids excessive API calls during typing.
+**Rationale**: The spec explicitly states "equivalent names for D1 auto-linking means case-insensitive string match." Fuzzy matching (e.g., Levenshtein, synonym tables) is explicitly out of scope. Auto-equivalence runs on every modal open (not gated like auto-match), because it is a UI convenience for pre-populating a form, not a persistent auto-decision (no Principle IX conflict -- the user must still Save/Validate).
 
-## Decision 4: Save vs. Validate Semantics
+**Alternatives**: Fuzzy matching with edit distance (spec excludes this), synonym table (spec excludes: "Web" = "Online" is NOT automatic), no auto-equivalence (poor UX for the common case where values are identical).
 
-- **Save**: Persists the migration logic with status `DEFINED`. Link color changes to orange.
-- **Validate**: Persists the migration logic with status `VALIDATED`. Link color changes to green.
-- Both use the same PUT endpoint with a `status` field in the request body.
-- For D3 (Error): neither Save nor Validate is available. The MigrationLogic record is auto-created with status `INCOMPATIBLE` when the modal opens (if it doesn't exist yet).
-- For D4 (Informational): Save is hidden. Only Validate is available (and Cancel). No user-defined data to save.
+## Decision 4: LLM Integration for D2 Classification
 
-## Decision 5: Auto-Equivalence for D1
+**Decision**: Server-side API route `POST /classify` that receives the classification prompt, destination picklist values, and 4-5 sample source values. The route calls Claude API (`@anthropic-ai/sdk`) with a system prompt that constrains the output to the destination picklist values. Returns an array of `{ sourceValue, classifiedValue }` pairs.
 
-When the D1 section opens, auto-link values with case-insensitive exact match. This is a simple `O(n*m)` comparison (source values x destination values) which is fine for typical picklist sizes (< 100 values each). No fuzzy matching -- "Web" and "Online" are NOT auto-linked.
+**Rationale**: LLM calls must be server-side to protect the API key. The classify endpoint is separate from the main migration-logic CRUD route because classification is a preview action (not persisted until Save). Debounced client-side: 500ms after the consultant stops editing the prompt.
 
-The auto-equivalences are ephemeral until the consultant clicks Save. If the consultant closes without saving, auto-equivalences are discarded.
+**Alternatives**: Client-side LLM call (exposes API key), batch classification of all records (too expensive for preview -- we only need 4-5 examples), OpenAI API (constitution specifies `@anthropic-ai/sdk`).
 
-## Decision 6: Sample Source Values for D2
+## Decision 5: Upsert Pattern for Migration Logic
 
-The 4-5 example rows require real source record values. These are fetched via the record preview capability (feature 009). If feature 009 is not yet implemented, the D2 section shows placeholder text: "Connect to source system to see example classifications."
+**Decision**: `PUT /migration-logic` performs an upsert. If MigrationLogic exists for the fieldMappingId, it updates; otherwise, it creates. For D1, the upsert deletes all existing ValueEquivalence rows and re-creates them from the request payload (replace strategy). For D2, it upserts the ClassificationPrompt text.
 
-The `classify/` endpoint accepts `sampleSourceValues` directly -- it does not fetch them itself. The frontend fetches samples and passes them.
+**Rationale**: The modal always sends the complete state on Save/Validate. A replace strategy for value equivalences is simpler and avoids diff computation. Transaction wraps the delete-then-create to ensure atomicity.
+
+**Alternatives**: PATCH with diff (complex for value equivalence arrays), separate create/update endpoints (unnecessary for a modal that always sends full state), soft-delete old equivalences (adds complexity, no audit benefit since the audit log captures the full action).
+
+## Decision 6: Link Status Integration with 012
+
+**Decision**: The `linkStatus` (GREEN, ORANGE, RED_SOLID, RED_DASHED) is computed at read time from: (1) type compatibility matrix result, (2) whether MigrationLogic exists, (3) MigrationLogic.status (DRAFT/DEFINED/VALIDATED). The computation lives in a shared utility `computeLinkStatus()` used by both the field mapping list and the migration logic modal.
+
+**Rationale**: The spec for 012 states "link color status is derived... this is a computed state, not stored separately." Computing it from existing data avoids sync issues and keeps the DB schema lean.
+
+**Alternatives**: Store linkStatus on FieldMapping (creates sync issues with MigrationLogic changes), trigger-based updates (adds DB complexity).
+
+## Decision 7: D3/D4 Sections -- No Persistence Needed
+
+**Decision**: D3 (Error) and D4 (Informational) sections do not create MigrationLogic records. D3 has no Save/Validate buttons (only Cancel). D4 creates a MigrationLogic record with sectionType=INFORMATIONAL and status=VALIDATED on Validate click (the logic is trivial -- "copy as-is" -- but the record is needed to distinguish "validated copy" from "no logic defined").
+
+**Rationale**: D3 is an error state -- no logic can be defined. D4 needs a record so the link status can transition from RED_SOLID to GREEN when the consultant clicks Validate. Without the record, the system cannot distinguish "user validated the simple copy" from "user hasn't reviewed this mapping yet."
+
+**Alternatives**: Auto-create D4 records (violates Principle IX -- the consultant must explicitly validate), skip D4 records and treat compatible types as implicitly validated (loses the explicit review gate).

@@ -1,96 +1,272 @@
-# API Contracts: Field Mapping
+# Contracts: Field Mapping API
 
-Base path: `/api/plans/[planId]/object-mappings/[mappingId]/fields`
+## REST Endpoints
 
-## GET /api/plans/[planId]/object-mappings/[mappingId]/fields
+All endpoints are Next.js Route Handlers under `app/api/plans/[planId]/field-mappings/`.
 
-List all field mappings for an object mapping, with link status.
+---
 
-**Response 200**:
-```json
+### GET /api/plans/[planId]/field-mappings?objectMappingId={id}
+
+List all field mappings for a specific object mapping, enriched with computed link status.
+
+**Query parameters**:
+- `objectMappingId` (required): ID of the parent ObjectMapping.
+
+**Response** `200 OK`:
+```typescript
 {
-  "fieldMappings": [
-    {
-      "id": "uuid",
-      "sourceFieldName": "FirstName",
-      "destinationFieldName": "firstname",
-      "sourceFieldType": "text",
-      "destinationFieldType": "text",
-      "compatibilityStatus": "COMPATIBLE",
-      "autoCreated": true,
-      "linkStatus": "GREEN",
-      "createdAt": "2026-04-02T10:00:00Z"
-    }
-  ],
-  "unmappedSourceFields": ["AnnualRevenue", "Description"],
-  "unmappedDestinationFields": ["custom_field_1"]
+  mappings: FieldMappingWithStatus[]
 }
 ```
 
-Note: `linkStatus` is computed (not stored). `unmappedSourceFields` and `unmappedDestinationFields` support the unmapped fields detection feature (016).
+Where `FieldMappingWithStatus` includes computed `linkStatus`, `hasLogic`, `isLogicValidated`, `logicSectionType`, and `driftFlag` per data-model.md.
 
-## POST /api/plans/[planId]/object-mappings/[mappingId]/fields
+**Error responses**:
+- `400 Bad Request` — Missing `objectMappingId`.
+- `404 Not Found` — Plan or ObjectMapping does not exist.
 
-Create a new field mapping.
+---
 
-**Request**:
-```json
+### POST /api/plans/[planId]/field-mappings
+
+Create a new field mapping (manual link).
+
+**Request body**:
+```typescript
 {
-  "sourceFieldName": "Industry",
-  "destinationFieldName": "industry",
-  "sourceFieldType": "picklist",
-  "destinationFieldType": "picklist"
+  objectMappingId: string
+  sourceFieldName: string        // apiName of the source field
+  destinationFieldName: string   // apiName of the destination field
 }
 ```
 
-**Response 201**:
-```json
+**Validation**:
+- `objectMappingId` must belong to the plan.
+- `sourceFieldName` must exist in the source object's fields (via snapshot).
+- `destinationFieldName` must exist in the destination object's fields (via snapshot).
+- The source field must not already be mapped within this object mapping (1:1 constraint).
+- The destination field must not already be mapped within this object mapping (1:1 constraint).
+
+**Response** `201 Created`:
+```typescript
 {
-  "id": "uuid",
-  "sourceFieldName": "Industry",
-  "destinationFieldName": "industry",
-  "sourceFieldType": "picklist",
-  "destinationFieldType": "picklist",
-  "compatibilityStatus": "WARNING",
-  "autoCreated": false,
-  "linkStatus": "RED_SOLID"
+  mapping: FieldMappingWithStatus
 }
 ```
 
-**Response 409** (one-to-one violation):
-```json
+The response includes the computed `compatibilityStatus` (from the type matrix) and initial `linkStatus` (RED_SOLID for COMPATIBLE/WARNING, RED_DASHED for INCOMPATIBLE).
+
+**Error responses**:
+- `400 Bad Request` — Validation failed (missing fields, field not in schema).
+- `404 Not Found` — Plan or ObjectMapping does not exist.
+- `409 Conflict` — Source or destination field already mapped (1:1 violation).
+
+**Side effects**:
+- AuditLog entry: `{ action: 'FIELD_MAPPING_CREATED', entityType: 'FieldMapping', entityId: <id>, details: { objectMappingId, sourceFieldName, destinationFieldName, sourceFieldType, destinationFieldType, compatibilityStatus, manual: true } }`
+
+---
+
+### DELETE /api/plans/[planId]/field-mappings/[fieldMappingId]
+
+Remove a field mapping with cascade deletion of migration logic.
+
+**Response** `200 OK`:
+```typescript
 {
-  "error": "Source field 'Industry' is already mapped to 'industry_type' in this object mapping"
-}
-```
-
-## DELETE /api/plans/[planId]/object-mappings/[mappingId]/fields/[fieldMappingId]
-
-Remove a field mapping and cascade-delete associated migration logic.
-
-**Response 200**:
-```json
-{
-  "deleted": {
-    "fieldMapping": "uuid",
-    "migrationLogicDeleted": true
+  deleted: {
+    fieldMapping: { id: string; sourceFieldName: string; destinationFieldName: string }
+    hadMigrationLogic: boolean
   }
 }
 ```
 
-## POST /api/plans/[planId]/object-mappings/[mappingId]/fields/auto-match
+**Error responses**:
+- `404 Not Found` — FieldMapping, ObjectMapping, or Plan does not exist.
 
-Trigger auto-matching of native field correspondences. Idempotent.
+**Side effects**:
+- Cascade delete: MigrationLogic (and its children: ValueEquivalence, ClassificationPrompt).
+- AuditLog entry: `{ action: 'FIELD_MAPPING_DELETED', entityType: 'FieldMapping', entityId: <id>, details: { sourceFieldName, destinationFieldName, hadMigrationLogic } }`
 
-**Response 200**:
-```json
+---
+
+### POST /api/plans/[planId]/field-mappings/auto-match
+
+Trigger auto-match for native field correspondences on a specific object mapping. Runs only if `fieldAutoMatchedAt IS NULL`.
+
+**Request body**:
+```typescript
 {
-  "created": [
-    { "sourceFieldName": "FirstName", "destinationFieldName": "firstname" },
-    { "sourceFieldName": "LastName", "destinationFieldName": "lastname" }
-  ],
-  "skipped": [
-    { "sourceFieldName": "Email", "destinationFieldName": "email", "reason": "already exists" }
-  ]
+  objectMappingId: string
+}
+```
+
+**Response** `200 OK`:
+```typescript
+{
+  result: AutoMatchResult
+}
+```
+
+Where `AutoMatchResult`:
+```typescript
+{
+  createdMappings: FieldMappingRow[]
+  skippedFields: { source: string; dest: string; reason: string }[]
+  alreadyMatchedAt: string | null  // non-null if auto-match already ran (no-op)
+}
+```
+
+**Behavior**:
+- If `fieldAutoMatchedAt` is non-null: returns `alreadyMatchedAt` timestamp, creates nothing.
+- If `fieldAutoMatchedAt` is null: runs registry pairs + name-based fallback, creates mappings, sets `fieldAutoMatchedAt = NOW()` in the same transaction (FR-006).
+- Registry pairs take precedence. Name fallback only matches fields not already covered.
+- Skipped fields include: already-mapped fields, fields with no match, fields excluded by the registry.
+
+**Side effects**:
+- AuditLog entry: `{ action: 'AUTO_MATCH_EXECUTED', entityType: 'ObjectMapping', entityId: <objectMappingId>, details: { createdCount, skippedCount, registryPairs, nameFallbackPairs } }`
+
+---
+
+### GET /api/plans/[planId]/field-mappings/unmapped?objectMappingId={id}
+
+Get unmapped fields for both source and destination sides of an object mapping.
+
+**Query parameters**:
+- `objectMappingId` (required): ID of the parent ObjectMapping.
+
+**Response** `200 OK`:
+```typescript
+{
+  unmappedSource: UnmappedField[]
+  unmappedDestination: UnmappedField[]
+  totalSourceFields: number
+  totalDestFields: number
+  mappedCount: number
+}
+```
+
+**Error responses**:
+- `400 Bad Request` — Missing `objectMappingId`.
+- `404 Not Found` — Plan or ObjectMapping does not exist.
+
+---
+
+### GET /api/plans/[planId]/field-mappings/preview?objectMappingId={id}&recordIndex={n}
+
+Get a migration preview for a source record showing before/after field values.
+
+**Query parameters**:
+- `objectMappingId` (required): ID of the parent ObjectMapping.
+- `recordIndex` (optional, default 0): Index of the source record to preview (0-24).
+
+**Response** `200 OK`:
+```typescript
+{
+  records: {
+    id: string
+    label: string
+  }[]
+  preview: MigrationPreviewRecord | null  // null if no field mappings exist
+}
+```
+
+Where `MigrationPreviewRecord`:
+```typescript
+{
+  recordId: string
+  label: string
+  fields: {
+    sourceFieldName: string
+    sourceValue: unknown
+    destFieldName: string
+    destValue: unknown
+    isTransformed: boolean
+  }[]
+}
+```
+
+**Behavior**:
+- Loads 25 source records via `getRecords(connectionId, objectApiName, 1, 25)`.
+- For each mapped field, applies value equivalences (if any) from MigrationLogic.
+- Returns `null` preview if no field mappings exist (sidebar shows placeholder).
+
+**Error responses**:
+- `400 Bad Request` — Missing `objectMappingId`.
+- `404 Not Found` — Plan, ObjectMapping, or source connection does not exist.
+
+---
+
+## Service Layer Contract
+
+```typescript
+interface FieldMappingService {
+  /** List all field mappings for an object mapping with computed statuses */
+  listMappings(planId: string, objectMappingId: string): Promise<FieldMappingWithStatus[]>
+
+  /** Create a manual field mapping */
+  createMapping(
+    planId: string,
+    objectMappingId: string,
+    sourceFieldName: string,
+    destinationFieldName: string
+  ): Promise<FieldMappingWithStatus>
+
+  /** Delete a field mapping with cascade */
+  deleteMapping(
+    planId: string,
+    fieldMappingId: string
+  ): Promise<{ hadMigrationLogic: boolean }>
+
+  /** Execute auto-match (one-shot, gated by fieldAutoMatchedAt) */
+  autoMatch(planId: string, objectMappingId: string): Promise<AutoMatchResult>
+
+  /** Get unmapped fields for both sides */
+  getUnmappedFields(planId: string, objectMappingId: string): Promise<{
+    unmappedSource: UnmappedField[]
+    unmappedDestination: UnmappedField[]
+    totalSourceFields: number
+    totalDestFields: number
+    mappedCount: number
+  }>
+
+  /** Get migration preview for a source record */
+  getPreview(
+    planId: string,
+    objectMappingId: string,
+    recordIndex: number
+  ): Promise<{ records: { id: string; label: string }[]; preview: MigrationPreviewRecord | null }>
+}
+```
+
+### Type Compatibility Service
+
+```typescript
+interface TypeCompatibilityService {
+  /** Normalize a raw connector type to one of the 5 canonical categories */
+  normalizeType(rawType: string): NormalizedType
+
+  /** Check compatibility between two raw types */
+  checkCompatibility(sourceRawType: string, destRawType: string): CompatibilityStatus
+
+  /** Get the migration logic section type for a given compatibility */
+  getLogicSectionType(
+    sourceNormalizedType: NormalizedType,
+    destNormalizedType: NormalizedType
+  ): 'VALUE_EQUIVALENCE' | 'PROMPT' | 'ERROR' | 'INFORMATIONAL'
+}
+```
+
+### LinkStatus Computation Service
+
+```typescript
+interface LinkStatusService {
+  /** Compute the link status for a field mapping */
+  computeLinkStatus(
+    mapping: FieldMappingRow,
+    hasLogic: boolean,
+    isLogicValidated: boolean,
+    existsInSchema: boolean
+  ): LinkStatus
 }
 ```

@@ -1,110 +1,321 @@
 # Research: HubSpot Adapter
 
-## Decision: Authentication strategy (dual method)
+**Feature**: adapters/hubspot
+**Date**: 2026-05-18
 
-**Chosen**: Support both Private App (bearer token) and OAuth2 (authorization code flow). Discriminated via a `method` field in HubSpotConfig: `{ method: 'private-app', accessToken }` or `{ method: 'oauth2', clientId, clientSecret, redirectUri }`.
+## Decision 1: SDK Choice -- @hubspot/api-client
 
-**Rationale**: FR-002 mandates both. Private App is simpler (just paste a token), suitable for testing and small portals. OAuth2 is required for production use and token refresh.
+**Decision**: Use `@hubspot/api-client` (official HubSpot Node.js SDK) for all API interactions.
+
+**Rationale**:
+- Constitution mandates `@hubspot/api-client` as the HubSpot SDK (Technology Standards).
+- The SDK wraps all CRM API v3 endpoints: contacts, companies, deals, tickets, custom objects, properties, schemas, search.
+- Provides typed responses, automatic retry on transient errors, and built-in OAuth2 token management.
+- Version: latest stable (v12.x as of 2026). Install: `npm install @hubspot/api-client`.
+
+**SDK initialization**:
+```typescript
+import { Client } from '@hubspot/api-client'
+
+// Private App
+const client = new Client({ accessToken: 'pat-xxx' })
+
+// OAuth2
+const client = new Client({ accessToken: oauthAccessToken })
+```
+
+**Alternatives considered**:
+- Raw HTTP with `fetch`: rejected -- would reimplement pagination, error handling, and retry logic that the SDK provides.
+- `hubspot` (community package): rejected -- less maintained, fewer types, not the official SDK.
+
+## Decision 2: Authentication Strategy
+
+**Decision**: Support two methods -- Private App (bearer token) and OAuth2 (authorization code flow).
+
+### Private App (simpler, recommended for development)
+
+**Flow**:
+1. Consultant enters a Private App access token (created in HubSpot Settings > Integrations > Private Apps).
+2. Adapter validates the token by calling the account info endpoint: `GET /account-info/v3/api-usage/daily` or `GET /account-info/v3/details` (SDK: `client.apiRequest({ path: '/account-info/v3/details' })`).
+3. On success: store token in connection config, set status CONNECTED, display portal name.
+
+**Token characteristics**:
+- Private App tokens start with `pat-na1-` (region-specific prefix).
+- Tokens do not expire automatically but can be revoked in the HubSpot UI.
+- No refresh mechanism -- if revoked, the consultant must create a new token.
+- Scoped to the Private App's permissions (CRM read/write, schemas, etc.).
+
+### OAuth2 (production-ready)
+
+**Flow**:
+1. Consultant clicks "Connect via OAuth2".
+2. Adapter builds authorization URL: `https://app.hubspot.com/oauth/authorize?client_id=...&redirect_uri=...&scope=...&state=...`.
+3. HubSpot redirects back with `code` query parameter.
+4. Adapter exchanges code for tokens: `POST https://api.hubapi.com/oauth/v1/token` with `grant_type=authorization_code`.
+5. Store access token + refresh token in connection config.
+
+**Token characteristics**:
+- Access token expires after 30 minutes (1800 seconds).
+- Refresh token expires after 6 months of non-use. Refreshing resets the 6-month window.
+- Refresh: `POST https://api.hubapi.com/oauth/v1/token` with `grant_type=refresh_token`.
+
+**Required OAuth scopes**:
+```
+crm.objects.contacts.read
+crm.objects.contacts.write
+crm.objects.companies.read
+crm.objects.companies.write
+crm.objects.deals.read
+crm.objects.deals.write
+crm.objects.custom.read
+crm.objects.custom.write
+crm.schemas.contacts.read
+crm.schemas.companies.read
+crm.schemas.deals.read
+crm.schemas.custom.read
+crm.schemas.custom.write
+```
+
+**Note**: Scopes must match the HubSpot app configuration exactly. Requesting a scope not enabled on the app causes a silent OAuth failure.
+
+**Environment variables** (OAuth2 only):
+- `HUBSPOT_CLIENT_ID` -- from HubSpot Developer Portal
+- `HUBSPOT_CLIENT_SECRET` -- from HubSpot Developer Portal
+- `HUBSPOT_REDIRECT_URI` -- must match the app callback URL (e.g., `http://localhost:3000/api/connectors/hubspot/oauth/callback`)
+
+**Alternatives considered**:
+- OAuth2 only: rejected -- Private App is much simpler for development and testing. Many consultants use Private Apps for internal tools.
+- API key (deprecated): rejected -- HubSpot deprecated hapikey authentication in 2022. Not supported.
+
+## Decision 3: CRM API v3 -- Object Retrieval
+
+**Decision**: Standard objects via CRM API v3 endpoints; custom objects via Schemas API.
+
+### Standard Objects
+
+The 5 standard CRM objects are known and hardcoded:
+- `contacts` -- CRM contacts
+- `companies` -- CRM companies
+- `deals` -- CRM deals
+- `tickets` -- Service Hub tickets
+- `line_items` -- Product line items
+
+Each is accessed via its dedicated endpoint (e.g., `client.crm.contacts`).
+
+**Mapping to ConnectorObject**:
+```typescript
+{
+  apiName: 'contacts',
+  label: 'Contacts',
+  description: 'HubSpot CRM contacts',
+  isCustom: false,
+  isSelected: false  // destination: all objects available, no selection step
+}
+```
+
+### Custom Objects (Enterprise tier only)
+
+Custom objects are retrieved via the Schemas API:
+```typescript
+const schemas = await client.crm.schemas.coreApi.getAll()
+// Returns: { results: [{ objectTypeId, name, labels, ... }] }
+```
+
+**Tier detection**: If the Schemas API returns 403 or a response indicating the portal lacks Enterprise, the adapter logs an informational message and continues with standard objects only (FR-004).
+
+**Mapping to ConnectorObject**:
+```typescript
+{
+  apiName: schema.objectTypeId,  // e.g., '2-12345' or the fully qualified ID
+  label: schema.labels.singular,
+  description: schema.description,
+  isCustom: true,
+  isSelected: false
+}
+```
+
+**Alternatives considered**:
+- Dynamic discovery of standard objects: rejected -- HubSpot does not have a `describeGlobal` equivalent. The standard objects are well-known and stable.
+
+## Decision 4: Properties API -- Field Retrieval
+
+**Decision**: Use the Properties API (`GET /crm/v3/properties/{objectType}`) via the SDK.
+
+**SDK call**:
+```typescript
+const properties = await client.crm.properties.coreApi.getAll('contacts')
+// Returns: { results: [{ name, label, type, fieldType, groupName, ... }] }
+```
+
+**Property metadata mapping to ConnectorField**:
+
+| HubSpot Property | ConnectorField | Notes |
+|---|---|---|
+| `name` | `apiName` | Internal property name |
+| `label` | `label` | Display label |
+| `type` | `dataType` | string, number, date, datetime, enumeration, bool |
+| `fieldType` | (informational) | text, textarea, select, checkbox, etc. |
+| `groupName` | `groupName` (extended) | Property group |
+| `description` | (informational) | Property description |
+| `modificationMetadata.readOnlyValue` | `isReadOnly` | |
+| `hasUniqueValue` | `isUnique` | |
+| required (via `validationRules`) | `isRequired` | Check validation rules |
+
+**Extended ConnectorField for HubSpot**: The `ConnectorField` interface is system-agnostic. HubSpot-specific metadata (groupName, fieldType, description) is stored in the adapter's internal types and surfaced where needed.
+
+**Type mapping**:
+
+| HubSpot `type` | HubSpot `fieldType` | Notes |
+|---|---|---|
+| `string` | text, textarea, phonenumber, etc. | General text |
+| `number` | number | Numeric |
+| `date` | date | Date only |
+| `datetime` | date | Date + time |
+| `enumeration` | select, radio, checkbox | Picklist/multiselect |
+| `bool` | booleancheckbox | Boolean |
+| `object_coordinates` | -- | Geolocation (not creatable) |
+
+**Non-creatable types**: `calculation`, `score`, `rich_text`, `object_coordinates`. These are displayed in the schema but flagged as not creatable from Carbo-v0 (spec edge case).
+
+**Alternatives considered**:
+- Fetching properties on-demand per object: rejected -- the Properties API returns all properties in one call, which is efficient. Caching per object in the schema snapshot.
+
+## Decision 5: Search API -- Record Retrieval
+
+**Decision**: Use the CRM Search API (`POST /crm/v3/objects/{objectType}/search`) for record retrieval.
+
+**SDK call**:
+```typescript
+const response = await client.crm.contacts.searchApi.doSearch({
+  limit: 25,
+  after: '0',    // cursor-based pagination
+  properties: ['firstname', 'lastname', 'email'],
+  sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }]
+})
+```
+
+**Pagination model**:
+- HubSpot Search API uses cursor-based pagination (`after` parameter), not offset-based.
+- The response includes `paging.next.after` for the next cursor.
+- Maximum `limit` per request: 100 records.
+- Maximum total results from Search API: 10,000 (HubSpot hard limit).
+
+**Mapping to ConnectorAdapter.getRecords (1-indexed per FR-012)**:
+- `page=1`: first request with `after=0` (or omitted).
+- `page=N` (N>1): walk cursors from page 1 to page N. Cache cursors for visited pages to avoid re-walking.
+- **Cursor caching strategy**: store `Map<page, afterCursor>` in memory per connection+object. `page=1` -> `after=undefined`, response provides the `after` for `page=2`, etc.
+
+**Alternatives considered**:
+- List API (`GET /crm/v3/objects/{objectType}`): simpler but does not support filtering or sorting. Search API is more powerful and returns the same structure.
+- GraphQL API: rejected -- not available for all object types and has different pagination semantics.
+
+## Decision 6: Schema Write -- Properties and Custom Objects
+
+**Decision**: Use Properties API for property creation, Schemas API for custom object creation.
+
+### Property Creation (FR-008)
+
+**SDK call**:
+```typescript
+await client.crm.properties.coreApi.create('contacts', {
+  name: 'migration_source_id',
+  label: 'Migration Source ID',
+  type: 'string',
+  fieldType: 'text',
+  groupName: 'contactinformation'
+})
+```
+
+**Creatable types** (FR-008): `string`, `number`, `date`, `datetime`, `enumeration`, `boolean`.
+
+**Local validation before API call** (FR-010):
+1. Check name uniqueness against cached schema (avoid round-trip for obvious conflicts).
+2. Validate type is in the creatable list.
+3. Validate required fields: `name`, `label`, `type`, `fieldType`, `groupName`.
+
+**Error handling**:
+- 409 (Conflict): property already exists -- surface existing property details for comparison.
+- 400 (Bad Request): invalid type or missing fields -- surface HubSpot error message.
+- Custom property limit reached: surface HubSpot error message with limit details.
+
+### Custom Object Creation (FR-009, Enterprise only)
+
+**SDK call**:
+```typescript
+await client.crm.schemas.coreApi.create({
+  name: 'custom_migration_entity',
+  labels: { singular: 'Migration Entity', plural: 'Migration Entities' },
+  primaryDisplayProperty: 'name',
+  requiredProperties: ['name'],
+  properties: [
+    { name: 'name', label: 'Name', type: 'string', fieldType: 'text' }
+  ]
+})
+```
+
+**Tier detection**: If the Schemas API returns 403, report "Custom objects require HubSpot Enterprise tier" (FR-009).
+
+**Alternatives considered**:
+- Batch property creation: not supported by the Properties API -- properties are created one at a time. If batch is needed in the future, implement a serial loop with rate limit awareness.
+
+## Decision 7: Rate Limit Handling
+
+**Decision**: Intercept 429 responses, read `Retry-After` header, apply exponential backoff with jitter.
+
+**HubSpot rate limits**:
+- Private Apps: 100 requests per 10 seconds (per app).
+- OAuth apps: 100 requests per 10 seconds (per account).
+- Secondary limits: 10 Search API requests per second.
 
 **Implementation**:
-- Private App: `POST /api/connectors/hubspot/auth` with `{ method: 'private-app', accessToken }`. Validate by calling `GET /account-info/v3/details`.
-- OAuth2: `GET /api/connectors/hubspot/auth?planId=...` redirects to HubSpot authorization page.
+```typescript
+// Wrapper around SDK calls
+async function withRateLimit<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    if (error.code === 429) {
+      const retryAfter = parseInt(error.headers?.['retry-after'] || '1', 10)
+      await delay(retryAfter * 1000 + jitter())
+      return withRateLimit(fn) // retry with backoff
+    }
+    throw error
+  }
+}
+```
 
-## Decision: @hubspot/api-client initialization
+**Backoff strategy**: initial delay from `Retry-After` header, then double on each subsequent retry, max 3 retries, with random jitter (0-500ms) to avoid thundering herd.
 
-**Chosen**: Create `new hubspot.Client({ accessToken })` for both auth methods. Private App tokens and OAuth2 access tokens are used identically after auth.
+**Alternatives considered**:
+- Pre-emptive throttling (limit to 80 req/10s): adds complexity without clear benefit. Reactive approach (handle 429 when it happens) is simpler and the SDK already handles basic retries.
 
-**Rationale**: The @hubspot/api-client treats all tokens the same way. The difference is only in how the token is obtained and refreshed.
+## Decision 8: Token Expiration Handling
 
-## Decision: Standard objects list
+**Decision**: Different strategies for each auth method.
 
-**Chosen**: Hardcoded list in `hubspot-constants.ts`:
-- `contacts` (label: "Contacts")
-- `companies` (label: "Companies")
-- `deals` (label: "Deals")
-- `tickets` (label: "Tickets")
-- `line_items` (label: "Line Items")
+**Private App**: Tokens do not expire but can be revoked. On 401 response, transition connection to EXPIRED status and prompt re-entry of a new token. No automatic refresh possible.
 
-**Rationale**: HubSpot CRM API v3 does not have a "list all object types" endpoint. Standard objects are known and fixed. Custom objects are discovered via the Schemas API.
+**OAuth2**: Access token expires after 30 minutes. On 401 response:
+1. Attempt refresh using `POST /oauth/v1/token` with `grant_type=refresh_token`.
+2. If refresh succeeds: update stored tokens, retry the original request.
+3. If refresh fails (refresh token expired or revoked): transition to EXPIRED, prompt re-authentication.
 
-**Rejected**: Querying the Schemas API for standard objects. The Schemas API only returns custom objects.
+**Implementation**: The SDK's `Client` does not handle token refresh automatically. The adapter wraps all SDK calls with a try/catch that detects 401 and triggers the refresh flow.
 
-## Decision: Custom objects retrieval
+## Decision 9: Adapter File Organization
 
-**Chosen**: Call `GET /crm/v3/schemas` via `client.crm.schemas.coreApi.getAll()`. If the API returns 403 or tier-related error, log informational message and continue with standard objects only.
+**Decision**: Single adapter directory at `src/lib/adapters/hubspot/` with focused modules.
 
-**Rationale**: FR-004. Custom objects require Enterprise tier. Graceful degradation is mandatory.
+**Rationale**: Follows the pattern established by the Salesforce adapter (`src/lib/adapters/salesforce/`). Each module has a single responsibility:
+- `hubspot-adapter.ts`: implements `ConnectorAdapter`, delegates to specialized modules.
+- `auth.ts`: authentication logic (both methods).
+- `schema.ts`: object and property retrieval.
+- `records.ts`: record reading and stats computation.
+- `schema-write.ts`: property and object creation.
+- `rate-limiter.ts`: rate limit wrapper (cross-cutting, used by all modules).
+- `types.ts`: HubSpot-specific types (not exported beyond the adapter).
+- `constants.ts`: standard objects list, creatable types, etc.
 
-## Decision: Property retrieval
-
-**Chosen**: `client.crm.properties.coreApi.getAll(objectType)` returns all properties for an object type. Map to ConnectorField:
-- `apiName` = `property.name`
-- `label` = `property.label`
-- `dataType` = `property.type` (string, number, date, datetime, enumeration, boolean)
-- `isRequired` = derived from `property.fieldType` or form requirements
-- `isReadOnly` = `property.calculated || property.readOnlyValue`
-- `groupName` = `property.groupName`
-
-**Rationale**: FR-005. Direct mapping from HubSpot Properties API response.
-
-## Decision: Record retrieval via Search API
-
-**Chosen**: `client.crm.contacts.searchApi.doSearch()` (and equivalent for other objects) with `limit`, `after`, and `properties` array.
-
-**Rationale**: FR-006. The Search API supports pagination, filtering, and property selection. More flexible than the basic list endpoint for preview purposes.
-
-**Pagination**: HubSpot Search API uses cursor-based pagination (`after` token) rather than offset. Map to PaginatedRecords by tracking page number and `hasNextPage` from response.
-
-## Decision: Schema write — property creation
-
-**Chosen**: `client.crm.properties.coreApi.create(objectType, propertyCreateInput)` with:
-- `name`: internal name
-- `label`: display label
-- `type`: string | number | date | datetime | enumeration | bool
-- `fieldType`: derived from type (text, number, date, etc.)
-- `groupName`: defaults to "contactinformation" or object-specific default group
-
-**Rationale**: FR-008. Creatable types are limited to common types. Uncommon types (calculation, score, rich_text) are flagged as not creatable.
-
-**Local validation** (FR-010): Before calling HubSpot API:
-1. Check name uniqueness against cached property list
-2. Validate type is in creatable types list
-3. Ensure required fields (name, label, type) are present
-
-## Decision: Schema write — custom object creation
-
-**Chosen**: `client.crm.schemas.coreApi.create(objectSchemaEgg)` with name, labels, primaryDisplayProperty, and required properties.
-
-**Rationale**: FR-009. Requires Enterprise tier — detect and report gracefully on 403.
-
-## Decision: Rate limit handling
-
-**Chosen**: Detect 429 responses, read `Retry-After` header (seconds), wait, then retry with exponential backoff (multiply by 2 on each retry, max 5 retries). Log each rate limit event.
-
-**Rationale**: FR-011. HubSpot enforces 100 requests per 10 seconds for Private Apps and OAuth apps. The `Retry-After` header indicates how long to wait.
-
-**Implementation**: Wrap @hubspot/api-client calls in a retry function. On 429, parse Retry-After, wait, retry.
-
-## Decision: Token lifecycle
-
-**Chosen**:
-- Private App: No refresh possible. On 401, set status to EXPIRED, prompt re-authentication.
-- OAuth2: Attempt refresh via `POST /oauth/v1/token` with `grant_type=refresh_token`. On refresh failure, set EXPIRED.
-
-**Rationale**: FR-012. Private App tokens are manually managed in HubSpot — no programmatic refresh.
-
-## API Reference
-
-### HubSpot CRM API v3 endpoints (via @hubspot/api-client)
-- Account info: `GET /account-info/v3/details`
-- Properties: `client.crm.properties.coreApi.getAll(objectType)`
-- Property create: `client.crm.properties.coreApi.create(objectType, input)`
-- Search: `client.crm.{objectType}.searchApi.doSearch(searchRequest)`
-- Schemas (custom objects): `client.crm.schemas.coreApi.getAll()`
-- Schema create: `client.crm.schemas.coreApi.create(objectSchemaEgg)`
-
-### Environment variables
-- `HUBSPOT_PRIVATE_APP_TOKEN`: For Private App auth (optional if using OAuth2)
-- `HUBSPOT_CLIENT_ID`: For OAuth2 auth
-- `HUBSPOT_CLIENT_SECRET`: For OAuth2 auth
-- `HUBSPOT_CALLBACK_URL`: OAuth2 redirect URI (e.g., `http://localhost:3001/api/connectors/hubspot/callback`)
+**Alternatives considered**:
+- Single file: rejected -- too large (~800+ lines). Separate modules improve readability (Principle II).
+- Shared rate limiter in `src/lib/`: rejected for now -- only HubSpot and Salesforce exist. Extract when the Connector SDK is built.

@@ -1,45 +1,40 @@
 # Research: Connector Interface
 
-## Decision: Single file vs. multiple files for types
+## Decision 1: Single File vs Multi-File
 
-**Chosen**: Single `types.ts` file.
+**Decision**: Single file `src/lib/types/connector.ts`.
 
-**Rationale**: All types are tightly coupled (ConnectorField references ConnectorObject, etc.). Splitting into multiple files adds import complexity with no benefit. The total is ~200 lines of pure type definitions.
+**Rationale**: 12 types is small enough for one file (~150 lines). Splitting creates import overhead for a package with no runtime. All types are tightly related (a connector's vocabulary).
 
-**Rejected**: One file per type (e.g., `connection.ts`, `schema.ts`, `field.ts`). Overhead of 8+ files for simple type exports is not justified.
+**Alternatives**: One file per type (too granular), barrel re-export (unnecessary indirection).
 
-## Decision: Interface vs. abstract class for ConnectorAdapter
+## Decision 2: Data Types as Strings
 
-**Chosen**: TypeScript `interface` for ConnectorAdapter.
+**Decision**: `dataType` field is `string`, not a union/enum.
 
-**Rationale**: FR-011 mandates "pure TypeScript types and interfaces with no runtime implementation." An interface has zero runtime footprint. Abstract classes generate JavaScript code and create an inheritance dependency.
+**Rationale**: Spec explicitly requires system-agnostic design. Salesforce has ~30 field types, HubSpot has ~15, and they don't overlap cleanly. A closed enum would break on every new connector. The type compatibility matrix (012) normalizes raw types into 5 canonical categories at the mapping layer — the connector interface stays permissive.
 
-**Rejected**: Abstract class. Would violate FR-011 (no runtime implementation) and add unnecessary coupling.
+**Alternatives**: Union type of known values (breaks open/closed), branded string (unnecessary complexity).
 
-## Decision: Data types as string vs. enum
+## Decision 3: Method Signatures as Interface vs Abstract Class
 
-**Chosen**: `dataType: string` (free-form string like "text", "number", "date", "picklist", "lookup").
+**Decision**: TypeScript `interface` for the adapter contract (`ConnectorAdapter`).
 
-**Rationale**: Per spec assumptions, types are represented as strings to accommodate system-specific types (Salesforce's "encrypted text", HubSpot's "calculation"). An enum would require constant updates for each new connector.
+**Rationale**: FR-011 requires "pure TypeScript types with no runtime implementation." An abstract class would add runtime code to the bundle. An interface is erased at compile time.
 
-**Rejected**: Union type or enum. Too rigid for unknown/future connector types.
+**Alternatives**: Abstract class (violates FR-011), type alias with function signatures (less discoverable).
 
-## Decision: Capability flags placement
+## Decision 4: Pagination Convention
 
-**Chosen**: Capability flags (`canRead`, `canWrite`, `canWriteSchema`) are properties on the `ConnectorAdapter` interface, not a separate type.
+**Decision**: 1-indexed pagination per FR-012.
 
-**Rationale**: Every adapter must declare capabilities. Placing them directly on the adapter interface ensures they are always present and co-located with the methods they gate.
+**Rationale**: Captured from live test bug — 0-indexed page silently drops first page of records. Convention is enforced end-to-end: API route validates `page >= 1`, adapter implements `(page-1)*pageSize` offset, UI hook initializes `page=1`.
 
-## Decision: Generic config for ConnectorConnection
+## Decision 5: ConnectorAdapter Interface Shape
 
-**Chosen**: `config: Record<string, unknown>` on ConnectorConnection.
+**Decision**: Single `ConnectorAdapter` interface with required + optional methods.
 
-**Rationale**: Each connector has different auth config (OAuth tokens, API keys, instance URLs). A generic record allows adapter-specific config without polluting the shared interface. Each adapter narrows this type internally.
+Required: `connect`, `disconnect`, `getSchema`, `getFields`, `getRecords`, `getRecordCount`, `getFieldStats`.
+Optional (gated by capabilities): `createObject`, `createField`.
 
-## Constraint: No runtime dependencies
-
-The types package MUST have zero `import` statements from external packages. All types are self-contained. This ensures any project can import the connector interface without pulling in jsforce, @hubspot/api-client, or any other adapter dependency.
-
-## Constraint: Method signatures must be async
-
-All ConnectorAdapter methods (connect, getSchema, getRecords, etc.) return `Promise<T>` since every real adapter performs network I/O. This is baked into the interface so adapters don't have to wrap synchronous returns.
+**Rationale**: Mirrors FR-010. Optional methods are typed but their absence is checked via capability flags at runtime, not via separate interfaces.

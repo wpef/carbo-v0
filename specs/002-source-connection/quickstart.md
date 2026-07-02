@@ -1,57 +1,110 @@
 # Quickstart: Source Connection
 
+## What this feature provides
+
+The source connection step within a migration plan: adapter selection, authentication, schema retrieval (auto + manual), demo mode, disconnect, and reconfiguration with schema-diff-based impact analysis.
+
 ## Prerequisites
 
-- Node.js 18+
-- Feature 000 (Connector Interface) types defined in `src/lib/types/connector.ts`
-- Feature 001 (Migration Plan) implemented: `MigrationPlan` model + CRUD routes + plan detail page
+- Feature 000 (Connector Interface): types at `@/lib/types/connector`, adapter registry, demo adapter
+- Feature 001 (Migration Plan): `MigrationPlan` model with `sourceConnectionId`, plan layout with sidebar
 
-## Environment Variables
+## How to use
 
-```env
-# No feature-specific env vars. Adapter-specific vars (e.g., SF_CLIENT_ID) belong to adapters.
-DATABASE_URL="file:./dev.db"
+### 1. Connect a source (initial)
+
+```typescript
+// Client: POST to connect
+const res = await fetch(`/api/plans/${planId}/source`, {
+  method: 'POST',
+  body: JSON.stringify({
+    adapterType: 'demo',    // or 'salesforce'
+    config: {},
+    credentials: {},
+  }),
+})
+const { connection } = await res.json()
+// connection.status === 'CONNECTED'
 ```
 
-## Setup
+### 2. Auto-recovery after OAuth
 
-```bash
-# 1. Run Prisma migration after adding SourceConnection model
-npx prisma migrate dev --name add-source-connection
+The source page detects `?connected=salesforce` in the URL and automatically triggers schema retrieval. No manual action needed.
 
-# 2. Verify the schema
-npx prisma studio
+```typescript
+// In source-page-client.tsx (simplified)
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search)
+  const connectedAdapter = params.get('connected')
+  if (connectedAdapter) {
+    window.history.replaceState({}, '', window.location.pathname)
+    refreshSchema()
+  }
+}, [])
 ```
 
-## Development
+### 3. Refresh schema manually
 
-```bash
-npm run dev
+```typescript
+// Client: POST to refresh
+const res = await fetch(`/api/plans/${planId}/source/refresh`, { method: 'POST' })
+const { schemaSnapshot } = await res.json()
+// schemaSnapshot.objectCount, schemaSnapshot.fieldCount updated
 ```
 
-## Verification
+### 4. Reconfigure (change adapter or credentials)
 
-1. Open `http://localhost:3000`
-2. Create a migration plan (001)
-3. Click the plan -> Source Connection step
-4. Select "Demo" adapter -> Click "Connect"
-5. Verify status shows CONNECTED
-6. Click "Disconnect" -> Verify status reverts to pending
+Two-step flow: preview then apply.
 
-## Test
+```typescript
+// Step 1: Preview impact
+const preview = await fetch(`/api/plans/${planId}/source/reconfigure/preview`, {
+  method: 'POST',
+  body: JSON.stringify({ adapterType: 'salesforce', config: {...}, credentials: {...} }),
+})
+const { schemaDiff, impact, newSchemaSnapshot } = await preview.json()
 
-```bash
-npx vitest run tests/unit/services/source-connection.test.ts
-npx vitest run tests/integration/api/source-connection.test.ts
+if (impact.isEmpty) {
+  // Silent apply (FR-012)
+}
+
+// Step 2: Apply after user confirmation
+const apply = await fetch(`/api/plans/${planId}/source/reconfigure/apply`, {
+  method: 'POST',
+  body: JSON.stringify({
+    adapterType: 'salesforce',
+    config: {...},
+    credentials: {...},
+    newSchemaSnapshot,
+    confirmedImpact: true,
+  }),
+})
 ```
 
-## Key Files
+### 5. Disconnect
 
-| File | Purpose |
-|------|---------|
-| `prisma/schema.prisma` | SourceConnection model |
-| `src/app/plans/[planId]/source/page.tsx` | Source connection step UI |
-| `src/app/api/plans/[planId]/source/route.ts` | API route handlers |
-| `src/lib/services/source-connection.ts` | Domain service |
-| `src/lib/connectors/registry.ts` | Adapter registry |
-| `src/components/source/AdapterPicker.tsx` | Adapter selector component |
+```typescript
+const res = await fetch(`/api/plans/${planId}/source`, { method: 'DELETE' })
+// Cascade-deletes schema snapshot + selections, resets step to SOURCE
+```
+
+## Key service functions
+
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `connectSource(planId, payload)` | `services/connect-source.ts` | Authenticate + create connection |
+| `disconnectSource(planId)` | `services/connect-source.ts` | Delete connection + cascade |
+| `fetchSchema(connectionId)` | `services/fetch-schema.ts` | Chain: schema -> objects -> fields |
+| `computeSchemaDiff(old, new)` | `services/schema-diff.ts` | Pure diff between two snapshots |
+| `computeImpactReport(diff, planId)` | `services/impact-report.ts` | Query downstream for impact |
+| `applyReconfiguration(planId, payload)` | `services/apply-reconfiguration.ts` | Atomic transaction |
+| `normalizeType(rawType)` | `lib/normalize-type.ts` | Type bucketing for compatibility |
+
+## Dependencies
+
+- **Depends on**: 000 (Connector Interface), 001 (Migration Plan)
+- **Used by**: 003 (Source Schema browsing), 011 (Object Mapping), 012 (Field Mapping)
+
+## Integration with plan layout
+
+The source page is rendered at `/plans/[planId]/source` inside the plan layout (001 FR-007). The sidebar shows the SOURCE step as active. The "Reconfigurer" button (FR-006) appears in the connected state alongside the connection status display.

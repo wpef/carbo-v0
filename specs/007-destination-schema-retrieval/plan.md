@@ -1,87 +1,96 @@
 # Implementation Plan: Destination Schema Retrieval
 
-**Branch**: `007-destination-schema-retrieval` | **Date**: 2026-04-02 | **Spec**: `specs/007-destination-schema-retrieval/spec.md`
+**Branch**: `007-destination-schema-retrieval` | **Date**: 2026-05-18 | **Spec**: `specs/007-destination-schema-retrieval/spec.md`
 
 ## Summary
 
-After connecting a destination, retrieve the full list of destination objects and persist them as a schema snapshot. Follows the same CURRENT/PREVIOUS rotation and diff pattern established in 003-source-schema-retrieval, reusing `SchemaSnapshot` and `SchemaObject` entities. The key difference: destination schema retrieval fetches ALL objects (no selection step for destination).
+Retrieve and persist the full destination schema (all objects + fields), display it to the consultant, support refresh with CURRENT/PREVIOUS snapshot rotation and diff, and expose `detectLiveDrift(connectionId, 'destination')` for plan-reopen drift detection. This is the destination-side counterpart of 003-source-schema-retrieval. Key difference: destination has no object-selection step — all objects are retrieved, and fields are retrieved for all objects in the same chain. Drift detection reuses the canonical taxonomy from spec 003 with destination-specific severity tuning.
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x
-**Primary Dependencies**: Next.js 14+ (App Router), Prisma ORM
-**Storage**: Neon Postgres via Prisma — reuses `SchemaSnapshot` + `SchemaObject` tables from 003 (isolated per tenant)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js 14+ (App Router) sur Vercel
-**Project Type**: Web application (unified Next.js project)
-**Performance Goals**: Schema retrieval completes in under 60 seconds for up to 2000 objects
-**Constraints**: Max 2 snapshots per connection (CURRENT + PREVIOUS). Destination objects are not selected — all are available for mapping.
-**Scale/Scope**: 1 API route, 1 service, 1 UI section, schema diff reuse
+**Language/Version**: TypeScript 5.x (strict mode)
+**Primary Dependencies**: Next.js 14+ App Router, Prisma (Neon Postgres), feature 000 (ConnectorAdapter), feature 001 (MigrationPlan), feature 006 (destination ConnectorConnection)
+**Storage**: `SchemaSnapshot` + `SchemaObject` + `ObjectField` tables (shared Prisma models from 003), filtered by `side='destination'`
+**Testing**: Vitest (unit + integration), Playwright (E2E)
+**Target Platform**: Vercel (Next.js Route Handlers)
+**Constraints**: Full chain (schema + fields) on every trigger (FR-004); max 2 snapshots per connection (CURRENT/PREVIOUS); drift detection read-only and < 15s for 20 mapped objects
+**Scale/Scope**: Up to 2000 objects per destination; up to 200 fields per object
 
 ## Constitution Check
 
-| # | Principle | Status | Justification |
-|---|-----------|--------|---------------|
-| I | Spec-First | PASS | spec.md approved |
-| II | Readability | PASS | Mirrors source schema retrieval pattern from 003 |
-| III | Data fidelity | PASS | 100% of objects from adapter preserved in snapshot |
-| IV | Tests on real data | PASS | Integration tests with demo adapter returning realistic object list |
-| V | Idempotence | PASS | Re-retrieving schema produces clean CURRENT/PREVIOUS rotation |
-| VI | Traceability | PASS | Every retrieval logged to audit trail |
-| VII | Observability | PASS | Console logs for retrieval start, object count, diff summary |
-| VIII | Modularity | PASS | Reuses SchemaSnapshot/SchemaObject; service isolated behind public API |
-| IX | Human-in-the-loop | PASS | Symétrique à 003 — rotation CURRENT→PREVIOUS sans re-binding silencieux ; refresh ne déclenche jamais d'auto-remap de destination |
+| # | Principle | Status | Notes |
+|---|-----------|--------|-------|
+| I | Spec-First | PASS | spec.md approved with 6 acceptance scenarios, 6 FRs, drift section |
+| II | Readability | PASS | Mirrors 003 patterns; service functions named after business operations (`fetchDestinationSchema`, `refreshDestinationSchema`, `detectLiveDrift`) |
+| III | Data fidelity | PASS | Schema snapshots stored verbatim; no silent transformation; broken mappings flagged, never silently deleted or re-bound (FR-005, Principle IX) |
+| IV | Tests on real data | PASS | Integration tests use realistic HubSpot-shaped fixtures (multi-object, varied field types, picklist values) |
+| V | Idempotence | PASS | Snapshot rotation is atomic; drift detection is read-only with no side effects (FR-D-006) |
+| VI | Traceability | PASS | Every schema retrieval logged to audit trail (FR-003); drift detection is read-only, not logged |
+| VII | Observability | PASS | Console logs: schema fetch start/end, object count, field fetch per object, snapshot rotation, diff computation, drift detection results |
+| VIII | Modularity | PASS | Feature isolated at `src/features/007-destination-schema/`; communicates with 003 via shared service interfaces for snapshot management and drift detection |
+| IX | Human-in-the-loop | PASS | Refresh triggers integrity check but no auto-remediation; broken mappings require manual resolution; drift banner is informational only |
 
-## Project Structure
+## Architecture
 
-### Documentation (this feature)
+### Source Code Layout
 
-```text
-specs/007-destination-schema-retrieval/
-├── spec.md
-├── plan.md              # This file
-├── research.md
-├── data-model.md        # Skipped (reuses SchemaSnapshot + SchemaObject from 003)
-├── quickstart.md
-├── contracts/
-│   └── api.md
-└── tasks.md
 ```
-
-### Source Code
-
-```text
 src/
-├── app/
-│   ├── api/
-│   │   └── plans/
-│   │       └── [planId]/
-│   │           └── destination-schema/
-│   │               └── route.ts               # POST (retrieve), GET (current snapshot + objects)
-│   └── plans/
-│       └── [planId]/
-│           └── destination/
-│               └── schema/
-│                   └── page.tsx               # Destination object list + diff UI
-├── components/
-│   └── schema/
-│       ├── object-list.tsx                    # Reusable: displays objects with badges (shared with source)
-│       └── schema-diff.tsx                    # Reusable: displays added/removed/modified objects
+├── app/plans/[planId]/destination/
+│   ├── schema/
+│   │   └── page.tsx                          # Destination schema page (object list + diff)
+├── features/007-destination-schema/
+│   ├── components/
+│   │   ├── destination-schema-page.tsx       # Client orchestrator
+│   │   ├── destination-object-list.tsx       # Object list with badges
+│   │   ├── destination-schema-diff.tsx       # Added/removed/modified objects display
+│   │   └── schema-refresh-button.tsx         # Refresh trigger (FR-004)
+│   ├── hooks/
+│   │   └── use-destination-schema.ts         # Client-side schema fetching + refresh state
+│   └── services/
+│       ├── fetch-destination-schema.ts       # Full chain: schema + fields retrieval + snapshot rotation
+│       └── destination-drift.ts              # detectLiveDrift wrapper with destination severity tuning
 ├── lib/
-│   └── services/
-│       └── schema-retrieval.service.ts        # Shared service: retrieve schema for any connection
-│                                              # (already created in 003, extended if needed)
-
-tests/
-├── unit/
-│   └── services/
-│       └── destination-schema-retrieval.test.ts
-└── integration/
-    └── destination-schema-retrieval.test.ts
+│   ├── services/
+│   │   ├── schema-snapshot.ts               # Shared: snapshot CRUD, rotation (CURRENT/PREVIOUS)
+│   │   ├── schema-diff.ts                   # Shared: compute diff between two snapshots
+│   │   └── drift-detection.ts               # Shared: detectLiveDrift(connectionId, role)
+│   └── types/
+│       ├── connector.ts                     # (000) ConnectorAdapter types
+│       ├── schema.ts                        # SchemaSnapshot, SchemaObject, ObjectField types
+│       └── drift.ts                         # DriftReport, DriftChange, DriftTypeId enum
 ```
 
-**Structure Decision**: The schema retrieval service from 003 is generic (works with any connection). The only new code is the route handler (scoped to destination) and the destination schema UI page. Object list and diff components are shared with source.
+### API Routes
 
-**Règle — chaîne complète sur tout refresh** (FR-004) : Tout trigger de refresh schema destination — bouton sur `/destination`, bouton sur `/destination/schema`, callback OAuth — DOIT exécuter la chaîne schéma → fields, jamais une étape isolée. La page `/destination/schema` NE DOIT PAS appeler directement `POST /destination-schema` sans enchaîner ensuite `POST /destination-fields`. L'orchestration peut se faire côté client (hook `useConnectionSetup` réutilisé) ou côté serveur (endpoint composite), mais une seule règle vaut : **aucun trigger de refresh ne doit produire un snapshot d'objects sans fields**. Bug constaté en test live le 2026-05-12. <!-- Added: 2026-05-12 -->
+```
+src/app/api/plans/[planId]/destination/
+├── schema/
+│   ├── route.ts                # GET (current snapshot + objects), POST (trigger full chain)
+│   └── refresh/
+│       └── route.ts            # POST (refresh: full chain + integrity check)
+└── drift/
+    └── route.ts                # GET (run detectLiveDrift for destination, read-only)
+```
 
-**Règle — hook integrity check** (FR-005) : `retrieveSchema()` (ou la fonction qui orchestre la chaîne complète) DOIT appeler `checkMappingIntegrity(planId)` à la fin du flow, après création du nouveau CURRENT et récupération des fields. C'est la task T006 de 017. Sans ce hook, les mappings cassés par un refresh destination restent invisibles : le plan reste en DRAFT alors que des références sont mortes. Aucune remédiation automatique n'est déclenchée — l'integrity check ne fait que **marquer** et update `plan.status` (Principe IX). <!-- Added: 2026-05-12 -->
+### Key Dependencies Between Files
+
+- `fetch-destination-schema.ts` -> `schema-snapshot.ts` (rotation) + adapter `getSchema()` + `getFields()` + `audit.ts`
+- `destination-drift.ts` -> `drift-detection.ts` (shared algorithm) + destination severity overrides
+- `refresh/route.ts` -> `fetch-destination-schema.ts` + `checkMappingIntegrity` (feature 017)
+- `drift/route.ts` -> `drift-detection.ts` (read-only, no DB write)
+
+## Phases
+
+### Phase 0: Research
+See `research.md` -- snapshot reuse from 003, full-chain guarantee, drift severity tuning.
+
+### Phase 1: Design
+See `data-model.md` (shared SchemaSnapshot with side='destination'), `contracts/api.md` (route specs).
+
+### Phase 2: Implementation
+See `tasks.md` -- ordered by: shared services -> schema retrieval -> diff/refresh -> drift detection -> UI.
+
+## Complexity Tracking
+
+No constitution violations. All decisions align with established patterns from 003.

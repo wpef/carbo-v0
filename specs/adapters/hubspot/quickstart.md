@@ -1,144 +1,127 @@
 # Quickstart: HubSpot Adapter
 
+**Feature**: adapters/hubspot
+**Date**: 2026-05-18
+
 ## Prerequisites
 
-- Node.js 18+
-- A HubSpot account (free tier works for standard objects; Enterprise for custom objects)
-- Either a Private App token or OAuth2 app credentials
+### Option A: Private App (recommended for development)
 
-## Install dependencies
+1. In HubSpot: Settings > Integrations > Private Apps > Create a private app
+2. Name: "Carbo Migration" (or any name)
+3. Scopes: enable all CRM read/write scopes + Schemas read/write
+4. Create app and copy the access token (`pat-na1-...`)
+5. No environment variables needed -- the token is entered directly in the UI
 
-```bash
-npm install @hubspot/api-client
+### Option B: OAuth2 (production)
+
+1. In HubSpot Developer Portal: create a new app
+2. Set redirect URI to match `HUBSPOT_REDIRECT_URI` (e.g., `http://localhost:3000/api/connectors/hubspot/oauth/callback`)
+3. Enable required OAuth scopes (see research.md for full list)
+4. Copy Client ID and Client Secret
+
+**Environment variables** (`.env.local`):
+```
+HUBSPOT_CLIENT_ID=your-client-id
+HUBSPOT_CLIENT_SECRET=your-client-secret
+HUBSPOT_REDIRECT_URI=http://localhost:3000/api/connectors/hubspot/oauth/callback
 ```
 
-## Environment variables
+## Integration Scenario 1: Connect and Browse Schema
 
-Create or update `.env.local`:
+**Actor**: Consultant connecting HubSpot as a destination system.
 
-### Option A: Private App (simpler, recommended for testing)
+1. Consultant opens a migration plan and navigates to the Destination step
+2. Selects "HubSpot" as the adapter type
+3. Enters Private App token (or clicks "Connect via OAuth2")
+4. App validates the token and displays: "Connected to Acme Corp (Portal ID: 12345678)"
+5. Schema retrieval triggers automatically (per 006 FR-016)
+6. Consultant sees 5 standard objects (contacts, companies, deals, tickets, line_items)
+7. If Enterprise portal: custom objects also appear with an `isCustom` badge
+8. If non-Enterprise: informational note "Custom objects require HubSpot Enterprise tier"
+9. Consultant clicks "contacts" to browse properties
+10. Sees 87 properties with types (string, number, enumeration, etc.), groups, and read-only flags
 
-```env
-HUBSPOT_PRIVATE_APP_TOKEN=pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-```
+**Result**: Full destination schema is available for mapping.
 
-Create a Private App in HubSpot: Settings > Integrations > Private Apps > Create. Grant scopes for standard objects: `crm.objects.contacts.read`, `crm.schemas.contacts.read`, `crm.objects.contacts.write`, `crm.schemas.contacts.write` (and equivalent for companies, deals, tickets). Optionally add `crm.objects.custom.read` and `crm.objects.custom.write` for Enterprise custom object support. Do NOT add `crm.schemas.custom.read` / `crm.schemas.custom.write` — those scopes don't exist in HubSpot (see note in Option B).
+## Integration Scenario 2: Preview Records and Assess Data Quality
 
-### Option B: OAuth2
+**Actor**: Consultant checking existing destination data before mapping.
 
-```env
-HUBSPOT_CLIENT_ID=your_client_id
-HUBSPOT_CLIENT_SECRET=your_client_secret
-HUBSPOT_CALLBACK_URL=http://localhost:3001/api/connectors/hubspot/callback
-```
+1. Consultant selects "contacts" object
+2. Clicks "Preview records"
+3. Sees 25 records with all property values (paginated)
+4. Reviews field stats: `email` has 0 nulls, `firstname` has 342 nulls out of 15,420
+5. Pages to page 2, 3, etc. to see more data
+6. Notes that the `phone` field has high null rate -- may need a transformation rule
 
-> **Note:** The older "Create App" UI in the HubSpot Developer dashboard no longer allows creating Public (OAuth) apps. The CLI + Projects workflow is the only supported path as of 2026.
+**Result**: Consultant understands the current state of destination data.
 
-**Step-by-step setup:**
+## Integration Scenario 3: Create a Custom Property for Migration
 
-1. Create a HubSpot Developer Account (separate from your CRM portal) at https://developers.hubspot.com/get-started → "Create App Developer Account".
-2. Install the HubSpot CLI: `npm install -g @hubspot/cli`
-3. Authenticate the CLI: `hs account auth` → choose **Personal Access Key** → browser opens → generate key → paste back → set the dev account as default.
-4. Scaffold a Public App project in a sibling folder (outside Carbo-v0):
-   ```bash
-   hs project create \
-     --name carbo-v0-oauth \
-     --dest ../carbo-hs-oauth-app \
-     --platform-version 2026.03 \
-     --project-base app \
-     --distribution marketplace \
-     --auth oauth
-   ```
-   When prompted for features, press Enter (no features needed).
-5. Edit `src/app/app-hsmeta.json` inside the generated project to set the redirect URL and scopes:
-   ```json
-   {
-     "uid": "carbo_v0_oauth_app",
-     "type": "app",
-     "config": {
-       "name": "Carbo-v0 OAuth",
-       "description": "OAuth app for Carbo-v0 local development",
-       "distribution": "marketplace",
-       "auth": {
-         "type": "oauth",
-         "redirectUrls": ["http://localhost:3001/api/connectors/hubspot/callback"],
-         "requiredScopes": [
-           "oauth",
-           "crm.objects.contacts.read", "crm.objects.contacts.write",
-           "crm.schemas.contacts.read", "crm.schemas.contacts.write",
-           "crm.objects.companies.read", "crm.objects.companies.write",
-           "crm.schemas.companies.read", "crm.schemas.companies.write",
-           "crm.objects.deals.read", "crm.objects.deals.write",
-           "crm.schemas.deals.read", "crm.schemas.deals.write",
-           "tickets"
-         ],
-         "optionalScopes": [
-           "crm.objects.custom.read", "crm.objects.custom.write"
-         ],
-         "conditionallyRequiredScopes": []
-       },
-       "permittedUrls": {
-         "fetch": ["https://api.hubapi.com"],
-         "iframe": [],
-         "img": []
-       }
-     }
-   }
-   ```
-   **Important:** `crm.schemas.custom.read` and `crm.schemas.custom.write` do NOT exist as HubSpot scopes — adding them causes `hs project upload` to fail with `"The scope crm.schemas.custom.write could not be recognized."` (observed 2026-04-23). The standard-object schema scopes (`crm.schemas.contacts.*`, `crm.schemas.companies.*`, `crm.schemas.deals.*`) ARE valid and required. For custom objects, use `crm.objects.custom.*` (Enterprise portal only) — custom-object schema modifications go through the standard Properties API once the object is granted.
-6. Deploy: from inside the project folder, run `hs project upload` (answer `Y` to create the project on first run).
-7. Retrieve credentials: `hs project open` → **Project Components** → click the app name → **Auth** tab → copy **Client ID** and **Client Secret**.
-8. Paste into `.env.local` as shown in the env block above.
+**Actor**: Consultant preparing the destination schema before migration execution.
 
-## Run the app
+1. Consultant is on the schema write page for "contacts"
+2. Clicks "Create property"
+3. Fills in: name=`migration_source_id`, label="Migration Source ID", type=string, group=contactinformation
+4. App validates locally: name does not conflict, type is creatable
+5. Clicks "Create"
+6. App calls HubSpot Properties API, property is created
+7. Property appears in the property list after refresh
+8. Audit trail shows: "Created property 'migration_source_id' on 'contacts'"
 
-```bash
-npm run dev
-```
+**Result**: Destination schema is extended to accommodate source data.
 
-## Test Private App connection
+## Integration Scenario 4: Handle Rate Limits Gracefully
 
-```bash
-# Validate token via API route
-curl -X POST http://localhost:3001/api/connectors/hubspot/auth \
-  -H "Content-Type: application/json" \
-  -d '{"method":"private-app","accessToken":"pat-na1-..."}'
-```
+**Actor**: Consultant browsing a large portal with many objects.
 
-Expected: `200 OK` with portal name and CONNECTED status.
+1. Consultant triggers multiple operations in quick succession (browse objects, load properties, preview records)
+2. HubSpot returns 429 (rate limited)
+3. App detects the 429, reads Retry-After header (e.g., 2 seconds)
+4. App pauses, then retries automatically
+5. Consultant sees a brief loading indicator but the operation completes without error
+6. Audit trail logs: "Rate limit hit on GET /crm/v3/properties/contacts. Retried after 2s."
 
-## Test OAuth2 flow
+**Result**: Rate limits are handled transparently.
 
-1. Navigate to: `http://localhost:3001/api/connectors/hubspot/auth?planId=<your-plan-id>`
-2. Authorize in HubSpot
-3. Callback completes, redirect to plan page
+## Integration Scenario 5: Reconnect After Token Expiration (OAuth2)
 
-## Test schema write
+**Actor**: Consultant returning after 30+ minutes (OAuth2 access token expired).
 
-After connecting, create a test property:
+1. Consultant opens the destination page
+2. App detects 401 on the first API call
+3. App attempts token refresh using the stored refresh token
+4. Refresh succeeds: new access token stored, operation retried
+5. Consultant sees no interruption -- schema loads normally
+6. Audit trail logs: "OAuth2 token refreshed for portal 12345678"
 
-```bash
-curl -X POST http://localhost:3001/api/connectors/hubspot/schema/properties \
-  -H "Content-Type: application/json" \
-  -d '{"objectType":"contacts","name":"migration_test","label":"Migration Test","type":"string"}'
-```
+If refresh fails (refresh token revoked):
+1. App transitions connection status to EXPIRED
+2. Consultant sees: "Connection expired. Please reconnect."
+3. Consultant clicks "Reconnect" and re-authenticates
 
-Verify it appears in HubSpot: Settings > Properties > Contact Properties.
+**Result**: Token lifecycle is managed transparently for OAuth2; clearly for Private App.
 
-## Run tests
+## Integration with Downstream Features
 
-```bash
-# Unit tests (mocked @hubspot/api-client)
-npx vitest run tests/unit/connectors/hubspot/
+### Feature 006: Destination Connection
 
-# All tests verbose
-npx vitest run tests/unit/connectors/hubspot/ --reporter=verbose
-```
+The HubSpot adapter is registered in the adapter registry and is available as a destination adapter choice. The connection is stored as `MigrationPlan.destinationConnectionId` with `type: "hubspot"`.
 
-Tests use fixture files in `tests/fixtures/hubspot/`.
+### Feature 007: Destination Schema Retrieval
 
-## Common issues
+The adapter's `getSchema()` and `getFields()` methods provide the destination-side schema snapshot used by the schema retrieval feature. All objects are available (no selection step for destination).
 
-- **401 on Private App**: Token was rotated or revoked in HubSpot. Generate a new one.
-- **403 on custom objects**: Portal is not Enterprise tier. Custom objects are skipped gracefully.
-- **429 rate limit**: Adapter handles automatically with exponential backoff. Check console logs for retry timing.
+### Feature 022: Schema Write (future)
+
+The adapter's `createField()` and `createObject()` methods (`canWriteSchema=true`) are consumed by the schema write feature to extend the HubSpot schema before migration execution.
+
+### Connector SDK (future)
+
+The HubSpot adapter's service layer (`src/lib/adapters/hubspot/`) alongside the Salesforce adapter will inform the Connector SDK extraction. Both adapters implement `ConnectorAdapter` and follow the same file structure.
+
+## Dependencies
+
+- **Depends on**: 000-connector-interface (types), 006-destination-connection (plan integration)
+- **Used by**: 007 (destination schema retrieval), 012 (field mapping), 022 (schema write)

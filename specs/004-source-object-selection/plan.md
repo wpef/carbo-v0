@@ -1,69 +1,108 @@
 # Implementation Plan: Source Object Selection
 
-**Branch**: `004-source-object-selection` | **Date**: 2026-04-02 | **Spec**: `specs/004-source-object-selection/spec.md`
+**Branch**: `004-source-object-selection` | **Date**: 2026-05-18 | **Spec**: `specs/004-source-object-selection/spec.md`
 
 ## Summary
 
-After schema retrieval, the consultant selects which source objects are in scope for migration. The system provides smart defaults (custom + common business objects pre-selected, system objects hidden), search/filter, bulk actions, and on-demand object expansion (record count, fields preview, sample records). Selection is persisted and restored on return.
+Let consultants select which source objects to include in migration scope. The feature displays all objects from the current schema snapshot in a selectable list with smart defaults (custom + common business objects pre-selected, system objects hidden), real-time search, on-demand expansion (record count + fields + sample records), bulk actions, and persisted selection. This is a UI-heavy feature with a thin API layer and one new Prisma model (`ObjectSelection`).
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x on Next.js 14+ (App Router)
-**Primary Dependencies**: Next.js Route Handlers, Prisma ORM, shadcn/ui, Connector Interface types (000)
-**Storage**: Neon Postgres via Prisma (ObjectSelection table, isolated per tenant)
-**Testing**: Vitest (unit + integration, against real Postgres via Neon branch or Docker)
-**Target Platform**: Next.js sur Vercel (dev sur localhost)
-**Project Type**: Web application (unified Next.js)
-**Performance Goals**: List loads < 2s for 2000 objects; search < 200ms; expand < 10s
-**Constraints**: Selection scoped to connection + snapshot; must survive schema refresh for persisting objects
+**Language/Version**: TypeScript 5.x (strict mode), Next.js 14+ App Router
+**Primary Dependencies**: Prisma ORM, Tailwind CSS, shadcn/ui, React 18+
+**Storage**: Neon Postgres (via Prisma) -- `ObjectSelection` table linked to connection + snapshot
+**Testing**: Vitest (unit + integration), Playwright (E2E)
+**Target Platform**: Vercel (serverless)
+**Project Type**: Full-stack web application (Next.js unified)
+**Performance Goals**: List loads <2s for 2000 objects (SC-001), search <200ms (SC-002), expand <10s (SC-003)
+**Constraints**: DB-per-tenant (Neon); on-demand expand calls go through connector adapter (rate limits apply)
+**Scale/Scope**: Up to 2000 objects per schema; selection is per-connection, per-snapshot
 
 ## Constitution Check
 
 | # | Principle | Status | Notes |
 |---|-----------|--------|-------|
-| I | Spec-First | PASS | spec.md approved |
-| II | Readability | PASS | Standard list + checkbox pattern, no clever abstractions |
-| III | Data fidelity | PASS | Orphaned selections flagged on schema refresh, not silently dropped |
-| IV | Tests on real data | N/A | No data transformation; selection is UI state |
-| V | Idempotence | PASS | Toggling selection is idempotent (select/deselect sets boolean) |
+| I | Spec-First | PASS | spec.md approved with 10 FRs + 6 acceptance scenarios |
+| II | Readability | PASS | Standard Next.js App Router patterns; accordion list with search is straightforward UI |
+| III | Data fidelity | PASS | Selection state is explicit per object; no silent changes; orphaned selections flagged on snapshot migration |
+| IV | Tests on real data | PASS | Integration tests use realistic fixtures (multi-object schemas with standard/custom/system objects) |
+| V | Idempotence | PASS | Selection toggle is idempotent (set to true/false, not flip); persist is upsert |
 | VI | Traceability | PASS | Selection changes logged to audit trail (FR-010) |
-| VII | Observability | PASS | Console logs for selection bulk operations and expand calls |
-| VIII | Modularity | PASS | Isolated ObjectSelection service; depends on 003 via snapshotId/objectId only |
-| IX | Human-in-the-loop | PASS | Smart defaults (custom + business objects pré-sélectionnés) entièrement visibles et modifiables par le consultant ; aucune sélection cachée ; migration de sélection sur refresh ne touche que les objects qui persistent par apiName |
+| VII | Observability | PASS | Console logs for: object list load, search filter, expand fetch, selection persist, bulk actions |
+| VIII | Modularity | PASS | Feature isolated at `src/features/004-source-object-selection/`; consumes 000 types + 003 snapshot data |
+| IX | Human-in-the-loop | PASS | Pre-selection is a default, not a forced decision; consultant can modify freely; orphaned selections show a warning (not auto-removed) |
 
-## Project Structure
+## Architecture
 
-### Source Code
+### Source Code Layout
 
-```text
+```
 src/
-├── app/
-│   ├── plans/[planId]/source/objects/     # Object selection step page
-│   └── api/plans/[planId]/source/objects/
-│       ├── route.ts                        # GET list, PUT bulk update
-│       └── [objectId]/
-│           ├── route.ts                    # PATCH toggle selection
+├── app/plans/[planId]/source/
+│   └── objects/
+│       └── page.tsx                             # Object selection page (server component shell)
+├── features/004-source-object-selection/
+│   ├── components/
+│   │   ├── object-selection-page.tsx            # Client orchestrator
+│   │   ├── object-list.tsx                      # Virtualized selectable object list (FR-001, FR-009)
+│   │   ├── object-row.tsx                       # Single row: checkbox + label + apiName + badge + description
+│   │   ├── object-expand-panel.tsx              # Expandable panel: record count + fields + sample records (FR-005)
+│   │   ├── object-search.tsx                    # Real-time search input (FR-004)
+│   │   ├── bulk-actions-bar.tsx                 # Select/Deselect all visible + count display (FR-006, FR-009)
+│   │   ├── system-objects-toggle.tsx            # Hide system objects toggle (FR-003)
+│   │   └── proceed-bar.tsx                      # Bottom bar: selected count + "Retrieve Fields" CTA (FR-008)
+│   ├── hooks/
+│   │   ├── use-object-selection.ts              # Fetch + mutate selection state
+│   │   └── use-object-expand.ts                 # On-demand expand: record count + fields + sample records
+│   ├── services/
+│   │   ├── object-selection-service.ts          # Server-side: get/save selection, compute defaults, migrate selection
+│   │   └── object-expand-service.ts             # Server-side: fetch record count + fields + sample via adapter
+│   └── lib/
+│       ├── default-selection.ts                 # Compute pre-selection defaults (isCustom + common business objects list)
+│       └── common-business-objects.ts           # Per-connector-type lists of common business objects
+├── lib/types/
+│   └── connector.ts                             # From 000-connector-interface
+├── app/api/plans/[planId]/source/
+│   └── objects/
+│       ├── route.ts                             # GET (list with selection state) + PUT (save selection)
+│       └── [objectApiName]/
 │           └── expand/
-│               └── route.ts               # GET on-demand expand (count, fields, records)
-├── components/objects/
-│   ├── ObjectSelectionList.tsx             # Selectable object list with search
-│   ├── ObjectRow.tsx                       # Single object row with checkbox + expand
-│   ├── ObjectExpandPanel.tsx              # Expanded view: count, fields, sample records
-│   ├── SelectionToolbar.tsx               # Bulk actions: select all, deselect all, counter
-│   └── SystemObjectToggle.tsx             # "Hide system objects" toggle
-├── lib/
-│   ├── services/object-selection.ts       # Domain logic: init defaults, toggle, bulk, migrate
-│   └── types/object-selection.ts          # TypeScript types
-└── hooks/
-    └── use-object-selection.ts            # React hook for selection state
-
-prisma/schema.prisma                       # ObjectSelection model
-
+│               └── route.ts                     # GET (record count + fields + sample records)
+prisma/
+└── schema.prisma                                # + ObjectSelection model
 tests/
-├── unit/services/object-selection.test.ts
-└── integration/api/object-selection.test.ts
+├── unit/
+│   └── 004-source-object-selection/
+│       ├── default-selection.test.ts
+│       └── common-business-objects.test.ts
+├── integration/
+│   └── 004-source-object-selection/
+│       ├── object-selection-crud.test.ts
+│       └── object-expand.test.ts
+└── e2e/
+    └── 004-source-object-selection/
+        └── object-selection.spec.ts
 ```
 
-**Structure Decision**: Object selection is a sub-step of the source flow, following schema retrieval. On-demand expand calls (record count, fields, sample records) are adapter pass-through calls at dedicated sub-routes.
+### Key Dependencies Between Files
 
-**Règle — instanciation d'adaptateur** : Le service `object-selection.ts` DOIT instancier les adaptateurs exclusivement via la factory canonique `src/lib/connectors/adapter-factory.ts`. Toute factory locale est interdite : elle échoue silencieusement dès qu'un nouvel adaptateur est ajouté sans que le service soit mis à jour (incident constaté en test live SF le 2026-04-23).
+- `object-selection-service.ts` -> `prisma.ts` + `audit.ts` + `default-selection.ts`
+- `object-expand-service.ts` -> `registry.ts` (adapter) + `prisma.ts` (connection lookup)
+- `object-selection-page.tsx` -> all components + `use-object-selection.ts` + `use-object-expand.ts`
+- `default-selection.ts` -> `common-business-objects.ts`
+- `object-list.tsx` -> `object-row.tsx` + `object-expand-panel.tsx`
+
+## Phases
+
+### Phase 0: Research
+See `research.md` -- decisions on virtualization, default computation, expand strategy.
+
+### Phase 1: Design
+See `data-model.md` (Prisma schema), `contracts/api.md` (route specifications).
+
+### Phase 2: Implementation
+See `tasks.md` -- ordered task list with parallel markers and checkpoints.
+
+## Complexity Tracking
+
+No constitution violations identified. All principles are satisfied by the design.

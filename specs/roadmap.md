@@ -122,9 +122,18 @@ The home page shows a list of all plans with their current step/status.
 **Statut** : Accepté
 **Constitution alignée** : v1.3.0 — §Technology Standards
 
-### Decision 1 — Hosting : Vercel
+### Decision 1 — Hosting : Netlify
 
-**Décision** : l'application Next.js est déployée sur Vercel.
+**Décision** : l'application Next.js est déployée sur **Netlify** (amendé le 2026-06-15 ; remplace Vercel).
+
+**Amendement (2026-06-15)** : bascule de Vercel vers Netlify. Motif : compte Netlify payant
+déjà en place côté équipe, et le tier gratuit Vercel interdit l'usage commercial sur repo
+privé (Pro requis). Next.js 16 est pleinement supporté sur Netlify via l'adaptateur OpenNext
+officiel (Adapter API stable depuis Next 16.2). La base de données reste **Neon en direct** —
+on n'utilise PAS Netlify DB (simple wrapper Neon, cf. alternative écartée ci-dessous). Le
+rationale Vercel ci-dessous est conservé pour mémoire mais ne s'applique plus.
+
+**Décision initiale (conservée pour historique)** : l'application Next.js est déployée sur Vercel.
 
 **Rationale** :
 - Vercel est l'éditeur de Next.js — App Router, Route Handlers, ISR, edge config sont supportés
