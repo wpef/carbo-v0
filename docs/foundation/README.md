@@ -12,6 +12,7 @@ Règle de maintenance : toute évolution de comportement, de parcours, de règle
 | [03-data-model.md](03-data-model.md) | Décisions canoniques du data-model (le `prisma/schema.prisma` de la v4 récupérée sera copié tel quel) + trous historiques | Normatif |
 | [04-lessons.md](04-lessons.md) | Chronologie v1→v5, les 5 modes d'échec documentés + contre-mesures, leçons opérationnelles | Contexte |
 | [05-acceptance.md](05-acceptance.md) | Checklist d'acceptation (106 items dérivés de l'audit des 130 régressions) + gates transverses | Grille de recette |
+| [06-ux-backlog.md](06-ux-backlog.md) | Constats de la revue UX 2026-07-02 reportés ou écartés | Backlog |
 
 ## Méthode v5 (rappel)
 

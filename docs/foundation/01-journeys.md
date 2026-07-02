@@ -416,3 +416,49 @@ commit cité. Un port v5 qui reproduit l'un de ces états est un échec d'implé
 - **`nextAccessible` toujours vrai** : dans la sidebar, le bouton « suivant » est actif dès
   qu'une étape suivante existe (`nextAccessible = nextStep !== null`) — le disabled est du
   code mort (v4: `step-sidebar.tsx`).
+
+---
+
+## 7. Révisions v5 (NORMATIF — remplace les règles v4 correspondantes)
+
+Actées le 2026-07-02 : construction du walking skeleton + revue UX 3 lentilles
+(logique/clarté/simplicité) sur le parcours rendu. En cas de conflit avec les
+sections précédentes, **cette section fait foi** pour la v5.
+
+1. **Toutes les frontières sont validées côté serveur** (`advanceStep`,
+   `assertStepPrerequisites`) : DESTINATION exige la connexion source ;
+   OBJECT_MAPPING exige les deux connexions ; FIELD_MAPPING exige ≥1 paire
+   d'objets ; DOCUMENTS exige ≥1 paire avec ≥1 champ mappé (et pose READY).
+   Conséquence : une URL profonde ne peut plus persister un avancement
+   mensonger (le PATCH du high-water-mark échoue en 422, avalé). Les dettes
+   v4 « gating purement navigationnel » et « READY par navigation » sont mortes.
+2. **READY est MAINTENU, pas seulement validé à l'aller** :
+   `recomputeReadiness(planId)` (READY↔DRAFT quand `currentStep=DOCUMENTS`)
+   est appelé après tout CRUD de mapping. Un plan qui perd sa dernière paire
+   mappée redescend en DRAFT — et re-monte en READY si on la recrée (la dette
+   v4 « DRAFT définitif après réparation » est morte pour ce cas ; le cas
+   BROKEN/intégrité arrive en Phase 2).
+3. **Le bouton « Étape suivante » de la sidebar est SUPPRIMÉ.** L'avancement
+   passe exclusivement par les CTA de page (qui affichent les refus de gate).
+   La sidebar = consultation + navigation arrière + persistance du
+   high-water-mark. Raison : le double chemin contredisait les CTA, avalait
+   les refus, et court-circuitait les sous-parcours (anti-régression n°6).
+4. **`?object=` est lu par field-mapping** (dette v4 morte) : l'arrivée depuis
+   object-mapping ouvre la bonne paire.
+5. **Jamais de cul-de-sac** : tout état d'erreur/409 rend un lien vers
+   l'action qui débloque (connecter source/destination, retourner à la
+   sélection). Info et erreur sont des bandeaux distincts (info = fond muted,
+   erreur = destructive).
+6. **Reprise heuristique au hub** : à l'étape SOURCE avec sélection existante,
+   « Reprendre » cible `/source/objects` (pas l'écran de connexion) ; à
+   DESTINATION connectée, `/destination/fields` (adoucit la dette
+   « sous-parcours sans progression persistée »).
+7. **Écrans de mapping** : colonnes = travail RESTANT uniquement (les paires
+   faites vivent dans la liste dédiée) ; libellés humains `Label (apiName)`
+   partout, y compris onglets et paires ; auto-match n'inclut jamais les
+   champs de type `id` (identifiants régénérés à l'import).
+8. **UI en français** ; catégories d'objets : Personnalisé / Standard /
+   Système. Le connecteur démo est le premier connecteur du registre ; SF et
+   HubSpot seront des tranches Phase 2.
+
+Backlog des constats UX non traités : `06-ux-backlog.md`.
