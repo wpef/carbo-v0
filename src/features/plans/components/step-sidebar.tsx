@@ -1,15 +1,18 @@
 "use client";
 
 // Le stepper — la pièce d'assemblage centrale du parcours guidé.
-// Règles normatives : docs/foundation/01-journeys.md §3.3.
+// Règles normatives : docs/foundation/01-journeys.md §3.3 (révisées v5).
 //
 // - Gating high-water-mark : reachedIdx = max(currentStep persisté, étape de
 //   la page ouverte). Étapes ≤ reachedIdx cliquables ; au-delà verrouillées.
 // - Persistance du high-water-mark : si la page ouverte est EN AVANCE sur
-//   currentStep, on PATCHe /step (une fois par étape, erreurs avalées) pour
-//   que la navigation arrière ne reverrouille jamais l'avant.
-// - Le bouton « Étape suivante » ne PATCHe qu'à la frontière ; sur une étape
-//   déjà validée il navigue simplement.
+//   currentStep, on PATCHe /step (une fois par étape, erreurs avalées — le
+//   serveur valide les prérequis, donc pas d'avancement mensonger) pour que
+//   la navigation arrière ne reverrouille jamais l'avant.
+// - Décision revue v5 : PAS de bouton « Étape suivante » ici. L'avancement
+//   passe par les CTA de page (validés, qui affichent les refus) — un
+//   second chemin muet contredisait les CTA et avalait les refus de gate.
+//   La sidebar est une navigation de consultation et de retour.
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -58,18 +61,6 @@ export function StepSidebar({
       });
     }
   }, [activeStep, activeIdx, persistedIdx, planId, router]);
-
-  const nextStep = activeIdx >= 0 && activeIdx < PLAN_STEPS.length - 1 ? PLAN_STEPS[activeIdx + 1] : null;
-
-  async function goNext() {
-    if (!nextStep) return;
-    // PATCH seulement à la frontière (page active = étape max atteinte).
-    if (activeIdx >= Math.max(persistedIdx, currentIdx)) {
-      await recordStep(planId, nextStep);
-      router.refresh();
-    }
-    router.push(`/plans/${planId}${STEP_PATHS[nextStep]}`);
-  }
 
   return (
     <nav
@@ -121,16 +112,6 @@ export function StepSidebar({
           );
         })}
       </ol>
-      {nextStep && (
-        <div className="border-t p-3">
-          <button
-            onClick={goNext}
-            className="w-full rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
-          >
-            Étape suivante : {STEP_LABELS[nextStep]} →
-          </button>
-        </div>
-      )}
     </nav>
   );
 }

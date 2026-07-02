@@ -5,6 +5,7 @@
 // premier chargement (gated serveur par objectAutoLinkedAt, Principe IX),
 // liste des paires avec « Mapper les champs → » (FRONTIÈRE 3 via recordStep).
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +61,7 @@ export default function ObjectMappingPage() {
           const result = await res.json();
           if (result.created > 0) {
             setAutoLinkInfo(
-              `${result.created} paire(s) créée(s) automatiquement depuis le registre du connecteur.`,
+              `${result.created} paire(s) créée(s) automatiquement d'après les correspondances standard entre les deux CRM. Vous pouvez les modifier ou en ajouter.`,
             );
           }
           await load();
@@ -105,11 +106,32 @@ export default function ObjectMappingPage() {
     router.refresh();
   }
 
-  if (error && !data) return <p className="text-sm text-destructive">{error}</p>;
+  if (error && !data) {
+    // Jamais de cul-de-sac : orienter vers l'action qui débloque.
+    return (
+      <div className="mx-auto max-w-2xl space-y-4">
+        <h1 className="text-xl font-semibold">Mapping des objets</h1>
+        <p className="text-sm text-destructive">{error}</p>
+        <div className="flex gap-4 text-sm">
+          <Link href={`/plans/${planId}/source`} className="underline">
+            ← Connecter la source
+          </Link>
+          <Link href={`/plans/${planId}/destination`} className="underline">
+            ← Connecter la destination
+          </Link>
+        </div>
+      </div>
+    );
+  }
   if (!data) return <p className="text-sm text-muted-foreground">Chargement…</p>;
 
-  const mappedSources = new Set(data.mappings.map((m) => m.sourceObjectName));
+  const mappedSources = new Map(
+    data.mappings.map((m) => [m.sourceObjectName, m.destinationObjectName]),
+  );
   const mappedDestinations = new Set(data.mappings.map((m) => m.destinationObjectName));
+  const sourceLabels = new Map(data.sourceObjects.map((o) => [o.apiName, o.label]));
+  const destinationLabels = new Map(data.destinationObjects.map((o) => [o.apiName, o.label]));
+  const labelOf = (labels: Map<string, string>, apiName: string) => labels.get(apiName) ?? apiName;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -151,7 +173,12 @@ export default function ObjectMappingPage() {
                   <span>
                     {o.label} <span className="text-xs text-muted-foreground">({o.apiName})</span>
                   </span>
-                  {mappedSources.has(o.apiName) && <Link2 className="size-3.5 text-primary" />}
+                  {mappedSources.has(o.apiName) && (
+                    <span className="flex items-center gap-1 text-xs text-primary">
+                      <Link2 className="size-3.5" />→{" "}
+                      {labelOf(destinationLabels, mappedSources.get(o.apiName)!)}
+                    </span>
+                  )}
                 </button>
               </li>
             ))}
@@ -196,9 +223,19 @@ export default function ObjectMappingPage() {
           <ul className="divide-y rounded-md border">
             {data.mappings.map((m) => (
               <li key={m.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                <span className="font-medium">{m.sourceObjectName}</span>
+                <span className="font-medium">
+                  {labelOf(sourceLabels, m.sourceObjectName)}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({m.sourceObjectName})
+                  </span>
+                </span>
                 <span className="text-muted-foreground">→</span>
-                <span className="font-medium">{m.destinationObjectName}</span>
+                <span className="font-medium">
+                  {labelOf(destinationLabels, m.destinationObjectName)}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({m.destinationObjectName})
+                  </span>
+                </span>
                 {m.autoCreated && <Badge variant="outline">auto</Badge>}
                 <span className="ml-auto text-xs text-muted-foreground">
                   {m._count.fieldMappings} champ(s) mappé(s)

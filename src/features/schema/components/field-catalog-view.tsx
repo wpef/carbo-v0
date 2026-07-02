@@ -22,7 +22,11 @@ export type FieldCatalog = {
 
 /** Accordéon objets → champs, partagé entre source et destination. */
 export function FieldCatalogView({ catalog }: { catalog: FieldCatalog }) {
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  // Ouvert par défaut : la raison d'être de l'écran est de VOIR les champs
+  // (revue UX v5) — le repli reste disponible objet par objet.
+  const [open, setOpen] = useState<Set<string>>(
+    () => new Set(catalog.groups.map((g) => g.objectApiName)),
+  );
 
   function toggle(apiName: string) {
     setOpen((prev) => {

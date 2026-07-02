@@ -6,14 +6,19 @@
 // fieldAutoMatchedAt, Principe IX). « Continuer vers les documents → » =
 // recordStep(DOCUMENTS) — la frontière est VALIDÉE côté serveur (≥1 champ
 // mappé) et le refus est AFFICHÉ ici (pas avalé : on est à la frontière).
+//
+// Revue UX v5 : les colonnes ne montrent que le travail RESTANT (les paires
+// faites vivent dans la liste du bas) ; info ≠ erreur (deux bandeaux
+// distincts) ; libellés humains partout ; sortie en bas de la dernière paire.
 
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { recordStep } from "@/features/plans/lib/record-step";
 import { cn } from "@/lib/utils";
-import { Trash2, Wand2 } from "lucide-react";
+import { Trash2, TriangleAlert, Wand2 } from "lucide-react";
 
 type PairSummary = {
   id: string;
@@ -21,6 +26,8 @@ type PairSummary = {
   destinationObjectName: string;
   _count: { fieldMappings: number };
 };
+
+type ObjectInfo = { apiName: string; label: string };
 
 type PairDetail = {
   objectMapping: PairSummary & { fieldAutoMatchedAt: string | null };
@@ -30,13 +37,45 @@ type PairDetail = {
     id: string;
     sourceFieldName: string;
     destinationFieldName: string;
+    sourceFieldType: string;
+    destinationFieldType: string;
     compatibilityStatus: "COMPATIBLE" | "WARNING" | "INCOMPATIBLE";
     autoCreated: boolean;
   }[];
 };
 
 const COMPAT_LABELS = { COMPATIBLE: "compatible", WARNING: "à vérifier", INCOMPATIBLE: "incompatible" } as const;
-const COMPAT_VARIANTS = { COMPATIBLE: "secondary", WARNING: "outline", INCOMPATIBLE: "destructive" } as const;
+
+function CompatibilityBadge({
+  mapping,
+}: {
+  mapping: PairDetail["fieldMappings"][number];
+}) {
+  const explanation =
+    mapping.compatibilityStatus === "COMPATIBLE"
+      ? `Types identiques ou équivalents (${mapping.sourceFieldType} → ${mapping.destinationFieldType}).`
+      : `Types différents : ${mapping.sourceFieldType} → ${mapping.destinationFieldType}. Vérifiez que les valeurs se convertissent correctement.`;
+  if (mapping.compatibilityStatus === "WARNING") {
+    return (
+      <Badge
+        className="ml-auto border-amber-400 bg-amber-50 text-amber-900"
+        variant="outline"
+        title={explanation}
+      >
+        {COMPAT_LABELS.WARNING}
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      className="ml-auto"
+      variant={mapping.compatibilityStatus === "COMPATIBLE" ? "secondary" : "destructive"}
+      title={explanation}
+    >
+      {COMPAT_LABELS[mapping.compatibilityStatus]}
+    </Badge>
+  );
+}
 
 function FieldMappingContent() {
   const { planId } = useParams<{ planId: string }>();
@@ -45,36 +84,49 @@ function FieldMappingContent() {
   const requestedObject = searchParams.get("object");
 
   const [pairs, setPairs] = useState<PairSummary[] | null>(null);
+  const [objectLabels, setObjectLabels] = useState<Map<string, string>>(new Map());
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activePairId, setActivePairId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PairDetail | null>(null);
   const [pendingSourceField, setPendingSourceField] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [boundaryError, setBoundaryError] = useState<string | null>(null);
   const autoMatchTriedRef = useRef<Set<string>>(new Set());
 
   // Liste des paires (compteurs des onglets inclus) — rafraîchie après
   // chaque mutation, sinon les badges mentent (bug attrapé par le test de
   // parcours). Sélection initiale pilotée par ?object= (dette v4).
-  const loadPairs = useCallback(async () => {
+  const loadPairs = useCallback(async (): Promise<PairSummary[] | null> => {
     const res = await fetch(`/api/plans/${planId}/object-mappings`);
-    if (!res.ok) return;
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setLoadError(body.error ?? "Erreur de chargement");
+      return null;
+    }
     const data = await res.json();
+    const labels = new Map<string, string>();
+    for (const o of [...data.sourceObjects, ...data.destinationObjects] as ObjectInfo[]) {
+      labels.set(o.apiName, o.label);
+    }
+    setObjectLabels(labels);
     setPairs(data.mappings as PairSummary[]);
+    return data.mappings as PairSummary[];
   }, [planId]);
 
   useEffect(() => {
-    void (async () => {
-      const res = await fetch(`/api/plans/${planId}/object-mappings`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const list: PairSummary[] = data.mappings;
-      setPairs(list);
-      if (list.length > 0) {
+    void loadPairs().then((list) => {
+      if (list && list.length > 0) {
         const requested = list.find((p) => p.sourceObjectName === requestedObject);
         setActivePairId((prev) => prev ?? (requested ?? list[0]).id);
       }
-    })();
-  }, [planId, requestedObject]);
+    });
+  }, [loadPairs, requestedObject]);
+
+  const labelOf = useCallback(
+    (apiName: string) => objectLabels.get(apiName) ?? apiName,
+    [objectLabels],
+  );
 
   const loadDetail = useCallback(
     async (pairId: string): Promise<PairDetail | null> => {
@@ -92,6 +144,8 @@ function FieldMappingContent() {
   useEffect(() => {
     if (!activePairId) return;
     setPendingSourceField(null);
+    setNotice(null);
+    setActionError(null);
     void (async () => {
       const payload = await loadDetail(activePairId);
       // Auto-match si la paire est vide et jamais tentée (§4.3).
@@ -132,9 +186,9 @@ function FieldMappingContent() {
     setPendingSourceField(null);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setNotice(body.error ?? "Erreur de création");
+      setActionError(body.error ?? "La création du mapping a échoué.");
     } else {
-      setNotice(null);
+      setActionError(null);
     }
     await Promise.all([loadDetail(activePairId), loadPairs()]);
   }
@@ -142,6 +196,7 @@ function FieldMappingContent() {
   async function deleteMapping(fieldMappingId: string) {
     if (!activePairId) return;
     await fetch(`/api/plans/${planId}/field-mappings/${fieldMappingId}`, { method: "DELETE" });
+    router.refresh(); // le statut du plan peut redescendre (recomputeReadiness)
     await Promise.all([loadDetail(activePairId), loadPairs()]);
   }
 
@@ -157,6 +212,22 @@ function FieldMappingContent() {
     router.refresh();
   }
 
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4">
+        <h1 className="text-xl font-semibold">Mapping des champs</h1>
+        <p className="text-sm text-destructive">{loadError}</p>
+        <div className="flex gap-4 text-sm">
+          <Link href={`/plans/${planId}/source`} className="underline">
+            ← Connecter la source
+          </Link>
+          <Link href={`/plans/${planId}/destination`} className="underline">
+            ← Connecter la destination
+          </Link>
+        </div>
+      </div>
+    );
+  }
   if (!pairs) return <p className="text-sm text-muted-foreground">Chargement…</p>;
   if (pairs.length === 0) {
     return (
@@ -176,14 +247,31 @@ function FieldMappingContent() {
   const mappedDestinationFields = new Set(
     detail?.fieldMappings.map((m) => m.destinationFieldName),
   );
+  const remainingSourceFields =
+    detail?.sourceFields.filter((f) => !mappedSourceFields.has(f.apiName)) ?? [];
+  const remainingDestinationFields =
+    detail?.destinationFields.filter((f) => !mappedDestinationFields.has(f.apiName)) ?? [];
+  const fieldLabel = (apiName: string) =>
+    detail?.sourceFields.find((f) => f.apiName === apiName)?.label ??
+    detail?.destinationFields.find((f) => f.apiName === apiName)?.label ??
+    apiName;
   const activeIdx = pairs.findIndex((p) => p.id === activePairId);
   const nextPair = activeIdx >= 0 && activeIdx < pairs.length - 1 ? pairs[activeIdx + 1] : null;
+  const emptyPairCount = pairs.filter((p) => p._count.fieldMappings === 0).length;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Mapping des champs</h1>
-        <Button onClick={continueToDocuments}>Continuer vers les documents →</Button>
+        <div className="flex items-center gap-3">
+          {emptyPairCount > 0 && (
+            <span className="flex items-center gap-1 text-xs text-amber-700">
+              <TriangleAlert className="size-3.5" />
+              {emptyPairCount} paire(s) sans champ mappé
+            </span>
+          )}
+          <Button onClick={continueToDocuments}>Continuer vers les documents →</Button>
+        </div>
       </div>
       {boundaryError && (
         <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -198,6 +286,7 @@ function FieldMappingContent() {
             role="tab"
             aria-selected={pair.id === activePairId}
             onClick={() => setActivePairId(pair.id)}
+            title={`${pair.sourceObjectName} → ${pair.destinationObjectName}`}
             className={cn(
               "rounded-t-md px-3 py-1.5 text-sm",
               pair.id === activePairId
@@ -205,9 +294,9 @@ function FieldMappingContent() {
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {pair.sourceObjectName} → {pair.destinationObjectName}
+            {labelOf(pair.sourceObjectName)} → {labelOf(pair.destinationObjectName)}
             <span className="ml-1.5 text-xs text-muted-foreground">
-              {pair._count.fieldMappings}
+              · {pair._count.fieldMappings} champ{pair._count.fieldMappings > 1 ? "s" : ""}
             </span>
           </button>
         ))}
@@ -219,74 +308,81 @@ function FieldMappingContent() {
           {notice}
         </p>
       )}
+      {actionError && (
+        <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {actionError}
+        </p>
+      )}
 
       {detail && (
         <>
           <p className="text-sm text-muted-foreground">
-            {detail.fieldMappings.length} champ(s) mappé(s) ·{" "}
-            {detail.sourceFields.length - detail.fieldMappings.length} non mappé(s).{" "}
             {pendingSourceField
-              ? `Champ source « ${pendingSourceField} » sélectionné — choisissez le champ de destination.`
-              : "Pour mapper : cliquez un champ source, puis un champ de destination."}
+              ? `Champ source « ${fieldLabel(pendingSourceField)} » sélectionné — choisissez le champ de destination.`
+              : "Pour mapper : cliquez un champ source, puis un champ de destination. Les paires déjà faites sont dans la liste ci-dessous."}
           </p>
 
           <div className="grid grid-cols-2 gap-6">
             <section>
               <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-                Champs source — {detail.objectMapping.sourceObjectName}
+                1. Champs source restants — {labelOf(detail.objectMapping.sourceObjectName)}
               </h2>
-              <ul className="space-y-1">
-                {detail.sourceFields.map((f) => (
-                  <li key={f.apiName}>
-                    <button
-                      onClick={() =>
-                        setPendingSourceField(pendingSourceField === f.apiName ? null : f.apiName)
-                      }
-                      disabled={mappedSourceFields.has(f.apiName)}
-                      className={cn(
-                        "flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-left text-sm",
-                        mappedSourceFields.has(f.apiName)
-                          ? "bg-muted/50 text-muted-foreground"
-                          : "hover:bg-muted",
-                        pendingSourceField === f.apiName && "border-primary ring-1 ring-primary",
-                      )}
-                    >
-                      <span>
-                        {f.label} <span className="text-xs text-muted-foreground">({f.apiName})</span>
-                      </span>
-                      <Badge variant="secondary">{f.dataType}</Badge>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              {remainingSourceFields.length === 0 ? (
+                <p className="rounded-md border border-dashed px-3 py-3 text-center text-xs text-muted-foreground">
+                  Tous les champs source sont mappés.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {remainingSourceFields.map((f) => (
+                    <li key={f.apiName}>
+                      <button
+                        onClick={() =>
+                          setPendingSourceField(pendingSourceField === f.apiName ? null : f.apiName)
+                        }
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-left text-sm hover:bg-muted",
+                          pendingSourceField === f.apiName && "border-primary ring-1 ring-primary",
+                        )}
+                      >
+                        <span>
+                          {f.label} <span className="text-xs text-muted-foreground">({f.apiName})</span>
+                        </span>
+                        <Badge variant="secondary">{f.dataType}</Badge>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
             <section>
               <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-                Champs destination — {detail.objectMapping.destinationObjectName}
+                2. Champs destination — {labelOf(detail.objectMapping.destinationObjectName)}
               </h2>
-              <ul className="space-y-1">
-                {detail.destinationFields.map((f) => (
-                  <li key={f.apiName}>
-                    <button
-                      onClick={() => createMapping(f.apiName)}
-                      disabled={!pendingSourceField || mappedDestinationFields.has(f.apiName)}
-                      className={cn(
-                        "flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-left text-sm",
-                        mappedDestinationFields.has(f.apiName)
-                          ? "bg-muted/50 text-muted-foreground"
-                          : pendingSourceField
-                            ? "hover:border-primary hover:bg-muted"
-                            : "opacity-70",
-                      )}
-                    >
-                      <span>
-                        {f.label} <span className="text-xs text-muted-foreground">({f.apiName})</span>
-                      </span>
-                      <Badge variant="secondary">{f.dataType}</Badge>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              {remainingDestinationFields.length === 0 ? (
+                <p className="rounded-md border border-dashed px-3 py-3 text-center text-xs text-muted-foreground">
+                  Tous les champs destination sont mappés.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {remainingDestinationFields.map((f) => (
+                    <li key={f.apiName}>
+                      <button
+                        onClick={() => createMapping(f.apiName)}
+                        disabled={!pendingSourceField}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-left text-sm",
+                          pendingSourceField ? "hover:border-primary hover:bg-muted" : "opacity-70",
+                        )}
+                      >
+                        <span>
+                          {f.label} <span className="text-xs text-muted-foreground">({f.apiName})</span>
+                        </span>
+                        <Badge variant="secondary">{f.dataType}</Badge>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           </div>
 
@@ -302,13 +398,19 @@ function FieldMappingContent() {
               <ul className="divide-y rounded-md border">
                 {detail.fieldMappings.map((m) => (
                   <li key={m.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
-                    <span>{m.sourceFieldName}</span>
+                    <span>
+                      {fieldLabel(m.sourceFieldName)}{" "}
+                      <span className="text-xs text-muted-foreground">({m.sourceFieldName})</span>
+                    </span>
                     <span className="text-muted-foreground">→</span>
-                    <span>{m.destinationFieldName}</span>
+                    <span>
+                      {fieldLabel(m.destinationFieldName)}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        ({m.destinationFieldName})
+                      </span>
+                    </span>
                     {m.autoCreated && <Badge variant="outline">auto</Badge>}
-                    <Badge className="ml-auto" variant={COMPAT_VARIANTS[m.compatibilityStatus]}>
-                      {COMPAT_LABELS[m.compatibilityStatus]}
-                    </Badge>
+                    <CompatibilityBadge mapping={m} />
                     <Button
                       variant="ghost"
                       size="icon"
@@ -323,13 +425,15 @@ function FieldMappingContent() {
             )}
           </section>
 
-          {nextPair && (
-            <div className="flex justify-end">
+          <div className="flex justify-end">
+            {nextPair ? (
               <Button variant="outline" onClick={() => setActivePairId(nextPair.id)}>
-                Objet suivant : {nextPair.sourceObjectName} →
+                Objet suivant : {labelOf(nextPair.sourceObjectName)} →
               </Button>
-            </div>
-          )}
+            ) : (
+              <Button onClick={continueToDocuments}>Continuer vers les documents →</Button>
+            )}
+          </div>
         </>
       )}
     </div>

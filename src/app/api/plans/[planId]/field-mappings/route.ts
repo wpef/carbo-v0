@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getPlan } from "@/features/plans/services/plan-service";
+import { getPlan, recomputeReadiness } from "@/features/plans/services/plan-service";
 import {
   autoMatchFields,
   createFieldMapping,
@@ -68,6 +68,7 @@ export async function POST(request: Request, { params }: Params) {
       context.sourceFields,
       context.destinationFields,
     );
+    await recomputeReadiness(planId);
     return NextResponse.json(result);
   }
 
@@ -95,6 +96,7 @@ export async function POST(request: Request, { params }: Params) {
       sourceFieldType: sourceField.dataType,
       destinationFieldType: destinationField.dataType,
     });
+    await recomputeReadiness(planId);
     return NextResponse.json({ fieldMapping }, { status: 201 });
   } catch {
     return NextResponse.json(

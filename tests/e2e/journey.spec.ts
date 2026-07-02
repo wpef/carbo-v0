@@ -45,9 +45,9 @@ test("parcours guidé complet : création → source → destination → mapping
   await page.getByRole("link", { name: /Continuer vers la sélection d'objets/ }).click();
   await page.waitForURL(`**/plans/${planId}/source/objects`);
 
-  // ── Sélection (§1.5) : pré-sélection par défaut = 4 métier courants +
-  // 1 custom ; 3 objets système NON sélectionnés et masqués par défaut.
-  await expect(page.getByText("5 sélectionné(s) sur 8 objets (1 custom)")).toBeVisible();
+  // ── Sélection (§1.5) : pré-sélection par défaut = 4 standard courants +
+  // 1 personnalisé ; 3 objets système NON sélectionnés et masqués par défaut.
+  await expect(page.getByText("5 objets sélectionnés sur 8 · 3 objets système masqués")).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /(AccountHistory)/ })).toHaveCount(0);
 
   // Toggle système : les 3 objets système apparaissent.
@@ -63,7 +63,7 @@ test("parcours guidé complet : création → source → destination → mapping
 
   // Désélection unitaire : Case sort du périmètre.
   await page.getByRole("checkbox", { name: /(Case)\)/ }).click();
-  await expect(page.getByText("4 sélectionné(s) sur 8 objets (1 custom)")).toBeVisible();
+  await expect(page.getByText(/4 objets sélectionnés sur 8/)).toBeVisible();
 
   // Filtre segmenté « Sélectionnés ».
   await page.getByRole("button", { name: "Sélectionnés", exact: true }).click();
@@ -108,19 +108,19 @@ test("parcours guidé complet : création → source → destination → mapping
   const invoiceRow = page.getByRole("listitem").filter({ hasText: "Invoice__c" }).filter({ hasText: "tickets" });
   await invoiceRow.getByRole("button", { name: /Mapper les champs/ }).click();
   await page.waitForURL(`**/plans/${planId}/field-mapping?object=Invoice__c`);
-  await expect(page.getByRole("tab", { name: /Invoice__c → tickets/ })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: /Facture → Tickets/ })).toHaveAttribute(
     "aria-selected",
     "true",
   );
 
-  // ── Field mapping (§1.10) : auto-match sur la paire Account (name-based +
-  // registre) — on change d'onglet et on vérifie.
-  await page.getByRole("tab", { name: /Account → companies/ }).click();
+  // ── Field mapping (§1.10) : auto-match sur la paire Compte (name-based +
+  // registre) — on change d'onglet et on vérifie (compteur d'onglet à jour).
+  await page.getByRole("tab", { name: /Compte → Companies/ }).click();
   await expect(page.getByText(/champ\(s\) mappé\(s\) automatiquement/)).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Account → companies/ })).toContainText("4");
+  await expect(page.getByRole("tab", { name: /Compte → Companies/ })).toContainText("4 champs");
 
-  // Mapping manuel dans la paire Invoice__c → tickets (vide, pas de registre).
-  await page.getByRole("tab", { name: /Invoice__c → tickets/ }).click();
+  // Mapping manuel dans la paire Facture → Tickets (vide, pas de registre).
+  await page.getByRole("tab", { name: /Facture → Tickets/ }).click();
   await page.getByRole("button", { name: /Numéro \(Name\)/ }).click();
   await page.getByRole("button", { name: /Subject \(subject\)/ }).click();
   await expect(page.getByText("Champs mappés (1)")).toBeVisible();
@@ -148,22 +148,27 @@ test("parcours guidé complet : création → source → destination → mapping
   await expect(page.getByTestId("plan-status")).toHaveText("Prêt");
 });
 
-test("gate de validation : un plan sans mapping ne devient pas READY, même en URL directe", async ({
+test("gates de frontière : les URL profondes ne corrompent ni le statut ni l'avancement", async ({
   page,
 }) => {
   const planId = await createPlan(page, `E2E gate ${Date.now()}`);
 
   // URL profonde directe vers /documents (dette v4 : auto-READY par
-  // navigation — corrigée en v5).
+  // navigation — corrigée en v5). Le bouton de génération est désactivé.
   await page.goto(`/plans/${planId}/documents`);
   await expect(page.getByText(/Le plan n'est pas encore prêt/)).toBeVisible();
   await expect(page.getByTestId("plan-status")).toHaveText("Brouillon");
+  await expect(page.getByRole("button", { name: "Générer la description" })).toBeDisabled();
 
-  // Le stepper affiche l'étape ouverte mais ne verrouille pas le retour.
-  await page
-    .getByRole("navigation", { name: "Étapes du plan" })
-    .getByRole("link", { name: "Source" })
-    .click();
-  await page.waitForURL(`**/plans/${planId}/source`);
+  // URL profonde vers /field-mapping sans connexions : pas de cul-de-sac,
+  // le message oriente vers l'action qui débloque.
+  await page.goto(`/plans/${planId}/field-mapping`);
+  await expect(page.getByText(/Les deux connexions sont requises/)).toBeVisible();
+  await expect(page.getByRole("link", { name: /Connecter la source/ })).toBeVisible();
+
+  // Les gates serveur (v5) ont refusé les PATCH du high-water-mark : le
+  // hub propose toujours de reprendre à Source — l'avancement n'a pas menti.
+  await page.goto(`/plans/${planId}`);
+  await expect(page.getByRole("link", { name: /Reprendre : Source/ })).toBeVisible();
   await expect(page.getByTestId("plan-status")).toHaveText("Brouillon");
 });

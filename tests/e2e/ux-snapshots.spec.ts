@@ -38,7 +38,7 @@ test("dump des snapshots ARIA du parcours", async ({ page, request }) => {
 
   await page.getByRole("link", { name: /Continuer vers la sélection d'objets/ }).click();
   await page.waitForURL(`**/source/objects`);
-  await page.getByText(/sélectionné\(s\) sur/).waitFor();
+  await page.getByText(/objets sélectionnés sur/).waitFor();
   await snap(page, "06-source-objects");
 
   await page.getByRole("link", { name: /Continuer vers les champs/ }).click();

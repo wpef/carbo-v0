@@ -160,8 +160,8 @@ export default function SourceObjectsPage() {
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>
-          {data.summary.selected} sélectionné(s) sur {data.summary.total} objets
-          ({data.summary.custom} custom)
+          {data.summary.selected} objets sélectionnés sur {data.summary.total}
+          {!showSystem && systemCount > 0 && ` · ${systemCount} objets système masqués`}
         </span>
         <span className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => setAll(true)}>
@@ -192,8 +192,15 @@ export default function SourceObjectsPage() {
             <span className="text-xs text-muted-foreground">{o.fieldCount} champs</span>
             <Badge
               variant={o.category === "custom" ? "default" : o.category === "system" ? "outline" : "secondary"}
+              title={
+                o.category === "custom"
+                  ? "Objet créé sur mesure dans le CRM source"
+                  : o.category === "system"
+                    ? "Objet technique du CRM, rarement migré"
+                    : "Objet standard du CRM"
+              }
             >
-              {o.category === "custom" ? "Custom" : o.category === "system" ? "Système" : "Métier"}
+              {o.category === "custom" ? "Personnalisé" : o.category === "system" ? "Système" : "Standard"}
             </Badge>
           </li>
         ))}

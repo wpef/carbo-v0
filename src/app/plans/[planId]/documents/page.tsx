@@ -28,6 +28,7 @@ export default function DocumentsPage() {
   const [planStatus, setPlanStatus] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Doc[] | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Doc | null>(null);
 
   const load = useCallback(async () => {
@@ -51,10 +52,14 @@ export default function DocumentsPage() {
 
   async function generate() {
     setGenerating(true);
+    setGenerateError(null);
     const res = await fetch(`/api/plans/${planId}/documents`, { method: "POST" });
     if (res.ok) {
       const { document } = await res.json();
       setPreview(document);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setGenerateError(body.error ?? "La génération a échoué. Réessayez.");
     }
     await load();
     router.refresh();
@@ -76,6 +81,16 @@ export default function DocumentsPage() {
           </Link>
         </p>
       )}
+      {planStatus === "READY" && (
+        <p className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-900">
+          ✓ Plan prêt : les mappings requis sont en place. Vous pouvez générer les documents,
+          ou{" "}
+          <Link href="/" className="underline">
+            retourner à la liste des plans
+          </Link>
+          .
+        </p>
+      )}
 
       <Card>
         <CardHeader>
@@ -86,9 +101,10 @@ export default function DocumentsPage() {
             Génère un résumé du plan à partir des mappings actuels. Chaque génération crée une
             nouvelle version ; la précédente est conservée.
           </p>
-          <Button onClick={generate} disabled={generating}>
+          <Button onClick={generate} disabled={generating || planStatus !== "READY"}>
             {generating ? "Génération…" : "Générer la description"}
           </Button>
+          {generateError && <p className="text-sm text-destructive">{generateError}</p>}
         </CardContent>
       </Card>
 
