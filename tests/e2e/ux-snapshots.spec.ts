@@ -20,6 +20,8 @@ test("dump des snapshots ARIA du parcours", async ({ page, request }) => {
   await snap(page, "01-home");
 
   await page.getByRole("link", { name: "Nouveau plan" }).click();
+  await page.waitForURL("**/plans/new");
+  await page.getByLabel("Nom du plan").waitFor();
   await snap(page, "02-plan-new");
 
   await page.getByLabel("Nom du plan").fill(`UX review ${Date.now()}`);
@@ -30,6 +32,7 @@ test("dump des snapshots ARIA du parcours", async ({ page, request }) => {
 
   await page.getByRole("link", { name: /Reprendre : Source/ }).click();
   await page.waitForURL(`**/plans/${planId}/source`);
+  await page.getByRole("button", { name: "Connecter le CRM démo" }).waitFor();
   await snap(page, "04-source-avant-connexion");
 
   await page.getByRole("button", { name: "Connecter le CRM démo" }).click();
@@ -48,6 +51,7 @@ test("dump des snapshots ARIA du parcours", async ({ page, request }) => {
 
   await page.getByRole("button", { name: /Connecter la destination/ }).click();
   await page.waitForURL(`**/destination`);
+  await page.getByRole("button", { name: "Connecter le CRM démo" }).waitFor();
   await snap(page, "08-destination-avant-connexion");
 
   await page.getByRole("button", { name: "Connecter le CRM démo" }).click();
@@ -61,7 +65,8 @@ test("dump des snapshots ARIA du parcours", async ({ page, request }) => {
 
   await page.getByRole("button", { name: /Créer le mapping/ }).click();
   await page.waitForURL(`**/object-mapping`);
-  await page.getByText(/Paires mappées/).waitFor();
+  // Attendre la FIN de l'auto-link (paires visibles), pas l'état transitoire.
+  await page.getByText(/Paires mappées \([1-9]/).waitFor();
   await snap(page, "11-object-mapping");
 
   await page.getByRole("button", { name: /Mapper les champs/ }).first().click();
@@ -73,6 +78,7 @@ test("dump des snapshots ARIA du parcours", async ({ page, request }) => {
 
   await page.getByRole("button", { name: /Continuer vers les documents/ }).click();
   await page.waitForURL(`**/documents`);
+  await page.getByRole("button", { name: "Générer la description" }).waitFor();
   await snap(page, "13-documents");
 
   await page.getByRole("button", { name: "Générer la description" }).click();

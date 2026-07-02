@@ -356,7 +356,7 @@ function FieldMappingContent() {
             </section>
             <section>
               <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-                2. Champs destination — {labelOf(detail.objectMapping.destinationObjectName)}
+                2. Champs destination restants — {labelOf(detail.objectMapping.destinationObjectName)}
               </h2>
               {remainingDestinationFields.length === 0 ? (
                 <p className="rounded-md border border-dashed px-3 py-3 text-center text-xs text-muted-foreground">
@@ -431,7 +431,7 @@ function FieldMappingContent() {
                 Objet suivant : {labelOf(nextPair.sourceObjectName)} →
               </Button>
             ) : (
-              <Button onClick={continueToDocuments}>Continuer vers les documents →</Button>
+              <Button onClick={continueToDocuments}>Terminer le mapping →</Button>
             )}
           </div>
         </>

@@ -34,6 +34,7 @@ export default function ObjectMappingPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingSource, setPendingSource] = useState<string | null>(null);
   const [autoLinkInfo, setAutoLinkInfo] = useState<string | null>(null);
+  const [autoLinking, setAutoLinking] = useState(false);
   const autoLinkTriedRef = useRef(false);
 
   const load = useCallback(async (): Promise<Payload | null> => {
@@ -54,6 +55,7 @@ export default function ObjectMappingPage() {
       // Auto-link au premier chargement seulement si jamais fait (§4.3).
       if (payload && payload.objectAutoLinkedAt === null && !autoLinkTriedRef.current) {
         autoLinkTriedRef.current = true;
+        setAutoLinking(true);
         const res = await fetch(`/api/plans/${planId}/object-mappings/auto-link`, {
           method: "POST",
         });
@@ -66,6 +68,7 @@ export default function ObjectMappingPage() {
           }
           await load();
         }
+        setAutoLinking(false);
       }
     })();
   }, [load, planId]);
@@ -137,9 +140,13 @@ export default function ObjectMappingPage() {
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Mapping des objets</h1>
-        {data.mappings.length > 0 && (
-          <Button onClick={() => goToFieldMapping()}>Mapper les champs →</Button>
-        )}
+        <Button
+          onClick={() => goToFieldMapping()}
+          disabled={data.mappings.length === 0}
+          title={data.mappings.length === 0 ? "Créez d'abord au moins une paire d'objets" : undefined}
+        >
+          Mapper les champs →
+        </Button>
       </div>
       {autoLinkInfo && (
         <p className="rounded-md bg-muted px-3 py-2 text-sm">
@@ -217,7 +224,9 @@ export default function ObjectMappingPage() {
         </h2>
         {data.mappings.length === 0 ? (
           <p className="rounded-md border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
-            Aucune paire pour l&apos;instant.
+            {autoLinking
+              ? "Association automatique des objets en cours…"
+              : "Aucune paire pour l'instant."}
           </p>
         ) : (
           <ul className="divide-y rounded-md border">
@@ -246,8 +255,13 @@ export default function ObjectMappingPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label={`Supprimer ${m.sourceObjectName} → ${m.destinationObjectName}`}
-                  onClick={() => deletePair(m.id, `${m.sourceObjectName} → ${m.destinationObjectName}`)}
+                  aria-label={`Supprimer ${labelOf(sourceLabels, m.sourceObjectName)} → ${labelOf(destinationLabels, m.destinationObjectName)}`}
+                  onClick={() =>
+                    deletePair(
+                      m.id,
+                      `${labelOf(sourceLabels, m.sourceObjectName)} → ${labelOf(destinationLabels, m.destinationObjectName)}`,
+                    )
+                  }
                 >
                   <Trash2 className="size-4" />
                 </Button>
