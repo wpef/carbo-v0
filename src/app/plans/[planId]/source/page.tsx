@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2 } from "lucide-react";
 
@@ -106,9 +106,9 @@ export default function SourcePage() {
                 ? `${objectCount} objets découverts dans le schéma source.`
                 : "Schéma récupéré."}
             </p>
-            <Button render={<Link href={`/plans/${planId}/source/objects`} />}>
+            <Link href={`/plans/${planId}/source/objects`} className={buttonVariants()}>
               Continuer vers la sélection d&apos;objets →
-            </Button>
+            </Link>
           </CardContent>
         </Card>
       )}

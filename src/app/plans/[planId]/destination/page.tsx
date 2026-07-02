@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2 } from "lucide-react";
 
@@ -107,9 +107,9 @@ export default function DestinationPage() {
                 ? `${objectCount} objets de destination découverts.`
                 : "Schéma récupéré."}
             </p>
-            <Button render={<Link href={`/plans/${planId}/destination/fields`} />}>
+            <Link href={`/plans/${planId}/destination/fields`} className={buttonVariants()}>
               Continuer vers les champs →
-            </Button>
+            </Link>
           </CardContent>
         </Card>
       )}

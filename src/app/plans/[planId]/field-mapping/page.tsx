@@ -52,7 +52,16 @@ function FieldMappingContent() {
   const [boundaryError, setBoundaryError] = useState<string | null>(null);
   const autoMatchTriedRef = useRef<Set<string>>(new Set());
 
-  // Liste des paires ; sélection initiale pilotée par ?object= (dette v4).
+  // Liste des paires (compteurs des onglets inclus) — rafraîchie après
+  // chaque mutation, sinon les badges mentent (bug attrapé par le test de
+  // parcours). Sélection initiale pilotée par ?object= (dette v4).
+  const loadPairs = useCallback(async () => {
+    const res = await fetch(`/api/plans/${planId}/object-mappings`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setPairs(data.mappings as PairSummary[]);
+  }, [planId]);
+
   useEffect(() => {
     void (async () => {
       const res = await fetch(`/api/plans/${planId}/object-mappings`);
@@ -103,11 +112,11 @@ function FieldMappingContent() {
           if (result.created > 0) {
             setNotice(`${result.created} champ(s) mappé(s) automatiquement.`);
           }
-          await loadDetail(activePairId);
+          await Promise.all([loadDetail(activePairId), loadPairs()]);
         }
       }
     })();
-  }, [activePairId, loadDetail, planId]);
+  }, [activePairId, loadDetail, loadPairs, planId]);
 
   async function createMapping(destinationFieldName: string) {
     if (!pendingSourceField || !activePairId) return;
@@ -127,13 +136,13 @@ function FieldMappingContent() {
     } else {
       setNotice(null);
     }
-    await loadDetail(activePairId);
+    await Promise.all([loadDetail(activePairId), loadPairs()]);
   }
 
   async function deleteMapping(fieldMappingId: string) {
     if (!activePairId) return;
     await fetch(`/api/plans/${planId}/field-mappings/${fieldMappingId}`, { method: "DELETE" });
-    await loadDetail(activePairId);
+    await Promise.all([loadDetail(activePairId), loadPairs()]);
   }
 
   async function continueToDocuments() {

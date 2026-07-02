@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft } from "lucide-react";
@@ -121,9 +121,9 @@ export default function SourceObjectsPage() {
           </Link>
           <h1 className="text-xl font-semibold">Sélection des objets à migrer</h1>
         </div>
-        <Button render={<Link href={`/plans/${planId}/source/fields`} />}>
+        <Link href={`/plans/${planId}/source/fields`} className={buttonVariants()}>
           Continuer vers les champs →
-        </Button>
+        </Link>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

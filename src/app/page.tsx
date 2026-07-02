@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { PlanList } from "@/features/plans/components/plan-list";
 import { listPlans } from "@/features/plans/services/plan-service";
 
@@ -11,7 +11,9 @@ export default async function HomePage() {
     <main className="mx-auto w-full max-w-5xl p-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Plans de migration</h1>
-        <Button render={<Link href="/plans/new" />}>Nouveau plan</Button>
+        <Link href="/plans/new" className={buttonVariants()}>
+          Nouveau plan
+        </Link>
       </div>
       <PlanList plans={plans} />
     </main>

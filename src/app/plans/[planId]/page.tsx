@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   STEP_DESCRIPTIONS,
@@ -40,9 +40,12 @@ export default async function PlanHubPage({
           <p className="text-sm text-muted-foreground">
             {STEP_DESCRIPTIONS[plan.currentStep]}
           </p>
-          <Button render={<Link href={`/plans/${plan.id}${STEP_PATHS[plan.currentStep]}`} />}>
+          <Link
+            href={`/plans/${plan.id}${STEP_PATHS[plan.currentStep]}`}
+            className={buttonVariants()}
+          >
             Reprendre : {STEP_LABELS[plan.currentStep]} →
-          </Button>
+          </Link>
         </CardContent>
       </Card>
     </div>

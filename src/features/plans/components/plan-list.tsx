@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ConnectorConnection, MigrationPlan } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { STEP_LABELS } from "@/features/plans/lib/steps";
 import { Trash2 } from "lucide-react";
@@ -31,7 +31,9 @@ export function PlanList({ plans }: { plans: PlanWithConnections[] }) {
         <p className="mb-4 text-muted-foreground">
           Aucun plan de migration pour l&apos;instant.
         </p>
-        <Button render={<Link href="/plans/new" />}>Créer un plan</Button>
+        <Link href="/plans/new" className={buttonVariants()}>
+          Créer un plan
+        </Link>
       </div>
     );
   }

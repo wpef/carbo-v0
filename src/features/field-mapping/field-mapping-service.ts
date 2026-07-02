@@ -78,6 +78,9 @@ export async function autoMatchFields(
     let count = 0;
     for (const sourceField of sourceFields) {
       if (usedSource.has(sourceField.apiName)) continue;
+      // Les identifiants techniques ne se migrent pas (nouveaux IDs générés
+      // à l'import) — jamais auto-mappés ; mappage manuel toujours possible.
+      if (sourceField.dataType === "id") continue;
       const target =
         destByApiName.get(registry[sourceField.apiName] ?? "") ??
         destByNormalized.get(normalizeFieldName(sourceField.apiName));
