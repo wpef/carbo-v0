@@ -83,7 +83,11 @@ export async function setObjectSelection(
   objectApiName: string,
   isSelected: boolean,
 ) {
-  const snapshot = await getCurrentSnapshot(connectionId, "SOURCE");
+  // Lookup léger : pas besoin des objets+champs pour un upsert de sélection.
+  const snapshot = await db.schemaSnapshot.findFirst({
+    where: { connectionId, side: "SOURCE", status: "CURRENT" },
+    select: { id: true },
+  });
   if (!snapshot) throw new Error("Aucun schéma source récupéré");
   return db.objectSelection.upsert({
     where: {

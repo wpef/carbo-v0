@@ -34,6 +34,7 @@ export function ObjectSelectionPage() {
   const { planId } = useParams<{ planId: string }>();
   const [data, setData] = useState<Payload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showSystem, setShowSystem] = useState(false);
   const [selectionFilter, setSelectionFilter] = useState<SelectionFilter>("all");
@@ -70,21 +71,42 @@ export function ObjectSelectionPage() {
     });
   }, [data, search, showSystem, selectionFilter]);
 
-  async function toggle(objectApiName: string, isSelected: boolean) {
-    if (!data) return;
-    // Optimiste avec revert (01-journeys §1.5).
-    const previous = data;
-    setData({
-      ...data,
-      objects: data.objects.map((o) => (o.apiName === objectApiName ? { ...o, isSelected } : o)),
-      summary: { ...data.summary, selected: data.summary.selected + (isSelected ? 1 : -1) },
+  /** Applique un delta de sélection à l'état courant (jamais de snapshot périmé). */
+  function applySelection(objectApiName: string, isSelected: boolean) {
+    setData((current) => {
+      if (!current) return current;
+      const target = current.objects.find((o) => o.apiName === objectApiName);
+      if (!target || target.isSelected === isSelected) return current; // no-op
+      return {
+        ...current,
+        objects: current.objects.map((o) =>
+          o.apiName === objectApiName ? { ...o, isSelected } : o,
+        ),
+        summary: {
+          ...current.summary,
+          selected: current.summary.selected + (isSelected ? 1 : -1),
+        },
+      };
     });
+  }
+
+  async function toggle(objectApiName: string, isSelected: boolean) {
+    // Optimiste avec revert VISIBLE (01-journeys §1.5) : en cas d'échec du
+    // PUT, on ré-applique l'inverse (delta fonctionnel, pas de snapshot
+    // périmé — plusieurs toggles peuvent être en vol) et on le dit.
+    setToggleError(null);
+    applySelection(objectApiName, isSelected);
     const res = await fetch(`/api/plans/${planId}/source/objects`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ objectApiName, isSelected }),
     });
-    if (!res.ok) setData(previous);
+    if (!res.ok) {
+      applySelection(objectApiName, !isSelected);
+      setToggleError(
+        `La sélection de « ${objectApiName} » n'a pas pu être enregistrée — réessayez.`,
+      );
+    }
   }
 
   async function setAll(isSelected: boolean) {
@@ -125,6 +147,12 @@ export function ObjectSelectionPage() {
           Continuer vers les champs →
         </Link>
       </div>
+
+      {toggleError && (
+        <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {toggleError}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <Input

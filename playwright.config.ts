@@ -13,7 +13,9 @@ export default defineConfig({
   // DB de dev partagée (Neon distant) : un seul worker, pas de parallélisme.
   workers: 1,
   fullyParallel: false,
-  retries: 0,
+  // Neon distant : un hoquet réseau ponctuel ne doit pas faire mentir la
+  // suite — un vrai bug, lui, échoue deux fois.
+  retries: 1,
   reporter: [["list"]],
   use: {
     baseURL: `http://localhost:${PORT}`,
