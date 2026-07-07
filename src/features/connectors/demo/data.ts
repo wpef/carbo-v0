@@ -1,10 +1,10 @@
 // Connecteur de démonstration — schémas en mémoire, déterministes.
-// Sert le walking skeleton et les tests e2e. Les vrais adaptateurs
-// (Salesforce/HubSpot) seront portés en tranches verticales (Phase 2).
+// Sert le parcours sans credentials et les tests e2e.
 //
 // Le schéma source imite volontairement une org Salesforce : objets custom
 // (__c), objets système par préfixe ET par suffixe (History/Share/Feed…) —
-// pour exercer la classification (02-domain-rules règle 3) dès le skeleton.
+// pour exercer la classification (02-domain-rules règle 3). La destination
+// imite un portail HubSpot.
 
 export type DemoField = {
   apiName: string;
@@ -162,38 +162,5 @@ export const DEMO_DESTINATION_OBJECTS: DemoObject[] = [
   },
 ];
 
-/** Registre d'auto-link du connecteur démo (équivalent du registre SF→HubSpot). */
-export const DEMO_OBJECT_LINK_REGISTRY: Record<string, string> = {
-  Account: "companies",
-  Contact: "contacts",
-  Opportunity: "deals",
-  Case: "tickets",
-};
-
-/** Registre d'auto-match des champs par paire d'objets (complète le name-based). */
-export const DEMO_FIELD_MATCH_REGISTRY: Record<string, Record<string, string>> = {
-  "Account:companies": {
-    Name: "name",
-    Industry: "industry",
-    Website: "website",
-    AnnualRevenue: "annualrevenue",
-  },
-  "Contact:contacts": {
-    FirstName: "firstname",
-    LastName: "lastname",
-    Email: "email",
-    Phone: "phone",
-  },
-  "Opportunity:deals": {
-    Name: "dealname",
-    Amount: "amount",
-    StageName: "dealstage",
-    CloseDate: "closedate",
-  },
-  "Case:tickets": {
-    Subject: "subject",
-    Status: "hs_pipeline_stage",
-    Priority: "hs_ticket_priority",
-    Description: "content",
-  },
-};
+// Les registres d'auto-link / auto-match (par paire d'adaptateurs) vivent
+// dans ../link-registry.ts — même mécanique pour démo et Salesforce→HubSpot.

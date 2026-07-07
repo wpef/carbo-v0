@@ -1,25 +1,53 @@
 import { NextResponse } from "next/server";
-import { connectDemo } from "@/features/connectors/connection-service";
+import { createConnection, disconnect } from "@/features/connectors/connection-service";
+import { getAdapter } from "@/features/connectors/registry";
 
 type Params = { params: Promise<{ planId: string }> };
 
-/** Connexion de la destination (skeleton : adaptateur démo uniquement). */
+/**
+ * POST — connexion DIRECTE de la destination (adaptateurs sans OAuth, ex. démo).
+ * HubSpot passe par /api/connectors/hubspot/auth (GET OAuth, POST Private App).
+ */
 export async function POST(request: Request, { params }: Params) {
   const { planId } = await params;
   const body = await request.json().catch(() => ({}));
-  if (body.adapterType !== "demo") {
+  const adapterType = typeof body.adapterType === "string" ? body.adapterType : "";
+
+  let adapter;
+  try {
+    adapter = getAdapter(adapterType);
+  } catch {
+    return NextResponse.json({ error: `Adaptateur inconnu : ${adapterType}` }, { status: 400 });
+  }
+  if (!adapter.descriptor.sides.includes("DESTINATION")) {
     return NextResponse.json(
-      { error: "Seul l'adaptateur « demo » est disponible dans le skeleton" },
+      { error: `${adapter.descriptor.label} n'est pas un connecteur destination` },
       { status: 400 },
     );
   }
-  try {
-    const { connection, snapshot } = await connectDemo(planId, "DESTINATION");
+  if (adapter.descriptor.connectMode !== "direct") {
     return NextResponse.json(
-      { connection, objectCount: snapshot.objects.length },
-      { status: 201 },
+      { error: `${adapter.descriptor.label} se connecte via /api/connectors/${adapterType}/auth` },
+      { status: 400 },
     );
+  }
+
+  try {
+    const connection = await createConnection({
+      planId,
+      side: "DESTINATION",
+      adapterType,
+      name: `${adapter.descriptor.label} (destination)`,
+    });
+    return NextResponse.json({ connection }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 409 });
   }
+}
+
+/** DELETE — déconnexion de la destination. */
+export async function DELETE(_request: Request, { params }: Params) {
+  const { planId } = await params;
+  await disconnect(planId, "DESTINATION");
+  return NextResponse.json({ ok: true });
 }

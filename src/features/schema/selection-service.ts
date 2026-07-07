@@ -1,13 +1,15 @@
 import { db } from "@/lib/db";
-import { classifyObject, compareByCategory, isSelectedByDefault } from "./classification";
+import { getAdapter } from "@/features/connectors/registry";
 import { getCurrentSnapshot } from "@/features/connectors/connection-service";
+import { classifyObject, compareByCategory, isSelectedByDefault } from "./classification";
+import type { ObjectCategory } from "./classification";
 
 export type ObjectWithSelection = {
   apiName: string;
   label: string;
   description: string | null;
   isCustom: boolean;
-  category: ReturnType<typeof classifyObject>;
+  category: ObjectCategory;
   isSelected: boolean;
   fieldCount: number;
 };
@@ -21,11 +23,16 @@ export type SelectionSummary = {
 
 /**
  * Liste les objets source avec leur état de sélection. Au premier appel,
- * bootstrappe les lignes ObjectSelection avec la pré-sélection par défaut
- * (01-journeys §1.5) — jamais re-bootstrappé ensuite (les choix manuels
- * priment ; dette v4 « sélection perdue au refresh » à ne pas reproduire).
+ * bootstrappe les lignes ObjectSelection avec la pré-sélection par défaut de
+ * l'adaptateur (01-journeys §1.5) — jamais re-bootstrappé ensuite (les choix
+ * manuels priment ; dette v4 « sélection perdue au refresh » à ne pas
+ * reproduire).
  */
 export async function getObjectsWithSelection(connectionId: string) {
+  const record = await db.connectorConnection.findUnique({ where: { id: connectionId } });
+  if (!record) return null;
+  const metadata = getAdapter(record.adapterType).objectMetadata;
+
   const snapshot = await getCurrentSnapshot(connectionId, "SOURCE");
   if (!snapshot) return null;
 
@@ -40,12 +47,12 @@ export async function getObjectsWithSelection(connectionId: string) {
         connectionId,
         snapshotId: snapshot.id,
         objectApiName: o.apiName,
-        isSelected: isSelectedByDefault(o.apiName, o.isCustom),
+        isSelected: isSelectedByDefault(metadata, o.apiName, o.isCustom),
       })),
       skipDuplicates: true,
     });
     selectionByName = new Map(
-      snapshot.objects.map((o) => [o.apiName, isSelectedByDefault(o.apiName, o.isCustom)]),
+      snapshot.objects.map((o) => [o.apiName, isSelectedByDefault(metadata, o.apiName, o.isCustom)]),
     );
   }
 
@@ -55,7 +62,7 @@ export async function getObjectsWithSelection(connectionId: string) {
       label: o.label,
       description: o.description,
       isCustom: o.isCustom,
-      category: classifyObject(o.apiName, o.isCustom),
+      category: classifyObject(metadata, o.apiName, o.isCustom),
       isSelected: selectionByName.get(o.apiName) ?? false,
       fieldCount: o.fields.length,
     }))

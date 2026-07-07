@@ -1,41 +1,33 @@
-// Classification des objets (02-domain-rules règle 3).
+// Classification des objets (02-domain-rules règle 3) — pilotée par les
+// métadonnées de l'adaptateur (chaque CRM a ses propres conventions).
 // Leçon de recette réelle (f246f8ab) : les suffixes système comptent autant
-// que les préfixes (0 → 488 objets masquables sur une org de 1123), et la
-// liste des objets métier par défaut doit avoir UNE seule source de vérité.
+// que les préfixes (0 → 488 objets masquables sur une org SF de 1123).
+
+import type { AdapterObjectMetadata } from "@/features/connectors/contract";
 
 export type ObjectCategory = "custom" | "business" | "system";
 
-const SYSTEM_PREFIXES = ["Apex", "Async", "Auth", "Flow", "Setup", "Permission", "Login"];
-const SYSTEM_SUFFIXES = ["Feed", "History", "Share", "ChangeEvent", "Tag"];
-
-/** Source unique des objets CRM pré-sélectionnés par défaut. */
-export const DEFAULT_CRM_OBJECTS = [
-  "Account",
-  "Contact",
-  "Lead",
-  "Opportunity",
-  "Case",
-  "Campaign",
-  "Task",
-  "Event",
-  "Product2",
-  "Pricebook2",
-  "Order",
-  "Contract",
-];
-
-export function classifyObject(apiName: string, isCustom: boolean): ObjectCategory {
+export function classifyObject(
+  metadata: AdapterObjectMetadata,
+  apiName: string,
+  isCustom: boolean,
+): ObjectCategory {
   if (isCustom || apiName.endsWith("__c")) return "custom";
-  if (SYSTEM_PREFIXES.some((p) => apiName.startsWith(p))) return "system";
-  if (SYSTEM_SUFFIXES.some((s) => apiName.endsWith(s))) return "system";
+  if (metadata.systemExactNames.includes(apiName)) return "system";
+  if (metadata.systemPrefixes.some((p) => apiName.startsWith(p))) return "system";
+  if (metadata.systemSuffixes.some((s) => apiName.endsWith(s))) return "system";
   return "business";
 }
 
-/** Pré-sélection par défaut : custom OU objet CRM courant (01-journeys §1.5). */
-export function isSelectedByDefault(apiName: string, isCustom: boolean): boolean {
-  const category = classifyObject(apiName, isCustom);
+/** Pré-sélection par défaut : custom OU objet métier courant du CRM (01-journeys §1.5). */
+export function isSelectedByDefault(
+  metadata: AdapterObjectMetadata,
+  apiName: string,
+  isCustom: boolean,
+): boolean {
+  const category = classifyObject(metadata, apiName, isCustom);
   if (category === "system") return false;
-  return category === "custom" || DEFAULT_CRM_OBJECTS.includes(apiName);
+  return category === "custom" || metadata.defaultSelectedObjects.includes(apiName);
 }
 
 const CATEGORY_ORDER: Record<ObjectCategory, number> = { custom: 0, business: 1, system: 2 };

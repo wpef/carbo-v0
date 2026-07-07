@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { DEMO_OBJECT_LINK_REGISTRY } from "@/features/connectors/demo-data";
+import { computeAutoLinkPairs } from "@/features/connectors/link-registry";
 
 export async function listObjectMappings(planId: string) {
   return db.objectMapping.findMany({
@@ -25,47 +25,58 @@ export async function deleteObjectMapping(planId: string, mappingId: string) {
 }
 
 /**
- * Auto-link des objets via le registre du connecteur (02-domain-rules règle 4).
+ * Auto-link des objets via le registre de la paire d'adaptateurs
+ * (02-domain-rules règle 4, registre SEUL — pas de name-based sur les objets).
  *
  * Principe IX — idempotence explicite : gated par `plan.objectAutoLinkedAt`,
  * posé dans la MÊME transaction que la création des paires. Jamais ré-exécuté
  * en silence ; no-op si déjà fait.
  */
-export async function autoLinkObjects(planId: string, selectedSourceNames: string[], destinationNames: string[]) {
-  const plan = await db.migrationPlan.findUnique({ where: { id: planId } });
+export async function autoLinkObjects(
+  planId: string,
+  selectedSourceNames: string[],
+  destinationNames: string[],
+) {
+  const plan = await db.migrationPlan.findUnique({
+    where: { id: planId },
+    include: { sourceConnection: true, destinationConnection: true },
+  });
   if (!plan) throw new Error("Plan introuvable");
   if (plan.objectAutoLinkedAt) {
     return { created: 0, alreadyLinkedAt: plan.objectAutoLinkedAt };
   }
+  if (!plan.sourceConnection || !plan.destinationConnection) {
+    throw new Error("Les deux connexions sont requises");
+  }
 
-  const destinationSet = new Set(destinationNames);
-  const pairs = selectedSourceNames.flatMap((source) => {
-    const destination = DEMO_OBJECT_LINK_REGISTRY[source];
-    return destination && destinationSet.has(destination) ? [{ source, destination }] : [];
+  const existing = await db.objectMapping.findMany({
+    where: { planId },
+    select: { sourceObjectName: true },
   });
+  const pairs = computeAutoLinkPairs(
+    plan.sourceConnection.adapterType,
+    plan.destinationConnection.adapterType,
+    selectedSourceNames,
+    destinationNames,
+    existing.map((m) => m.sourceObjectName),
+  );
 
   const created = await db.$transaction(async (tx) => {
-    let count = 0;
-    for (const { source, destination } of pairs) {
-      const existing = await tx.objectMapping.findFirst({
-        where: { planId, sourceObjectName: source },
-      });
-      if (existing) continue;
+    for (const pair of pairs) {
       await tx.objectMapping.create({
         data: {
           planId,
-          sourceObjectName: source,
-          destinationObjectName: destination,
+          sourceObjectName: pair.sourceObjectName,
+          destinationObjectName: pair.destinationObjectName,
           autoCreated: true,
         },
       });
-      count++;
     }
     await tx.migrationPlan.update({
       where: { id: planId },
       data: { objectAutoLinkedAt: new Date() },
     });
-    return count;
+    return pairs.length;
   });
 
   return { created, alreadyLinkedAt: null };

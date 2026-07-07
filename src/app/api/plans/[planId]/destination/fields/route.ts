@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getPlan } from "@/features/plans/services/plan-service";
 import { getFieldCatalog } from "@/features/schema/field-catalog-service";
+import { retrieveFields } from "@/features/schema/field-retrieval-service";
 
 type Params = { params: Promise<{ planId: string }> };
 
-/** Champs de TOUS les objets destination, groupés par objet. */
+/** GET — catalogue des champs de TOUS les objets destination, groupés par objet. */
 export async function GET(_request: Request, { params }: Params) {
   const { planId } = await params;
   const plan = await getPlan(planId);
@@ -16,4 +17,19 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ error: "Aucun schéma destination récupéré" }, { status: 409 });
   }
   return NextResponse.json(catalog);
+}
+
+/** POST — récupère les champs via l'adaptateur (scope : tous les objets destination). */
+export async function POST(_request: Request, { params }: Params) {
+  const { planId } = await params;
+  const plan = await getPlan(planId);
+  if (!plan?.destinationConnectionId) {
+    return NextResponse.json({ error: "Aucune connexion destination" }, { status: 409 });
+  }
+  try {
+    const result = await retrieveFields(plan.destinationConnectionId, "DESTINATION");
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 502 });
+  }
 }
