@@ -13,6 +13,7 @@ Règle de maintenance : toute évolution de comportement, de parcours, de règle
 | [04-lessons.md](04-lessons.md) | Chronologie v1→v5, les 5 modes d'échec documentés + contre-mesures, leçons opérationnelles | Contexte |
 | [05-acceptance.md](05-acceptance.md) | Checklist d'acceptation (106 items dérivés de l'audit des 130 régressions) + gates transverses | Grille de recette |
 | [06-ux-backlog.md](06-ux-backlog.md) | Constats de la revue UX 2026-07-02 reportés ou écartés | Backlog |
+| [07-architecture.md](07-architecture.md) | Frontières des modules, anatomie d'une feature, « où toucher quoi », comment ajouter un CRM | Normatif |
 
 ## Méthode v5 (rappel)
 

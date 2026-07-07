@@ -458,7 +458,17 @@ sections précédentes, **cette section fait foi** pour la v5.
    partout, y compris onglets et paires ; auto-match n'inclut jamais les
    champs de type `id` (identifiants régénérés à l'import).
 8. **UI en français** ; catégories d'objets : Personnalisé / Standard /
-   Système. Le connecteur démo est le premier connecteur du registre ; SF et
-   HubSpot seront des tranches Phase 2.
+   Système.
+9. **Tranche connecteurs (2026-07-02)** : Salesforce (OAuth2+PKCE, source) et
+   HubSpot (OAuth ou token Private App, destination) sont branchés au registre
+   aux côtés des adaptateurs démo. Les pages de connexion affichent un
+   **picker** piloté par les descripteurs du registre ; « Actualiser le
+   schéma » et « Déconnecter » existent sur la carte de connexion. Détail :
+   `07-architecture.md`.
+10. **La connexion récupère les OBJETS ; les CHAMPS sont récupérés sur la
+    page champs** (auto-récupération au premier passage, §4.2, scopée aux
+    objets sélectionnés côté source) — indispensable sur une org réelle
+    (1 describe par objet). Le CTA de sortie est désactivé tant qu'aucun
+    champ n'est récupéré.
 
 Backlog des constats UX non traités : `06-ux-backlog.md`.
