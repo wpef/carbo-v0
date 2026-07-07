@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { recordStep } from "@/features/plans/lib/record-step";
 import { MigrationLogicDialog } from "@/features/migration-logic/components/migration-logic-dialog";
+import { FilterPanel } from "@/features/filters/components/filter-panel";
 import { cn } from "@/lib/utils";
 import { Trash2, TriangleAlert, Wand2 } from "lucide-react";
 
@@ -403,6 +404,14 @@ function FieldMappingContent() {
               )}
             </section>
           </div>
+
+          <FilterPanel
+            key={detail.objectMapping.id}
+            planId={planId}
+            mappingId={detail.objectMapping.id}
+            sourceObjectLabel={labelOf(detail.objectMapping.sourceObjectName)}
+            sourceFields={detail.sourceFields}
+          />
 
           <section>
             <h2 className="mb-2 text-sm font-medium text-muted-foreground">

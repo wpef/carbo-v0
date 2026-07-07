@@ -147,6 +147,18 @@ test("parcours guidé complet : création → source → destination → mapping
   const nameRow = page.getByRole("listitem").filter({ hasText: "(Name)" }).first();
   await expect(nameRow.getByText("prêt")).toBeVisible();
 
+  // ── Filtres de migration (règle 5) : ajout, toggle sans suppression.
+  await page.getByRole("button", { name: /Filtres de migration — Compte/ }).click();
+  await page.getByLabel("Champ à filtrer").selectOption("Industry");
+  await page.getByLabel("Opérateur").selectOption("EQUALS");
+  await page.getByLabel("Valeur du filtre").fill("Tech");
+  await page.getByRole("button", { name: "Ajouter le filtre" }).click();
+  await expect(page.getByText("1 actif", { exact: true })).toBeVisible();
+  // Toggle OFF : conservé mais ignoré.
+  await page.getByRole("button", { name: /Désactiver le filtre Industry/ }).click();
+  await expect(page.getByText("0 actif", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Activer le filtre Industry/ })).toBeVisible();
+
   // Mapping manuel dans la paire Facture → Tickets (vide, pas de registre).
   await page.getByRole("tab", { name: /Facture → Tickets/ }).click();
   await page.getByRole("button", { name: /Numéro \(Name\)/ }).click();

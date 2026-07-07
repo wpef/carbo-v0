@@ -33,6 +33,24 @@ export type ConnectorCapabilities = {
   canRead: boolean;
   canWrite: boolean;
   canWriteSchema: boolean;
+  /** true si l'adaptateur implémente getRecords/getRecordCount (aperçu). */
+  canPreviewRecords?: boolean;
+};
+
+/** Page d'enregistrements (pagination 1-indexée). */
+export type PaginatedRecords = {
+  records: Record<string, unknown>[];
+  currentPage: number;
+  pageSize: number;
+  totalCount: number;
+  hasNextPage: boolean;
+};
+
+/** Condition de filtre passée aux comptages filtrés. */
+export type FilterCondition = {
+  fieldName: string;
+  operator: string;
+  value: string;
 };
 
 /** Classification des objets système + pré-sélection par défaut, propre à chaque CRM. */
@@ -70,4 +88,20 @@ export interface ConnectorAdapter {
   getObjects(connectionId: string): Promise<ConnectorObjectDef[]>;
   /** Champs d'UN objet (coûteux côté SF : 1 describe par objet — d'où la séparation). */
   getFields(connectionId: string, objectApiName: string): Promise<ConnectorFieldDef[]>;
+
+  // ── Capacités optionnelles (aperçu de records / estimation de filtres) ──
+  // Présentes ssi capabilities.canPreviewRecords. Les consommateurs testent
+  // la présence de la méthode et dégradent gracieusement sinon.
+  getRecords?(
+    connectionId: string,
+    objectApiName: string,
+    page: number,
+    pageSize: number,
+  ): Promise<PaginatedRecords>;
+  getRecordCount?(connectionId: string, objectApiName: string): Promise<number>;
+  getFilteredRecordCount?(
+    connectionId: string,
+    objectApiName: string,
+    filters: FilterCondition[],
+  ): Promise<number>;
 }
