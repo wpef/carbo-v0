@@ -39,8 +39,10 @@ test("parcours guidé complet : création → source → destination → mapping
   await page.getByRole("link", { name: /Reprendre : Source/ }).click();
   await page.waitForURL(`**/plans/${planId}/source`);
 
-  // ── Source (§1.4) : connexion démo → schéma auto → continuer.
-  await page.getByRole("button", { name: "Connecter le CRM démo" }).click();
+  // ── Source (§1.4) : picker (démo direct + Salesforce OAuth listés),
+  // connexion démo → schéma récupéré à la connexion → continuer.
+  await expect(page.getByText("Salesforce", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Connecter", exact: true }).click();
   await expect(page.getByText("8 objets découverts")).toBeVisible();
   await page.getByRole("link", { name: /Continuer vers la sélection d'objets/ }).click();
   await page.waitForURL(`**/plans/${planId}/source/objects`);
@@ -73,21 +75,24 @@ test("parcours guidé complet : création → source → destination → mapping
   await page.getByRole("link", { name: /Continuer vers les champs/ }).click();
   await page.waitForURL(`**/plans/${planId}/source/fields`);
 
-  // ── Champs source (§1.6) : scope = objets sélectionnés uniquement.
+  // ── Champs source (§1.6) : auto-récupération au premier passage (§4.2),
+  // scope = objets sélectionnés uniquement.
   await expect(page.getByText(/4 objets · \d+ champs/)).toBeVisible();
 
   // ── FRONTIÈRE 1 → destination.
   await page.getByRole("button", { name: /Connecter la destination/ }).click();
   await page.waitForURL(`**/plans/${planId}/destination`);
 
-  // ── Destination (§1.7) : connexion démo.
-  await page.getByRole("button", { name: "Connecter le CRM démo" }).click();
+  // ── Destination (§1.7) : picker (démo direct + HubSpot OAuth/token).
+  await expect(page.getByText("HubSpot", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Utiliser un token" })).toBeVisible();
+  await page.getByRole("button", { name: "Connecter", exact: true }).click();
   await expect(page.getByText("4 objets de destination découverts")).toBeVisible();
   await page.getByRole("link", { name: /Continuer vers les champs/ }).click();
   await page.waitForURL(`**/plans/${planId}/destination/fields`);
 
-  // ── Champs destination (§1.8) : tous les objets.
-  await expect(page.getByText(/Schéma destination prêt : 4 objets/)).toBeVisible();
+  // ── Champs destination (§1.8) : auto-récupération, tous les objets.
+  await expect(page.getByText(/4 objets · \d+ champs/)).toBeVisible();
 
   // ── FRONTIÈRE 2 → object mapping.
   await page.getByRole("button", { name: /Créer le mapping/ }).click();

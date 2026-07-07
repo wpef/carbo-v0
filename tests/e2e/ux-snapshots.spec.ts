@@ -32,10 +32,10 @@ test("dump des snapshots ARIA du parcours", async ({ page, request }) => {
 
   await page.getByRole("link", { name: /Reprendre : Source/ }).click();
   await page.waitForURL(`**/plans/${planId}/source`);
-  await page.getByRole("button", { name: "Connecter le CRM démo" }).waitFor();
+  await page.getByRole("button", { name: "Connecter", exact: true }).waitFor();
   await snap(page, "04-source-avant-connexion");
 
-  await page.getByRole("button", { name: "Connecter le CRM démo" }).click();
+  await page.getByRole("button", { name: "Connecter", exact: true }).click();
   await page.getByText("8 objets découverts").waitFor();
   await snap(page, "05-source-connectee");
 
@@ -51,16 +51,16 @@ test("dump des snapshots ARIA du parcours", async ({ page, request }) => {
 
   await page.getByRole("button", { name: /Connecter la destination/ }).click();
   await page.waitForURL(`**/destination`);
-  await page.getByRole("button", { name: "Connecter le CRM démo" }).waitFor();
+  await page.getByRole("button", { name: "Connecter", exact: true }).waitFor();
   await snap(page, "08-destination-avant-connexion");
 
-  await page.getByRole("button", { name: "Connecter le CRM démo" }).click();
+  await page.getByRole("button", { name: "Connecter", exact: true }).click();
   await page.getByText("4 objets de destination découverts").waitFor();
   await snap(page, "09-destination-connectee");
 
   await page.getByRole("link", { name: /Continuer vers les champs/ }).click();
   await page.waitForURL(`**/destination/fields`);
-  await page.getByText(/Schéma destination prêt/).waitFor();
+  await page.getByText(/4 objets · \d+ champs/).waitFor();
   await snap(page, "10-destination-fields");
 
   await page.getByRole("button", { name: /Créer le mapping/ }).click();
