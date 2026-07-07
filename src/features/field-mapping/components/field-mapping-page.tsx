@@ -17,6 +17,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { recordStep } from "@/features/plans/lib/record-step";
+import { MigrationLogicDialog } from "@/features/migration-logic/components/migration-logic-dialog";
 import { cn } from "@/lib/utils";
 import { Trash2, TriangleAlert, Wand2 } from "lucide-react";
 
@@ -29,51 +30,67 @@ type PairSummary = {
 
 type ObjectInfo = { apiName: string; label: string };
 
+type FieldMappingItem = {
+  id: string;
+  sourceFieldName: string;
+  sourceFieldLabel: string;
+  destinationFieldName: string;
+  destinationFieldLabel: string;
+  sourceFieldType: string;
+  destinationFieldType: string;
+  compatibilityStatus: "COMPATIBLE" | "WARNING" | "INCOMPATIBLE";
+  linkStatus: "GREEN" | "ORANGE" | "RED_SOLID" | "RED_DASHED" | "BROKEN";
+  statusDetail?: string;
+  autoCreated: boolean;
+};
+
 type PairDetail = {
   objectMapping: PairSummary & { fieldAutoMatchedAt: string | null };
   sourceFields: { apiName: string; label: string; dataType: string; isRequired: boolean }[];
   destinationFields: { apiName: string; label: string; dataType: string }[];
-  fieldMappings: {
-    id: string;
-    sourceFieldName: string;
-    destinationFieldName: string;
-    sourceFieldType: string;
-    destinationFieldType: string;
-    compatibilityStatus: "COMPATIBLE" | "WARNING" | "INCOMPATIBLE";
-    autoCreated: boolean;
-  }[];
+  fieldMappings: FieldMappingItem[];
 };
 
-const COMPAT_LABELS = { COMPATIBLE: "compatible", WARNING: "à vérifier", INCOMPATIBLE: "incompatible" } as const;
+// Statut de lien 5 états (02-domain-rules règle 1) — le badge EST le bouton
+// d'ouverture du modal de logique de migration.
+const LINK_STATUS_UI = {
+  GREEN: { label: "prêt", className: "border-green-300 bg-green-50 text-green-800" },
+  ORANGE: { label: "en cours", className: "border-amber-400 bg-amber-50 text-amber-900" },
+  RED_SOLID: { label: "à configurer", className: "border-red-400 bg-red-50 text-red-800" },
+  RED_DASHED: {
+    label: "incompatible",
+    className: "border-dashed border-red-400 bg-background text-red-700",
+  },
+  BROKEN: { label: "rompu", className: "border-zinc-400 bg-zinc-100 text-zinc-700" },
+} as const;
 
-function CompatibilityBadge({
+function LinkStatusBadge({
   mapping,
+  onOpenLogic,
 }: {
-  mapping: PairDetail["fieldMappings"][number];
+  mapping: FieldMappingItem;
+  onOpenLogic: () => void;
 }) {
+  const ui = LINK_STATUS_UI[mapping.linkStatus];
   const explanation =
-    mapping.compatibilityStatus === "COMPATIBLE"
-      ? `Types identiques ou équivalents (${mapping.sourceFieldType} → ${mapping.destinationFieldType}).`
-      : `Types différents : ${mapping.sourceFieldType} → ${mapping.destinationFieldType}. Vérifiez que les valeurs se convertissent correctement.`;
-  if (mapping.compatibilityStatus === "WARNING") {
-    return (
-      <Badge
-        className="ml-auto border-amber-400 bg-amber-50 text-amber-900"
-        variant="outline"
-        title={explanation}
-      >
-        {COMPAT_LABELS.WARNING}
-      </Badge>
-    );
-  }
+    mapping.statusDetail ??
+    `${mapping.sourceFieldType} → ${mapping.destinationFieldType}. Cliquez pour ouvrir la logique de migration.`;
   return (
-    <Badge
-      className="ml-auto"
-      variant={mapping.compatibilityStatus === "COMPATIBLE" ? "secondary" : "destructive"}
+    <button
+      type="button"
+      onClick={onOpenLogic}
       title={explanation}
+      aria-label={`Logique de migration pour ${mapping.sourceFieldName}`}
+      className="ml-auto shrink-0"
+      disabled={mapping.linkStatus === "BROKEN"}
     >
-      {COMPAT_LABELS[mapping.compatibilityStatus]}
-    </Badge>
+      <Badge variant="outline" className={cn("cursor-pointer", ui.className)}>
+        {ui.label}
+        {mapping.statusDetail && mapping.linkStatus === "ORANGE" && (
+          <span className="ml-1 font-normal">· {mapping.statusDetail}</span>
+        )}
+      </Badge>
+    </button>
   );
 }
 
@@ -92,6 +109,7 @@ function FieldMappingContent() {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [boundaryError, setBoundaryError] = useState<string | null>(null);
+  const [logicFieldMappingId, setLogicFieldMappingId] = useState<string | null>(null);
   const autoMatchTriedRef = useRef<Set<string>>(new Set());
 
   // Liste des paires (compteurs des onglets inclus) — rafraîchie après
@@ -399,18 +417,18 @@ function FieldMappingContent() {
                 {detail.fieldMappings.map((m) => (
                   <li key={m.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
                     <span>
-                      {fieldLabel(m.sourceFieldName)}{" "}
+                      {m.sourceFieldLabel}{" "}
                       <span className="text-xs text-muted-foreground">({m.sourceFieldName})</span>
                     </span>
                     <span className="text-muted-foreground">→</span>
                     <span>
-                      {fieldLabel(m.destinationFieldName)}{" "}
+                      {m.destinationFieldLabel}{" "}
                       <span className="text-xs text-muted-foreground">
                         ({m.destinationFieldName})
                       </span>
                     </span>
                     {m.autoCreated && <Badge variant="outline">auto</Badge>}
-                    <CompatibilityBadge mapping={m} />
+                    <LinkStatusBadge mapping={m} onOpenLogic={() => setLogicFieldMappingId(m.id)} />
                     <Button
                       variant="ghost"
                       size="icon"
@@ -435,6 +453,15 @@ function FieldMappingContent() {
             )}
           </div>
         </>
+      )}
+
+      {logicFieldMappingId && activePairId && (
+        <MigrationLogicDialog
+          planId={planId}
+          fieldMappingId={logicFieldMappingId}
+          onClose={() => setLogicFieldMappingId(null)}
+          onSaved={() => void loadDetail(activePairId)}
+        />
       )}
     </div>
   );

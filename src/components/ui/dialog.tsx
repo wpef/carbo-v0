@@ -13,15 +13,32 @@ interface DialogProps {
 }
 
 export function Dialog({ open = true, onOpenChange, onClose, children }: DialogProps) {
-  if (!open) return null
-  const close = () => {
+  const close = React.useCallback(() => {
     onOpenChange?.(false)
     onClose?.()
-  }
+  }, [onOpenChange, onClose])
+
+  // Échap ferme le dialog (attendu d'un modal, avec le clic sur le fond).
+  React.useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, close])
+
+  if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50" onClick={close} aria-hidden />
-      <div className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-auto">{children}</div>
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-auto"
+      >
+        {children}
+      </div>
     </div>
   )
 }

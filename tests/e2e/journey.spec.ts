@@ -124,6 +124,29 @@ test("parcours guidé complet : création → source → destination → mapping
   await expect(page.getByText(/champ\(s\) mappé\(s\) automatiquement/)).toBeVisible();
   await expect(page.getByRole("tab", { name: /Compte → Companies/ })).toContainText("4 champs");
 
+  // ── Logique de migration (règles 1+2) : Industry→industry est un D1
+  // picklist→picklist auto-matché → badge « à configurer » (RED_SOLID).
+  const industryRow = page.getByRole("listitem").filter({ hasText: "(Industry)" });
+  await expect(industryRow.getByText("à configurer")).toBeVisible();
+  await industryRow.getByRole("button", { name: /Logique de migration pour Industry/ }).click();
+
+  // Modal D1 : « Retail » est auto-lié (correspondance exacte) → 1/3.
+  await expect(page.getByRole("dialog").getByText("Logique de migration")).toBeVisible();
+  await expect(page.getByText("1 / 3 valeurs liées.")).toBeVisible();
+  // Lier Tech→Technology puis Finance→Banking (clic-clic).
+  await page.getByRole("dialog").getByText("Tech", { exact: true }).click();
+  await page.getByRole("dialog").getByText("Technology", { exact: true }).click();
+  await page.getByRole("dialog").getByText("Finance", { exact: true }).click();
+  await page.getByRole("dialog").getByText("Banking", { exact: true }).click();
+  await expect(page.getByText("3 / 3 valeurs liées.")).toBeVisible();
+  await page.getByRole("button", { name: "Valider", exact: true }).click();
+  // Complet + VALIDATED → badge vert « prêt ».
+  await expect(industryRow.getByText("prêt")).toBeVisible();
+
+  // Un D4 (copie directe, Name string→name string) est vert d'office.
+  const nameRow = page.getByRole("listitem").filter({ hasText: "(Name)" }).first();
+  await expect(nameRow.getByText("prêt")).toBeVisible();
+
   // Mapping manuel dans la paire Facture → Tickets (vide, pas de registre).
   await page.getByRole("tab", { name: /Facture → Tickets/ }).click();
   await page.getByRole("button", { name: /Numéro \(Name\)/ }).click();
