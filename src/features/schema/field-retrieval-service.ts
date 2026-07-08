@@ -32,24 +32,28 @@ export async function retrieveFields(connectionId: string, side: SnapshotSide) {
   let fieldCount = 0;
   for (const object of objects) {
     const fields = await adapter.getFields(connectionId, object.apiName);
-    // Idempotent : on remplace les champs de l'objet (re-retrieve = refresh).
-    await db.objectField.deleteMany({ where: { objectId: object.id } });
-    await db.objectField.createMany({
-      data: fields.map((f) => ({
-        objectId: object.id,
-        snapshotId: snapshot.id,
-        apiName: f.apiName,
-        label: f.label,
-        dataType: f.dataType,
-        isRequired: f.isRequired,
-        isReadOnly: f.isReadOnly,
-        isUnique: f.isUnique,
-        // isAccessible peuplé à l'écriture — trou historique n°8 (03-data-model).
-        isAccessible: f.isAccessible,
-        referenceTo: f.referenceTo ?? null,
-        picklistValues: f.picklistValues ? JSON.stringify(f.picklistValues) : null,
-      })),
-    });
+    // Remplacement ATOMIQUE des champs de l'objet (re-retrieve = refresh) :
+    // delete + create dans UNE transaction — un échec ne laisse jamais l'objet
+    // sans champs (anti-pattern proscrit 05-acceptance §3, Principe III).
+    await db.$transaction([
+      db.objectField.deleteMany({ where: { objectId: object.id } }),
+      db.objectField.createMany({
+        data: fields.map((f) => ({
+          objectId: object.id,
+          snapshotId: snapshot.id,
+          apiName: f.apiName,
+          label: f.label,
+          dataType: f.dataType,
+          isRequired: f.isRequired,
+          isReadOnly: f.isReadOnly,
+          isUnique: f.isUnique,
+          // isAccessible peuplé à l'écriture — trou historique n°8 (03-data-model).
+          isAccessible: f.isAccessible,
+          referenceTo: f.referenceTo ?? null,
+          picklistValues: f.picklistValues ? JSON.stringify(f.picklistValues) : null,
+        })),
+      }),
+    ]);
     fieldCount += fields.length;
   }
 

@@ -7,9 +7,10 @@ const PORT = 3005;
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 180_000,
-  // DB Neon distante : chaque écriture prend des centaines de ms — les
-  // attentes de visibilité doivent absorber connexion + création de schéma.
-  expect: { timeout: 20_000 },
+  // DB Neon distante : chaque écriture prend des centaines de ms et la latence
+  // grimpe sous charge (suite complète) — les attentes de visibilité doivent
+  // absorber connexion + création de schéma + rotations transactionnelles.
+  expect: { timeout: 30_000 },
   // DB de dev partagée (Neon distant) : un seul worker, pas de parallélisme.
   workers: 1,
   fullyParallel: false,

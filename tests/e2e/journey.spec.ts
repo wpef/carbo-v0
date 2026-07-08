@@ -228,3 +228,34 @@ test("gates de frontière : les URL profondes ne corrompent ni le statut ni l'av
   await expect(page.getByRole("link", { name: /Reprendre : Source/ })).toBeVisible();
   await expect(page.getByTestId("plan-status")).toHaveText("Brouillon");
 });
+
+test("migrateSelection : un refresh de schéma ne désélectionne pas silencieusement (05-acceptance §2)", async ({
+  page,
+}) => {
+  const planId = await createPlan(page, `E2E migrate ${Date.now()}`);
+
+  // Source démo (via l'UI). Le comportement de désélection par clic est déjà
+  // couvert par le parcours principal ; ici on vise précisément migrateSelection
+  // (report de la sélection au refresh), piloté via l'API pour être déterministe
+  // — puis vérifié dans l'UI.
+  await page.goto(`/plans/${planId}/source`);
+  await page.getByRole("button", { name: "Connecter", exact: true }).click();
+  await expect(page.getByText("8 objets découverts")).toBeVisible();
+
+  // Bootstrap de la sélection (5/8 par défaut) puis désélection de Case (→ 4).
+  await page.request.get(`/api/plans/${planId}/source/objects`);
+  const put = await page.request.put(`/api/plans/${planId}/source/objects`, {
+    data: { objectApiName: "Case", isSelected: false },
+  });
+  expect(put.ok()).toBeTruthy();
+
+  // Refresh du schéma.
+  const refresh = await page.request.post(`/api/plans/${planId}/source/schema`);
+  expect(refresh.ok()).toBeTruthy();
+
+  // La sélection manuelle a survécu au refresh : toujours 4, Case décoché.
+  // (Sans migrateSelection, le refresh re-bootstrappe aux défauts → 5.)
+  await page.goto(`/plans/${planId}/source/objects`);
+  await expect(page.getByText(/4 objets sélectionnés sur 8/)).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /(Case)\)/ })).not.toBeChecked();
+});

@@ -73,31 +73,86 @@ export async function linkConnectionToPlan(
 
 /**
  * Fetch adaptateur → snapshot CURRENT + objets persistés (SANS les champs).
- * Skeleton : remplace le snapshot CURRENT ; la rotation CURRENT→PREVIOUS
- * (drift) arrive avec sa tranche.
+ * Remplace le snapshot CURRENT. Au refresh, la SÉLECTION d'objets existante
+ * est REPORTÉE sur le nouveau snapshot (migrateSelection, 05-acceptance §2) :
+ * un refresh ne désélectionne jamais silencieusement (Principe III). La
+ * rotation CURRENT→PREVIOUS (drift) arrive avec sa tranche.
  */
 export async function fetchSchema(connectionId: string, side: SnapshotSide) {
   const record = await db.connectorConnection.findUnique({ where: { id: connectionId } });
   if (!record) throw new Error("Connexion introuvable");
   const adapter = getAdapter(record.adapterType);
 
+  // Appel réseau HORS transaction (ne jamais tenir un verrou DB pendant un I/O).
   const objects = await adapter.getObjects(connectionId);
 
-  await db.schemaSnapshot.deleteMany({ where: { connectionId, side, status: "CURRENT" } });
-  const snapshot = await db.schemaSnapshot.create({ data: { connectionId, side } });
-  // createMany : une org SF réelle expose 1000+ objets — pas d'insertions unitaires.
-  await db.schemaObject.createMany({
-    data: objects.map((o) => ({
-      snapshotId: snapshot.id,
-      apiName: o.apiName,
-      label: o.label,
-      description: o.description ?? null,
-      isCustom: o.isCustom,
-    })),
+  // Sélection à migrer (concept SOURCE) — LECTURE hors transaction (pas de
+  // round-trip inutile sous verrou). Capturée avant la rotation ; une légère
+  // course avec un refresh concurrent ne fait au pire que reporter un état à
+  // un instant proche — jamais de perte de snapshot (garanti par la tx).
+  let priorSelection: Map<string, boolean> | null = null;
+  let oldSelectionSnapshotId: string | null = null;
+  if (side === "SOURCE") {
+    const oldSnapshot = await db.schemaSnapshot.findFirst({
+      where: { connectionId, side, status: "CURRENT" },
+      select: { id: true },
+    });
+    if (oldSnapshot) {
+      oldSelectionSnapshotId = oldSnapshot.id;
+      const rows = await db.objectSelection.findMany({
+        where: { connectionId, snapshotId: oldSnapshot.id },
+        select: { objectApiName: true, isSelected: true },
+      });
+      if (rows.length > 0) priorSelection = new Map(rows.map((r) => [r.objectApiName, r.isSelected]));
+    }
+  }
+  const carried = priorSelection
+    ? objects.filter((o) => priorSelection!.has(o.apiName))
+    : [];
+
+  // Rotation ATOMIQUE (écritures seulement) : la contrainte
+  // @@unique([connectionId, side, status]) interdit deux snapshots CURRENT ;
+  // sans transaction, deux refresh concurrents (bouton + filet auto-fetch) se
+  // courent dessus — l'un supprime, l'autre viole la contrainte → connexion
+  // sans schéma. La transaction sérialise et rollback : l'ancien snapshot
+  // survit à tout échec.
+  const snapshotId = await db.$transaction(async (tx) => {
+    // ObjectSelection n'a pas de cascade FK : nettoyage explicite des orphelines.
+    if (oldSelectionSnapshotId) {
+      await tx.objectSelection.deleteMany({
+        where: { connectionId, snapshotId: oldSelectionSnapshotId },
+      });
+    }
+    await tx.schemaSnapshot.deleteMany({ where: { connectionId, side, status: "CURRENT" } });
+    const snapshot = await tx.schemaSnapshot.create({ data: { connectionId, side } });
+    // createMany : une org SF réelle expose 1000+ objets — pas d'insertions unitaires.
+    await tx.schemaObject.createMany({
+      data: objects.map((o) => ({
+        snapshotId: snapshot.id,
+        apiName: o.apiName,
+        label: o.label,
+        description: o.description ?? null,
+        isCustom: o.isCustom,
+      })),
+    });
+    // migrateSelection : reporte les choix manuels (par apiName) sur le nouveau
+    // snapshot, pour les objets qui existent encore.
+    if (carried.length > 0) {
+      await tx.objectSelection.createMany({
+        data: carried.map((o) => ({
+          connectionId,
+          snapshotId: snapshot.id,
+          objectApiName: o.apiName,
+          isSelected: priorSelection!.get(o.apiName)!,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    return snapshot.id;
   });
 
   return db.schemaSnapshot.findUniqueOrThrow({
-    where: { id: snapshot.id },
+    where: { id: snapshotId },
     include: { objects: true },
   });
 }
