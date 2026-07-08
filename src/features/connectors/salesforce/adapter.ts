@@ -12,6 +12,7 @@ import {
   SalesforceAuthError,
 } from "./auth";
 import { mapDescribeGlobalToObjects, mapDescribeToFields, type DescribeResult } from "./schema";
+import { buildCountQuery, buildSoqlQuery, executeQuery, type SoqlQueryResult } from "./records";
 import {
   SF_API_VERSION,
   SF_DEFAULT_CRM_OBJECTS,
@@ -84,7 +85,7 @@ export const salesforceAdapter: ConnectorAdapter = {
     sides: ["SOURCE"],
     connectMode: "oauth",
   },
-  capabilities: { canRead: true, canWrite: false, canWriteSchema: false },
+  capabilities: { canRead: true, canWrite: false, canWriteSchema: false, canPreviewRecords: true },
   objectMetadata: {
     defaultSelectedObjects: SF_DEFAULT_CRM_OBJECTS,
     systemExactNames: SF_SYSTEM_EXACT_NAMES,
@@ -109,5 +110,29 @@ export const salesforceAdapter: ConnectorAdapter = {
     const conn = await getJsforceConnection(connectionId);
     const describe = (await conn.describe(objectApiName)) as unknown as DescribeResult;
     return mapDescribeToFields(describe);
+  },
+
+  async getRecords(connectionId, objectApiName, page, pageSize) {
+    const conn = await getJsforceConnection(connectionId);
+    // Colonnes = champs accessibles du describe (l'objet peut ne pas être
+    // dans le snapshot ; on interroge SF directement).
+    const describe = (await conn.describe(objectApiName)) as unknown as DescribeResult;
+    const fieldNames = mapDescribeToFields(describe)
+      .filter((f) => f.isAccessible)
+      .map((f) => f.apiName);
+    const query = (soql: string) => conn.query(soql) as unknown as Promise<SoqlQueryResult>;
+    const total = await query(buildCountQuery(objectApiName));
+    return executeQuery(
+      { query },
+      buildSoqlQuery(objectApiName, fieldNames, page, pageSize),
+      page,
+      pageSize,
+      total.totalSize,
+    );
+  },
+  async getRecordCount(connectionId, objectApiName) {
+    const conn = await getJsforceConnection(connectionId);
+    const result = (await conn.query(buildCountQuery(objectApiName))) as unknown as SoqlQueryResult;
+    return result.totalSize;
   },
 };

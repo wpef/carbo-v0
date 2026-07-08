@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { recordStep } from "@/features/plans/lib/record-step";
 import { MigrationLogicDialog } from "@/features/migration-logic/components/migration-logic-dialog";
 import { FilterPanel } from "@/features/filters/components/filter-panel";
+import { MigrationPreviewPanel } from "./migration-preview-panel";
 import { cn } from "@/lib/utils";
 import { Trash2, TriangleAlert, Wand2 } from "lucide-react";
 
@@ -43,6 +44,10 @@ type FieldMappingItem = {
   linkStatus: "GREEN" | "ORANGE" | "RED_SOLID" | "RED_DASHED" | "BROKEN";
   statusDetail?: string;
   autoCreated: boolean;
+  migrationLogic: {
+    sectionType: string;
+    valueEquivalences: { sourceValue: string; destinationValue: string }[];
+  } | null;
 };
 
 type PairDetail = {
@@ -412,6 +417,17 @@ function FieldMappingContent() {
             sourceObjectLabel={labelOf(detail.objectMapping.sourceObjectName)}
             sourceFields={detail.sourceFields}
           />
+
+          {detail.fieldMappings.length > 0 && (
+            <MigrationPreviewPanel
+              key={`preview-${detail.objectMapping.id}`}
+              planId={planId}
+              sourceObjectApiName={detail.objectMapping.sourceObjectName}
+              sourceObjectLabel={labelOf(detail.objectMapping.sourceObjectName)}
+              destinationObjectLabel={labelOf(detail.objectMapping.destinationObjectName)}
+              fieldMappings={detail.fieldMappings}
+            />
+          )}
 
           <section>
             <h2 className="mb-2 text-sm font-medium text-muted-foreground">

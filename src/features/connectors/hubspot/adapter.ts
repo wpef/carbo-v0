@@ -7,6 +7,7 @@ import { logAuditEvent } from "@/lib/audit";
 import type { ConnectorAdapter, ConnectorFieldDef, ConnectorObjectDef } from "../contract";
 import { computeOAuthExpiresAt, loadHubSpotOAuthConfig, refreshOAuthToken } from "./auth";
 import { getCustomObjects, getProperties, getStandardObjects } from "./schema";
+import { countRecords, searchRecords } from "./records";
 import { HS_STANDARD_OBJECTS } from "./constants";
 import type { HubSpotConnectionConfig } from "./types";
 
@@ -56,7 +57,7 @@ export const hubspotAdapter: ConnectorAdapter = {
     sides: ["DESTINATION"],
     connectMode: "oauth-or-token",
   },
-  capabilities: { canRead: true, canWrite: false, canWriteSchema: true },
+  capabilities: { canRead: true, canWrite: false, canWriteSchema: true, canPreviewRecords: true },
   objectMetadata: {
     defaultSelectedObjects: HS_STANDARD_OBJECTS.map((o) => o.apiName),
     systemExactNames: [],
@@ -85,5 +86,16 @@ export const hubspotAdapter: ConnectorAdapter = {
   async getFields(connectionId: string, objectApiName: string): Promise<ConnectorFieldDef[]> {
     const token = await getValidAccessToken(connectionId);
     return getProperties(token, objectApiName);
+  },
+
+  async getRecords(connectionId, objectApiName, page, pageSize) {
+    const token = await getValidAccessToken(connectionId);
+    // Colonnes = propriétés de l'objet (sinon HubSpot ne renvoie qu'un défaut).
+    const properties = (await getProperties(token, objectApiName)).map((f) => f.apiName);
+    return searchRecords(token, connectionId, objectApiName, properties, page, pageSize);
+  },
+  async getRecordCount(connectionId, objectApiName) {
+    const token = await getValidAccessToken(connectionId);
+    return countRecords(token, objectApiName);
   },
 };

@@ -4,6 +4,7 @@
 
 import type { ConnectorAdapter, ConnectorFieldDef, ConnectorObjectDef } from "../contract";
 import { DEMO_DESTINATION_OBJECTS, DEMO_SOURCE_OBJECTS, type DemoObject } from "./data";
+import { applyFilterConditions, DEMO_RECORD_STORE } from "./records";
 
 function toObjectDefs(objects: DemoObject[]): ConnectorObjectDef[] {
   return objects.map((o) => ({
@@ -37,7 +38,7 @@ export const demoSourceAdapter: ConnectorAdapter = {
     sides: ["SOURCE"],
     connectMode: "direct",
   },
-  capabilities: { canRead: true, canWrite: false, canWriteSchema: false },
+  capabilities: { canRead: true, canWrite: false, canWriteSchema: false, canPreviewRecords: true },
   objectMetadata: {
     defaultSelectedObjects: ["Account", "Contact", "Opportunity", "Case"],
     systemExactNames: [],
@@ -50,6 +51,29 @@ export const demoSourceAdapter: ConnectorAdapter = {
   },
   async getFields(_connectionId: string, objectApiName: string) {
     return toFieldDefs(DEMO_SOURCE_OBJECTS, objectApiName);
+  },
+
+  async getRecords(_connectionId, objectApiName, page, pageSize) {
+    const all = DEMO_RECORD_STORE[objectApiName];
+    if (!all) throw new Error(`Objet démo sans enregistrements : ${objectApiName}`);
+    const start = (page - 1) * pageSize;
+    return {
+      records: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      pageSize,
+      currentPage: page,
+      hasNextPage: start + pageSize < all.length,
+    };
+  },
+  async getRecordCount(_connectionId, objectApiName) {
+    const all = DEMO_RECORD_STORE[objectApiName];
+    if (!all) throw new Error(`Objet démo sans enregistrements : ${objectApiName}`);
+    return all.length;
+  },
+  async getFilteredRecordCount(_connectionId, objectApiName, filters) {
+    const all = DEMO_RECORD_STORE[objectApiName];
+    if (!all) throw new Error(`Objet démo sans enregistrements : ${objectApiName}`);
+    return applyFilterConditions(all, filters).length;
   },
 };
 

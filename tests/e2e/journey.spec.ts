@@ -159,6 +159,13 @@ test("parcours guidé complet : création → source → destination → mapping
   await expect(page.getByText("0 actif", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Activer le filtre Industry/ })).toBeVisible();
 
+  // ── Aperçu de migration (règle 10) : records démo réels + équivalence D1
+  // appliquée côté client (Industry « Tech » → « Technology » sur le 1er
+  // compte, colonne destination en surbrillance).
+  await page.getByRole("button", { name: /Aperçu de migration/ }).click();
+  await expect(page.getByText(/Aperçu calculé côté client/)).toBeVisible();
+  await expect(page.getByText("Technology", { exact: true })).toBeVisible();
+
   // Mapping manuel dans la paire Facture → Tickets (vide, pas de registre).
   await page.getByRole("tab", { name: /Facture → Tickets/ }).click();
   await page.getByRole("button", { name: /Numéro \(Name\)/ }).click();
