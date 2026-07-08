@@ -305,6 +305,18 @@ INVALID_FILTER | BROKEN_REFERENCE | MISSING_EQUIVALENCE ; sévérité `ERROR`/`W
   → `INCOMPATIBLE` selon la matrice 012 ;
 - `INVALID_FILTER` (ERROR) sur MIGRATION_FILTER : filtre référençant un champ source disparu.
 
+> **Raffinement v5 (tranche 4, @implement/phase-1-v5) — intégrité = CORRUPTION, couverture = COMPLÉTUDE.**
+> Le cœur de détection est extrait en fonction PURE testable (`src/features/integrity/lib/compute-integrity.ts`,
+> comble la lacune A6 : la v4 n'avait qu'un test d'intégration). Décision assumée : `checkIntegrity` ne
+> détecte QUE les 3 types **ERROR** (BROKEN_REFERENCE, INCOMPATIBLE_TYPE, INVALID_FILTER) et seul un ERROR
+> non résolu fait passer BROKEN. `UNMAPPED_REQUIRED_FIELD` n'est plus une issue d'intégrité : la complétude
+> (champs requis destination non mappés) relève de la **couverture** (règle 7, `compute-unmapped`, affichée
+> par paire), pas du statut BROKEN. Rationnel : BROKEN doit signifier « le plan est cassé et doit être
+> réparé », pas « pas encore fini » — sinon toute paire simplement pas encore mappée basculerait le plan.
+> `computePlanStatus({errorCount, currentStep, hasMappedPair})` unifie corruption (ERROR→BROKEN) et gate
+> DOCUMENTS maintenu (paire mappée à l'étape documents → READY), remplaçant l'ex-`recomputeReadiness`.
+> La réparation (`repairBrokenMappings`) reste une action utilisateur explicite (Principe IX).
+
 **Idempotence** : upsert par clé `@@unique([planId, entityType, entityId, issueType])` ; les issues
 non redétectées sont **auto-résolues** (resolved=true + resolvedAt) — c'est le seul « auto » autorisé,
 car il ne mute pas les mappings, seulement le journal.

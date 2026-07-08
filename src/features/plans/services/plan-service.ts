@@ -104,20 +104,7 @@ async function assertStepPrerequisites(plan: MigrationPlan, targetStep: PlanStep
   }
 }
 
-/**
- * Maintient READY↔DRAFT après coup (revue v5) : un plan promu READY qui
- * perd sa dernière paire mappée redescend en DRAFT — le gate DOCUMENTS
- * n'est pas seulement validé à l'aller, il est MAINTENU. À appeler après
- * tout CRUD de mapping. (L'intégrité complète BROKEN arrive en Phase 2.)
- */
-export async function recomputeReadiness(planId: string) {
-  const plan = await db.migrationPlan.findUnique({ where: { id: planId } });
-  if (!plan || plan.currentStep !== "DOCUMENTS" || plan.status === "BROKEN") return plan;
-  const mappedPair = await db.objectMapping.findFirst({
-    where: { planId, fieldMappings: { some: {} } },
-    select: { id: true },
-  });
-  const status = mappedPair ? "READY" : "DRAFT";
-  if (status === plan.status) return plan;
-  return db.migrationPlan.update({ where: { id: planId }, data: { status } });
-}
+// Le maintien READY↔DRAFT et la détection BROKEN sont désormais unifiés dans
+// `checkAndUpdatePlanStatus` (features/integrity) : computePlanStatus combine
+// corruption (ERROR → BROKEN) et gate DOCUMENTS maintenu (paire mappée →
+// READY). Appelé après tout CRUD de mapping. (Ex-recomputeReadiness.)

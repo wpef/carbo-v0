@@ -11,6 +11,8 @@ export type DemoField = {
   label: string;
   dataType: string;
   isRequired?: boolean;
+  /** Champ non modifiable (identifiants système…) — ne compte pas comme requis à mapper. */
+  isReadOnly?: boolean;
   picklistValues?: string[];
 };
 
@@ -22,11 +24,14 @@ export type DemoObject = {
   fields: DemoField[];
 };
 
+// L'identifiant est requis MAIS non modifiable (généré par le système, jamais
+// mappé). isReadOnly le tient hors du décompte des champs requis à mapper.
 const id = (label = "Identifiant"): DemoField => ({
   apiName: "Id",
   label,
   dataType: "id",
   isRequired: true,
+  isReadOnly: true,
 });
 
 export const DEMO_SOURCE_OBJECTS: DemoObject[] = [

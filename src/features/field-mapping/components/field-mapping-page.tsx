@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { recordStep } from "@/features/plans/lib/record-step";
 import { MigrationLogicDialog } from "@/features/migration-logic/components/migration-logic-dialog";
 import { FilterPanel } from "@/features/filters/components/filter-panel";
+import { CoveragePanel } from "@/features/unmapped/components/coverage-panel";
+import { IntegrityBanner } from "@/features/integrity/components/integrity-banner";
 import { MigrationPreviewPanel } from "./migration-preview-panel";
 import { cn } from "@/lib/utils";
 import { Trash2, TriangleAlert, Wand2 } from "lucide-react";
@@ -303,6 +305,8 @@ function FieldMappingContent() {
         </p>
       )}
 
+      <IntegrityBanner planId={planId} />
+
       <div className="flex flex-wrap gap-1 border-b" role="tablist" aria-label="Paires d'objets">
         {pairs.map((pair) => (
           <button
@@ -409,6 +413,13 @@ function FieldMappingContent() {
               )}
             </section>
           </div>
+
+          <CoveragePanel
+            key={`coverage-${detail.objectMapping.id}`}
+            planId={planId}
+            mappingId={detail.objectMapping.id}
+            sourceObjectLabel={labelOf(detail.objectMapping.sourceObjectName)}
+          />
 
           <FilterPanel
             key={detail.objectMapping.id}

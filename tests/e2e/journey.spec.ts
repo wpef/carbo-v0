@@ -166,6 +166,15 @@ test("parcours guidé complet : création → source → destination → mapping
   await expect(page.getByText(/Aperçu calculé côté client/)).toBeVisible();
   await expect(page.getByText("Technology", { exact: true })).toBeVisible();
 
+  // ── Couverture (règle 7) : 6 champs source, 4 auto-mappés → 67% ; requis
+  // destination 100% (name mappé, id readonly hors décompte). Exclure un
+  // champ (CreatedDate) augmente la couverture et le rend réintégrable.
+  await page.getByRole("button", { name: /Couverture — Compte/ }).click();
+  await expect(page.getByText(/source 67% · requis destination 100%/)).toBeVisible();
+  await page.getByRole("button", { name: "Exclure CreatedDate" }).click();
+  await expect(page.getByText(/source 83% · requis destination 100%/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Réintégrer CreatedDate" })).toBeVisible();
+
   // Mapping manuel dans la paire Facture → Tickets (vide, pas de registre).
   await page.getByRole("tab", { name: /Facture → Tickets/ }).click();
   await page.getByRole("button", { name: /Numéro \(Name\)/ }).click();

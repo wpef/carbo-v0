@@ -90,10 +90,13 @@ les déclarer dans `link-registry.ts`.
 |---|---|
 | Changer l'écran de sélection d'objets | `features/schema/components/object-selection-page.tsx` |
 | Changer la logique de connexion (pas l'UI) | `features/connections/hooks/use-connection.ts` |
-| Ajouter un opérateur de filtre, une règle métier | le service de la feature + son test |
 | Ajouter un CRM | `features/connectors/<crm>/` + `registry.ts` (+ `link-registry.ts`) |
 | Changer les correspondances auto SF→HubSpot | `features/connectors/link-registry.ts` |
 | Changer l'ordre/les règles des étapes | `features/plans/lib/steps.ts` + `services/plan-service.ts` |
+| Changer une règle de transformation de types | `features/field-mapping/lib/type-compatibility.ts` (matrice) + `link-status.ts` |
+| Changer un opérateur de filtre | `features/filters/lib/filter-operators.ts` + `filter-validation.ts` |
+| Changer la détection BROKEN / le statut du plan | `features/integrity/lib/compute-integrity.ts` (pur) |
+| Changer le calcul de couverture / exclusions | `features/unmapped/lib/compute-unmapped.ts` (pur) |
 | Modifier une route API | `app/api/**` (validation) ou le service appelé (logique) |
 
 ## Gardes

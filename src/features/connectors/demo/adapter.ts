@@ -23,7 +23,7 @@ function toFieldDefs(objects: DemoObject[], objectApiName: string): ConnectorFie
     label: f.label,
     dataType: f.dataType,
     isRequired: f.isRequired ?? false,
-    isReadOnly: false,
+    isReadOnly: f.isReadOnly ?? false,
     isUnique: false,
     isAccessible: true,
     picklistValues: f.picklistValues,
