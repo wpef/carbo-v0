@@ -8,15 +8,15 @@
 
 | Statut | Nombre |
 |---|---|
-| ✅ Testé | 40 |
+| ✅ Testé | 43 |
 | 🟡 Présent (non testé / preuve démo) | 19 |
-| 🟠 Partiel | 17 |
+| 🟠 Partiel | 15 |
 | 🔵 Dévié v5 | 3 |
-| ❌ Manquant | 27 |
+| ❌ Manquant | 26 |
 | ⏸ Phase 2 | 0 |
 | **Total** | **106** |
 
-**40/106 items solidement présents + testés.** Le cœur du parcours (mapping de champs, logique D1, filtres, navigation, couverture, intégrité) est testé ; le reste est soit prouvable seulement par recette réelle (🟡), soit partiel (🟠), soit à construire (❌).
+**43/106 items solidement présents + testés.** Le cœur du parcours (mapping de champs, logique D1, filtres, navigation, couverture, intégrité) est testé ; le reste est soit prouvable seulement par recette réelle (🟡), soit partiel (🟠), soit à construire (❌).
 
 ### Légende
 - ✅ **Testé** — implémenté, atteignable, couvert par un test qui l'exerce.
@@ -70,10 +70,10 @@
 
 | Item | Statut | Preuve / manque |
 |---|---|---|
-| Une page d'aperçu des enregistrements réels est atteignable pour un objet sélectionné | ❌ Manquant | Aucune page dédiée d'aperçu d'enregistrements par objet sélectionné. La seule surface qui charge des records est le MigrationPreviewPanel, situé DANS l'étape field-mapping (aperçu avant/après par mapping), pas une page d'aperçu atteignable pour un objet donné. Domaine 009 non porté en UI. |
-| La table d'aperçu est paginée et affiche de vraies données de l'org | 🟠 Partiel | Backend paginé testé : src/features/schema/record-preview-service.ts:58 (fetchRecordPage page/pageSize) + tests/unit/schema/record-preview-service.test.ts:85 ; route src/app/api/plans/[planId]/source/records/[objectApiName]/route.ts:14 ; UI unique : migration-preview-panel.tsx:59 (page=1&pageSize=25, dropdown) — _manque : Pagination exist |
-| Statistiques par champ (taux de remplissage) calculées et affichées (computeFieldStats) | 🟠 Partiel | src/features/schema/lib/compute-field-stats.ts:19 (computeFieldStats) + tests/unit/schema/compute-field-stats.test.ts (13 tests). Aucune importation .tsx : grep computeFieldStats/FieldStat sur src/**/*.tsx = 0 résultat — _manque : computeFieldStats est implémenté et unitairement testé mais ORPHELIN : aucun composant UI ne l'importe ni ne  |
-| Les champs binaires/non affichables sont gérés proprement (indicateur, pas de crash ni contenu illisible) | 🟡 Présent (non testé / preuve démo) | Sanitisation service : src/features/schema/record-preview-service.ts:44 (sanitiseBinary → "[binary data]") testée tests/unit/schema/record-preview-service.test.ts:103,114 ; sentinelle binaire stats compute-field-stats.ts:42 testée compute-field-stats.test.ts:60 — _manque : La gestion binaire est correcte et testée AU NIVEAU SERVICE (place |
+| Une page d'aperçu des enregistrements réels est atteignable pour un objet sélectionné | ✅ Testé | record-preview.tsx (aperçu par objet dans l'accordéon de /source/fields, atteignable depuis le parcours) ; test e2e journey « Aperçu des données » |
+| La table d'aperçu est paginée et affiche de vraies données de l'org | ✅ Testé | record-preview.tsx (table + pagination Précédent/Suivant sur /records) ; back fetchRecordPage testé record-preview-service.test.ts ; e2e journey |
+| Statistiques par champ (taux de remplissage) calculées et affichées (computeFieldStats) | ✅ Testé | record-preview.tsx affiche « rempli N% » par colonne via computeFieldStats (plus orphelin) ; compute-field-stats.test.ts ; e2e assert « rempli \d+% » |
+| Les champs binaires/non affichables sont gérés proprement (indicateur, pas de crash ni contenu illisible) | 🟡 Présent (non testé / preuve démo) | Sanitisation service ("[binary data]") + sentinelle stats "N/A" affichée par record-preview.tsx ; testé au niveau service (record-preview-service.test.ts, compute-field-stats.test.ts) — _manque : pas de test UI du rendu binaire (la démo n'a pas de champ binaire)_ |
 | La consultation d'un aperçu est tracée dans l'audit trail (RECORDS_PREVIEWED) | ✅ Testé | src/features/schema/record-preview-service.ts:72 (logAuditEvent action RECORDS_PREVIEWED) ; test tests/unit/schema/record-preview-service.test.ts:125 ; atteint via migration-preview-panel.tsx:59 → route source/records → fetchRecordPage — _manque : L'événement d'audit est bien émis et testé unitairement, et le chemin est atteignable (le Mi |
 
 ## §5. Connexion destination — HubSpot

@@ -79,6 +79,11 @@ test("parcours guidé complet : création → source → destination → mapping
   // scope = objets sélectionnés uniquement.
   await expect(page.getByText(/4 objets · \d+ champs/)).toBeVisible();
 
+  // ── Aperçu des données réelles + taux de remplissage (§4). L'objet Compte
+  // est ouvert par défaut ; on déplie son aperçu.
+  await page.getByRole("button", { name: /Aperçu des données/ }).first().click();
+  await expect(page.getByText(/rempli \d+%/).first()).toBeVisible();
+
   // ── FRONTIÈRE 1 → destination.
   await page.getByRole("button", { name: /Connecter la destination/ }).click();
   await page.waitForURL(`**/plans/${planId}/destination`);

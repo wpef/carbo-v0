@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { RecordPreview } from "./record-preview";
 
 export type FieldCatalog = {
   groups: {
@@ -20,8 +21,16 @@ export type FieldCatalog = {
   inaccessibleCount: number;
 };
 
-/** Accordéon objets → champs, partagé entre source et destination. */
-export function FieldCatalogView({ catalog }: { catalog: FieldCatalog }) {
+/** Accordéon objets → champs (+ aperçu des données), partagé source/destination. */
+export function FieldCatalogView({
+  catalog,
+  planId,
+  side,
+}: {
+  catalog: FieldCatalog;
+  planId: string;
+  side: "source" | "destination";
+}) {
   // Ouvert par défaut : la raison d'être de l'écran est de VOIR les champs
   // (revue UX v5) — le repli reste disponible objet par objet.
   const [open, setOpen] = useState<Set<string>>(
@@ -69,6 +78,14 @@ export function FieldCatalogView({ catalog }: { catalog: FieldCatalog }) {
                   </li>
                 ))}
               </ul>
+            )}
+            {isOpen && (
+              <RecordPreview
+                planId={planId}
+                side={side}
+                objectApiName={group.objectApiName}
+                fields={group.fields}
+              />
             )}
           </li>
         );
