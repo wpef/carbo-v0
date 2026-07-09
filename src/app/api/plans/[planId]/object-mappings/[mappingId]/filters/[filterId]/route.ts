@@ -6,6 +6,7 @@ import {
   deleteFilter,
   updateFilter,
 } from "@/features/filters/filter-service";
+import { checkAndUpdatePlanStatus } from "@/features/integrity/integrity-service";
 
 type Params = { params: Promise<{ planId: string; mappingId: string; filterId: string }> };
 
@@ -30,6 +31,7 @@ export async function PUT(request: Request, { params }: Params) {
       value: typeof body.value === "string" ? body.value : undefined,
       isActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
     });
+    await checkAndUpdatePlanStatus(planId);
     return NextResponse.json({ filter });
   } catch (err) {
     if (err instanceof FilterNotFoundError) {
@@ -48,5 +50,8 @@ export async function DELETE(_request: Request, { params }: Params) {
     return NextResponse.json({ error: "Filtre introuvable" }, { status: 404 });
   }
   await deleteFilter(filterId);
+  // Supprimer un filtre invalide (champ source disparu) doit lever son
+  // INVALID_FILTER → recontrôle d'intégrité (peut quitter BROKEN).
+  await checkAndUpdatePlanStatus(planId);
   return NextResponse.json({ ok: true });
 }

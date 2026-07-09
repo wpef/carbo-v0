@@ -6,6 +6,7 @@ import {
   createFilter,
   listFilters,
 } from "@/features/filters/filter-service";
+import { checkAndUpdatePlanStatus } from "@/features/integrity/integrity-service";
 
 type Params = { params: Promise<{ planId: string; mappingId: string }> };
 
@@ -43,6 +44,7 @@ export async function POST(request: Request, { params }: Params) {
       operator: body.operator,
       value: typeof body.value === "string" ? body.value : undefined,
     });
+    await checkAndUpdatePlanStatus(planId);
     return NextResponse.json({ filter }, { status: 201 });
   } catch (err) {
     if (err instanceof FilterFieldNotFoundError) {

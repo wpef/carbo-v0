@@ -6,6 +6,7 @@ import {
 } from "@/features/object-mapping/object-mapping-service";
 import { getObjectsWithSelection } from "@/features/schema/selection-service";
 import { getCurrentSnapshot } from "@/features/connectors/connection-service";
+import { checkAndUpdatePlanStatus } from "@/features/integrity/integrity-service";
 
 type Params = { params: Promise<{ planId: string }> };
 
@@ -57,6 +58,7 @@ export async function POST(request: Request, { params }: Params) {
       body.sourceObjectName,
       body.destinationObjectName,
     );
+    await checkAndUpdatePlanStatus(planId);
     return NextResponse.json({ mapping }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Ce mapping existe déjà" }, { status: 409 });
