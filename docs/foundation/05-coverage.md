@@ -27,6 +27,39 @@
 
 ---
 
+## Mise à jour — session du 2026-07-09 (tranches A–G)
+
+Le décompte ci-dessus est la **base d'audit** (état au `@ab70ad04`). Depuis, plusieurs
+tranches ont traité, testé et câblé des items — les lignes de sections plus bas restent la
+trace de l'audit initial ; les deltas ci-dessous les **supersèdent** :
+
+| § | Ce qui a été fait | Statut | Commit |
+|---|---|---|---|
+| §1/§5 | Statut connexion 3 états (CONNECTED/EXPIRED/ERROR) affiché + transitionné (échec de fetch/token) | ✅ testé (unit) | `eebcc1fa` |
+| §3 | Attributs champ lecture-seule/unique affichés | ✅ e2e | `03c3da40` |
+| §4 | Aperçu records + taux de remplissage câblés en UI | ✅ e2e | `a1a9a702` |
+| §6/§7 | Recherche sur les deux colonnes objets + champs | ✅ e2e | `b3f17960` |
+| §11 | Intégrité auto sur refresh + CRUD filtres/paires | ✅ e2e | `62b18023` |
+| §11 c11 | **Drift** : rotation PREVIOUS/CURRENT + computeDrift + bannière | ✅ unit + e2e | `19f4cbe2` |
+| §12 | **Documents** complets : technique enrichi + contractuel 7 articles + réf. + PDF-print + versionnement | ✅ 64 unit + e2e | `aba6b2ff` |
+| §13 | **Schema-write** : créer un champ destination (démo persiste, HubSpot API réelle) + `SchemaWriteOperation` | ✅ unit + e2e | `b658aa79` |
+
+**Code mort back** : `secretsRef` + vestige `/schema-write` supprimés ; `ConnectionStatus`
+et `SchemaWriteOperation` branchés. `ts-prune` = **0 export orphelin** dans `src/features`.
+
+**Déviés (choix assumés, non construits)** : overlay SVG Bézier, modale de détail objet,
+route `/[objectId]`, `/expand`, `SetupProgress`, filtre « Cassé », `ModifyFieldModal`,
+`detectLiveDrift` séparé — tous redondants avec des surfaces existantes ou de faible valeur.
+
+**Reste RECETTE-ONLY** (non automatisable sans org réelle — à cocher en recette) : OAuth
+SF/HubSpot de bout en bout, refresh de token en conditions réelles, écriture de propriété
+HubSpot réelle, classification LLM D2 (stub sans clé Anthropic), org SF > 1000 objets (G4).
+
+**Bilan session** : ≈ **61/106 testés**. Le résiduel est soit recette-only (real CRM), soit
+délibérément dévié. Plus de « trou surprise » côté fonctionnalités automatisables.
+
+---
+
 ## §1. Connexion source — Salesforce
 
 | Item | Statut | Preuve / manque |
