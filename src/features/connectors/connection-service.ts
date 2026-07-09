@@ -135,7 +135,14 @@ export async function fetchSchema(connectionId: string, side: SnapshotSide) {
         where: { connectionId, snapshotId: oldSelectionSnapshotId },
       });
     }
-    await tx.schemaSnapshot.deleteMany({ where: { connectionId, side, status: "CURRENT" } });
+    // Rotation CURRENT→PREVIOUS (drift §11 c11) : l'ancien CURRENT devient
+    // PREVIOUS pour comparaison. @@unique(connectionId,side,status) impose
+    // l'ordre : supprimer l'ancien PREVIOUS, rétrograder CURRENT, puis créer.
+    await tx.schemaSnapshot.deleteMany({ where: { connectionId, side, status: "PREVIOUS" } });
+    await tx.schemaSnapshot.updateMany({
+      where: { connectionId, side, status: "CURRENT" },
+      data: { status: "PREVIOUS" },
+    });
     const snapshot = await tx.schemaSnapshot.create({ data: { connectionId, side } });
     // createMany : une org SF réelle expose 1000+ objets — pas d'insertions unitaires.
     await tx.schemaObject.createMany({

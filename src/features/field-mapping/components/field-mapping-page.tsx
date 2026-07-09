@@ -22,6 +22,7 @@ import { MigrationLogicDialog } from "@/features/migration-logic/components/migr
 import { FilterPanel } from "@/features/filters/components/filter-panel";
 import { CoveragePanel } from "@/features/unmapped/components/coverage-panel";
 import { IntegrityBanner } from "@/features/integrity/components/integrity-banner";
+import { DriftBanner } from "@/features/schema/components/drift-banner";
 import { MigrationPreviewPanel } from "./migration-preview-panel";
 import { cn } from "@/lib/utils";
 import { Trash2, TriangleAlert, Wand2 } from "lucide-react";
@@ -314,6 +315,7 @@ function FieldMappingContent() {
       )}
 
       <IntegrityBanner planId={planId} />
+      <DriftBanner planId={planId} />
 
       <div className="flex flex-wrap gap-1 border-b" role="tablist" aria-label="Paires d'objets">
         {pairs.map((pair) => (

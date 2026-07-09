@@ -251,6 +251,37 @@ test("gates de frontière : les URL profondes ne corrompent ni le statut ni l'av
   await expect(page.getByTestId("plan-status")).toHaveText("Brouillon");
 });
 
+test("drift : un champ ajouté après un refresh est détecté (05-acceptance §11 c11)", async ({
+  page,
+}) => {
+  const planId = await createPlan(page, `E2E drift ${Date.now()}`);
+
+  // Destination démo → CURRENT#1. Refresh → CURRENT#1 devient PREVIOUS, CURRENT#2.
+  const connect = await page.request.post(`/api/plans/${planId}/destination`, {
+    data: { adapterType: "demo-destination" },
+  });
+  expect(connect.ok()).toBeTruthy();
+  const refresh = await page.request.post(`/api/plans/${planId}/destination/schema`);
+  expect(refresh.ok()).toBeTruthy();
+
+  // On ajoute un champ au schéma CURRENT (écriture de schéma) → il n'est pas
+  // dans PREVIOUS. Le drift doit donc le repérer comme FIELD_ADDED.
+  const create = await page.request.post(`/api/plans/${planId}/destination/schema-write/fields`, {
+    data: { objectApiName: "companies", apiName: "drift_test", dataType: "string" },
+  });
+  expect(create.ok()).toBeTruthy();
+
+  const drift = await page.request.get(`/api/plans/${planId}/drift`);
+  const body = await drift.json();
+  expect(body.status).toBe("drift");
+  expect(
+    body.changes.some(
+      (c: { type: string; fieldApiName?: string }) =>
+        c.type === "FIELD_ADDED" && c.fieldApiName === "drift_test",
+    ),
+  ).toBeTruthy();
+});
+
 test("migrateSelection : un refresh de schéma ne désélectionne pas silencieusement (05-acceptance §2)", async ({
   page,
 }) => {
