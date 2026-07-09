@@ -62,7 +62,6 @@ model ConnectorConnection {
   name         String
   status       ConnectionStatus @default(CONNECTED)
   config       String           @default("{}")
-  secretsRef   String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 

@@ -63,6 +63,7 @@ function ConnectionPageContent({ side }: { side: Side }) {
       ) : (
         <ConnectionCard
           name={state.connection.name}
+          status={state.connection.status}
           objectCount={state.objectCount}
           objectNoun={copy.objectNoun}
           busy={state.busy}

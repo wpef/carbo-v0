@@ -47,8 +47,7 @@ export function stepForPathname(pathname: string): PlanStep | null {
   const segment = pathname.replace(/^\/plans\/[^/]+/, "");
   if (segment.startsWith("/source")) return "SOURCE";
   if (segment.startsWith("/destination")) return "DESTINATION";
-  if (segment.startsWith("/object-mapping") || segment.startsWith("/schema-write"))
-    return "OBJECT_MAPPING";
+  if (segment.startsWith("/object-mapping")) return "OBJECT_MAPPING";
   if (segment.startsWith("/field-mapping")) return "FIELD_MAPPING";
   if (segment.startsWith("/documents")) return "DOCUMENTS";
   return null;

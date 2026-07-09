@@ -4,12 +4,15 @@
 // (actualiser le schéma, déconnecter) et CTA de sortie vers l'étape suivante.
 
 import Link from "next/link";
+import type { ConnectionStatus } from "@prisma/client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, RefreshCw, Unplug } from "lucide-react";
+import { CONNECTION_STATUS_UI } from "@/features/connectors/connection-status";
+import { RefreshCw, Unplug } from "lucide-react";
 
 export function ConnectionCard({
   name,
+  status,
   objectCount,
   objectNoun,
   busy,
@@ -19,6 +22,7 @@ export function ConnectionCard({
   onDisconnect,
 }: {
   name: string;
+  status: ConnectionStatus;
   objectCount: number | null;
   objectNoun: string;
   busy: string | null;
@@ -27,12 +31,13 @@ export function ConnectionCard({
   onRefreshSchema: () => void;
   onDisconnect: () => void;
 }) {
+  const ui = CONNECTION_STATUS_UI[status];
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <CheckCircle2 className="size-4 text-green-600" />
-          {name} — connecté
+          <span className={`size-2.5 rounded-full ${ui.dot}`} aria-hidden />
+          {name} — <span className={ui.text}>{ui.label}</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

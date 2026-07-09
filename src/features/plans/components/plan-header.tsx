@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ConnectorConnection, MigrationPlan, PlanStatus } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
+import { CONNECTION_STATUS_UI } from "@/features/connectors/connection-status";
 import { ArrowLeft, ArrowRight, Plug } from "lucide-react";
 
 const STATUS_LABELS: Record<PlanStatus, string> = {
@@ -21,10 +22,20 @@ type PlanWithConnections = MigrationPlan & {
 };
 
 function ConnectionPill({ connection, side }: { connection: ConnectorConnection | null; side: string }) {
+  if (!connection) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Plug className="size-3" />
+        {side} non connectée
+      </span>
+    );
+  }
+  const ui = CONNECTION_STATUS_UI[connection.status];
   return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-      <Plug className="size-3" />
-      {connection ? connection.name : `${side} non connectée`}
+    <span className={`flex items-center gap-1 text-xs ${ui.text}`} title={ui.label}>
+      <span className={`size-2 rounded-full ${ui.dot}`} aria-hidden />
+      {connection.name}
+      {connection.status !== "CONNECTED" && <span>· {ui.label}</span>}
     </span>
   );
 }

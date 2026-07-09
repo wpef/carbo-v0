@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import type { ConnectorConnection, SnapshotSide } from "@prisma/client";
 import { getAdapter } from "./registry";
+import { classifyConnectionError } from "./connection-status";
 
 /**
  * Cycle de vie d'une connexion, générique pour tous les adaptateurs.
@@ -84,7 +85,18 @@ export async function fetchSchema(connectionId: string, side: SnapshotSide) {
   const adapter = getAdapter(record.adapterType);
 
   // Appel réseau HORS transaction (ne jamais tenir un verrou DB pendant un I/O).
-  const objects = await adapter.getObjects(connectionId);
+  // Une panne (token expiré, org injoignable) marque la connexion EXPIRED/ERROR
+  // — statut visible partout (05-acceptance §1/§5), jamais un échec muet.
+  let objects;
+  try {
+    objects = await adapter.getObjects(connectionId);
+  } catch (err) {
+    await db.connectorConnection.update({
+      where: { id: connectionId },
+      data: { status: classifyConnectionError(err) },
+    });
+    throw err;
+  }
 
   // Sélection à migrer (concept SOURCE) — LECTURE hors transaction (pas de
   // round-trip inutile sous verrou). Capturée avant la rotation ; une légère
@@ -149,6 +161,12 @@ export async function fetchSchema(connectionId: string, side: SnapshotSide) {
       });
     }
     return snapshot.id;
+  });
+
+  // Schéma récupéré → la connexion est saine (efface un EXPIRED/ERROR précédent).
+  await db.connectorConnection.update({
+    where: { id: connectionId },
+    data: { status: "CONNECTED" },
   });
 
   return db.schemaSnapshot.findUniqueOrThrow({

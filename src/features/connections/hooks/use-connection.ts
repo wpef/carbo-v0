@@ -9,7 +9,9 @@ import type { AdapterDescriptor } from "@/features/connectors/contract";
 
 export type Side = "source" | "destination";
 
-type ConnectionInfo = { id: string; name: string; status: string; adapterType: string };
+import type { ConnectionStatus } from "@prisma/client";
+
+type ConnectionInfo = { id: string; name: string; status: ConnectionStatus; adapterType: string };
 
 type PlanPayload = {
   plan: {
