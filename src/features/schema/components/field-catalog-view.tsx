@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { RecordPreview } from "./record-preview";
+import { CreateFieldForm } from "./create-field-form";
 
 export type FieldCatalog = {
   groups: {
@@ -21,6 +22,8 @@ export type FieldCatalog = {
   }[];
   totalFields: number;
   inaccessibleCount: number;
+  canWriteSchema?: boolean;
+  supportedFieldTypes?: string[];
 };
 
 /** Accordéon objets → champs (+ aperçu des données), partagé source/destination. */
@@ -28,11 +31,14 @@ export function FieldCatalogView({
   catalog,
   planId,
   side,
+  onReload,
 }: {
   catalog: FieldCatalog;
   planId: string;
   side: "source" | "destination";
+  onReload?: () => void;
 }) {
+  const canCreate = side === "destination" && catalog.canWriteSchema === true;
   // Ouvert par défaut : la raison d'être de l'écran est de VOIR les champs
   // (revue UX v5) — le repli reste disponible objet par objet.
   const [open, setOpen] = useState<Set<string>>(
@@ -89,6 +95,14 @@ export function FieldCatalogView({
                 side={side}
                 objectApiName={group.objectApiName}
                 fields={group.fields}
+              />
+            )}
+            {isOpen && canCreate && (
+              <CreateFieldForm
+                planId={planId}
+                objectApiName={group.objectApiName}
+                supportedFieldTypes={catalog.supportedFieldTypes ?? []}
+                onCreated={() => onReload?.()}
               />
             )}
           </li>

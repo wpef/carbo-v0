@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getPlan } from "@/features/plans/services/plan-service";
 import { getFieldCatalog } from "@/features/schema/field-catalog-service";
 import { retrieveFields } from "@/features/schema/field-retrieval-service";
+import { db } from "@/lib/db";
+import { getAdapter } from "@/features/connectors/registry";
 
 type Params = { params: Promise<{ planId: string }> };
 
@@ -16,7 +18,17 @@ export async function GET(_request: Request, { params }: Params) {
   if (!catalog) {
     return NextResponse.json({ error: "Aucun schéma destination récupéré" }, { status: 409 });
   }
-  return NextResponse.json(catalog);
+  // Capacité d'écriture de schéma (§13) → l'UI propose la création de champs.
+  const connection = await db.connectorConnection.findUnique({
+    where: { id: plan.destinationConnectionId },
+    select: { adapterType: true },
+  });
+  const caps = connection ? getAdapter(connection.adapterType).capabilities : null;
+  return NextResponse.json({
+    ...catalog,
+    canWriteSchema: caps?.canWriteSchema ?? false,
+    supportedFieldTypes: caps?.supportedFieldTypes ?? [],
+  });
 }
 
 /** POST — récupère les champs via l'adaptateur (scope : tous les objets destination). */

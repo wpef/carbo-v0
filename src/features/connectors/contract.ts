@@ -35,6 +35,16 @@ export type ConnectorCapabilities = {
   canWriteSchema: boolean;
   /** true si l'adaptateur implémente getRecords/getRecordCount (aperçu). */
   canPreviewRecords?: boolean;
+  /** Types de champ acceptés à la création (défini ssi canWriteSchema). */
+  supportedFieldTypes?: string[];
+};
+
+/** Champ à créer sur la destination (écriture de schéma, §13). */
+export type NewFieldDef = {
+  apiName: string;
+  label: string;
+  dataType: string;
+  picklistValues?: string[];
 };
 
 /** Page d'enregistrements (pagination 1-indexée). */
@@ -104,4 +114,12 @@ export interface ConnectorAdapter {
     objectApiName: string,
     filters: FilterCondition[],
   ): Promise<number>;
+
+  // ── Écriture de schéma (§13) — présent ssi capabilities.canWriteSchema ──
+  /** Crée un champ sur un objet destination. Retourne le champ confirmé. */
+  createField?(
+    connectionId: string,
+    objectApiName: string,
+    field: NewFieldDef,
+  ): Promise<ConnectorFieldDef>;
 }

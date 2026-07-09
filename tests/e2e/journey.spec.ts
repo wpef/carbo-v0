@@ -101,6 +101,12 @@ test("parcours guidé complet : création → source → destination → mapping
   // ── Champs destination (§1.8) : auto-récupération, tous les objets.
   await expect(page.getByText(/4 objets · \d+ champs/)).toBeVisible();
 
+  // ── Écriture de schéma (§13) : créer un champ manquant côté destination.
+  await page.getByRole("button", { name: "Créer un champ" }).first().click();
+  await page.getByLabel("Nom d'API du champ").fill("champ_test");
+  await page.getByRole("button", { name: "Créer", exact: true }).click();
+  await expect(page.getByText("champ_test").first()).toBeVisible();
+
   // ── FRONTIÈRE 2 → object mapping.
   await page.getByRole("button", { name: /Créer le mapping/ }).click();
   await page.waitForURL(`**/plans/${planId}/object-mapping`);

@@ -85,7 +85,12 @@ export const demoDestinationAdapter: ConnectorAdapter = {
     sides: ["DESTINATION"],
     connectMode: "direct",
   },
-  capabilities: { canRead: true, canWrite: false, canWriteSchema: false },
+  capabilities: {
+    canRead: true,
+    canWrite: false,
+    canWriteSchema: true,
+    supportedFieldTypes: ["string", "number", "date", "datetime", "picklist", "boolean"],
+  },
   objectMetadata: {
     defaultSelectedObjects: DEMO_DESTINATION_OBJECTS.map((o) => o.apiName),
     systemExactNames: [],
@@ -97,5 +102,21 @@ export const demoDestinationAdapter: ConnectorAdapter = {
   },
   async getFields(_connectionId: string, objectApiName: string) {
     return toFieldDefs(DEMO_DESTINATION_OBJECTS, objectApiName);
+  },
+  // Écriture de schéma en démo : écho du champ créé (la persistance en base
+  // via schema-write-service le rend visible). ponytail: un champ démo créé ne
+  // survit pas à un refresh de schéma (getFields est statique) — un vrai CRM,
+  // lui, le persiste.
+  async createField(_connectionId, _objectApiName, field) {
+    return {
+      apiName: field.apiName,
+      label: field.label,
+      dataType: field.dataType,
+      isRequired: false,
+      isReadOnly: false,
+      isUnique: false,
+      isAccessible: true,
+      picklistValues: field.picklistValues,
+    };
   },
 };

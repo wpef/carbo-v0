@@ -143,7 +143,7 @@ export function FieldsPage({ side }: { side: Side }) {
         </Button>
       </div>
 
-      <FieldCatalogView catalog={catalog} planId={planId} side={side} />
+      <FieldCatalogView catalog={catalog} planId={planId} side={side} onReload={loadCatalog} />
     </div>
   );
 }

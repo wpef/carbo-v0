@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import type { ConnectorAdapter, ConnectorFieldDef, ConnectorObjectDef } from "../contract";
 import { computeOAuthExpiresAt, loadHubSpotOAuthConfig, refreshOAuthToken } from "./auth";
-import { getCustomObjects, getProperties, getStandardObjects } from "./schema";
+import { createProperty, getCustomObjects, getProperties, getStandardObjects } from "./schema";
 import { countRecords, searchRecords } from "./records";
 import { HS_STANDARD_OBJECTS } from "./constants";
 import type { HubSpotConnectionConfig } from "./types";
@@ -57,7 +57,13 @@ export const hubspotAdapter: ConnectorAdapter = {
     sides: ["DESTINATION"],
     connectMode: "oauth-or-token",
   },
-  capabilities: { canRead: true, canWrite: false, canWriteSchema: true, canPreviewRecords: true },
+  capabilities: {
+    canRead: true,
+    canWrite: false,
+    canWriteSchema: true,
+    canPreviewRecords: true,
+    supportedFieldTypes: ["string", "number", "date", "datetime", "picklist", "boolean"],
+  },
   objectMetadata: {
     defaultSelectedObjects: HS_STANDARD_OBJECTS.map((o) => o.apiName),
     systemExactNames: [],
@@ -97,5 +103,20 @@ export const hubspotAdapter: ConnectorAdapter = {
   async getRecordCount(connectionId, objectApiName) {
     const token = await getValidAccessToken(connectionId);
     return countRecords(token, objectApiName);
+  },
+
+  async createField(connectionId, objectApiName, field) {
+    const token = await getValidAccessToken(connectionId);
+    await createProperty(token, objectApiName, field);
+    return {
+      apiName: field.apiName,
+      label: field.label,
+      dataType: field.dataType,
+      isRequired: false,
+      isReadOnly: false,
+      isUnique: false,
+      isAccessible: true,
+      picklistValues: field.picklistValues,
+    };
   },
 };
