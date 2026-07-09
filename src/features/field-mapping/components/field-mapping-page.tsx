@@ -16,6 +16,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { recordStep } from "@/features/plans/lib/record-step";
 import { MigrationLogicDialog } from "@/features/migration-logic/components/migration-logic-dialog";
 import { FilterPanel } from "@/features/filters/components/filter-panel";
@@ -118,6 +119,7 @@ function FieldMappingContent() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [boundaryError, setBoundaryError] = useState<string | null>(null);
   const [logicFieldMappingId, setLogicFieldMappingId] = useState<string | null>(null);
+  const [fieldSearch, setFieldSearch] = useState("");
   const autoMatchTriedRef = useRef<Set<string>>(new Set());
 
   // Liste des paires (compteurs des onglets inclus) — rafraîchie après
@@ -273,10 +275,16 @@ function FieldMappingContent() {
   const mappedDestinationFields = new Set(
     detail?.fieldMappings.map((m) => m.destinationFieldName),
   );
+  // Recherche des champs des deux côtés (§7 — objets à beaucoup de champs).
+  const fq = fieldSearch.trim().toLowerCase();
+  const fieldMatch = (f: { apiName: string; label: string }) =>
+    !fq || f.apiName.toLowerCase().includes(fq) || f.label.toLowerCase().includes(fq);
   const remainingSourceFields =
-    detail?.sourceFields.filter((f) => !mappedSourceFields.has(f.apiName)) ?? [];
+    detail?.sourceFields.filter((f) => !mappedSourceFields.has(f.apiName) && fieldMatch(f)) ?? [];
   const remainingDestinationFields =
-    detail?.destinationFields.filter((f) => !mappedDestinationFields.has(f.apiName)) ?? [];
+    detail?.destinationFields.filter(
+      (f) => !mappedDestinationFields.has(f.apiName) && fieldMatch(f),
+    ) ?? [];
   const fieldLabel = (apiName: string) =>
     detail?.sourceFields.find((f) => f.apiName === apiName)?.label ??
     detail?.destinationFields.find((f) => f.apiName === apiName)?.label ??
@@ -344,6 +352,12 @@ function FieldMappingContent() {
 
       {detail && (
         <>
+          <Input
+            placeholder="Rechercher un champ (source ou destination)…"
+            value={fieldSearch}
+            onChange={(e) => setFieldSearch(e.target.value)}
+            className="max-w-sm"
+          />
           <p className="text-sm text-muted-foreground">
             {pendingSourceField
               ? `Champ source « ${fieldLabel(pendingSourceField)} » sélectionné — choisissez le champ de destination.`

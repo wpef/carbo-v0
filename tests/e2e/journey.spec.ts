@@ -110,6 +110,11 @@ test("parcours guidé complet : création → source → destination → mapping
   await expect(page.getByText("Paires mappées (3)")).toBeVisible();
   await expect(page.getByText(/3 paire\(s\) créée\(s\) automatiquement/)).toBeVisible();
 
+  // Recherche sur les colonnes (§6) : filtrer masque les objets non-concordants.
+  await page.getByPlaceholder(/Rechercher un objet/).fill("Facture");
+  await expect(page.getByRole("button", { name: /Contact \(Contact\)/ })).toHaveCount(0);
+  await page.getByPlaceholder(/Rechercher un objet/).clear();
+
   // Création manuelle d'une paire : Invoice__c → tickets.
   await page.getByRole("button", { name: /Facture \(Invoice__c\)/ }).click();
   await page.getByRole("button", { name: /Tickets \(tickets\)/ }).click();

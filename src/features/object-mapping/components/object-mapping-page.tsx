@@ -10,6 +10,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { recordStep } from "@/features/plans/lib/record-step";
 import { cn } from "@/lib/utils";
 import { Link2, Trash2, Wand2 } from "lucide-react";
@@ -33,6 +34,7 @@ export function ObjectMappingPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingSource, setPendingSource] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [autoLinkInfo, setAutoLinkInfo] = useState<string | null>(null);
   const [autoLinking, setAutoLinking] = useState(false);
   const autoLinkTriedRef = useRef(false);
@@ -136,6 +138,13 @@ export function ObjectMappingPage() {
   const destinationLabels = new Map(data.destinationObjects.map((o) => [o.apiName, o.label]));
   const labelOf = (labels: Map<string, string>, apiName: string) => labels.get(apiName) ?? apiName;
 
+  // Recherche sur les deux colonnes (§6 — utile sur une org à 1000+ objets).
+  const q = search.trim().toLowerCase();
+  const match = (o: { apiName: string; label: string }) =>
+    !q || o.apiName.toLowerCase().includes(q) || o.label.toLowerCase().includes(q);
+  const visibleSources = data.sourceObjects.filter(match);
+  const visibleDestinations = data.destinationObjects.filter(match);
+
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-center justify-between">
@@ -161,13 +170,20 @@ export function ObjectMappingPage() {
           : "Pour créer une paire : cliquez un objet source, puis un objet de destination."}
       </p>
 
+      <Input
+        placeholder="Rechercher un objet (source ou destination)…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="max-w-sm"
+      />
+
       <div className="grid grid-cols-2 gap-6">
         <section>
           <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-            Objets source sélectionnés ({data.sourceObjects.length})
+            Objets source sélectionnés ({visibleSources.length}/{data.sourceObjects.length})
           </h2>
           <ul className="space-y-1.5">
-            {data.sourceObjects.map((o) => (
+            {visibleSources.map((o) => (
               <li key={o.apiName}>
                 <button
                   onClick={() => setPendingSource(pendingSource === o.apiName ? null : o.apiName)}
@@ -193,10 +209,10 @@ export function ObjectMappingPage() {
         </section>
         <section>
           <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-            Objets destination ({data.destinationObjects.length})
+            Objets destination ({visibleDestinations.length}/{data.destinationObjects.length})
           </h2>
           <ul className="space-y-1.5">
-            {data.destinationObjects.map((o) => (
+            {visibleDestinations.map((o) => (
               <li key={o.apiName}>
                 <button
                   onClick={() => createPair(o.apiName)}
