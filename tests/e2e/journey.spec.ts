@@ -83,6 +83,8 @@ test("parcours guidé complet : création → source → destination → mapping
   // est ouvert par défaut ; on déplie son aperçu.
   await page.getByRole("button", { name: /Aperçu des données/ }).first().click();
   await expect(page.getByText(/rempli \d+%/).first()).toBeVisible();
+  // Attributs de champ affichés (§3) : l'identifiant démo est en lecture seule.
+  await expect(page.getByText("lecture seule").first()).toBeVisible();
 
   // ── FRONTIÈRE 1 → destination.
   await page.getByRole("button", { name: /Connecter la destination/ }).click();

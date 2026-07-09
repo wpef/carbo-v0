@@ -14,6 +14,8 @@ export type FieldCatalog = {
       label: string;
       dataType: string;
       isRequired: boolean;
+      isReadOnly: boolean;
+      isUnique: boolean;
       isAccessible: boolean;
     }[];
   }[];
@@ -72,6 +74,8 @@ export function FieldCatalogView({
                     <span className="text-xs text-muted-foreground">{field.apiName}</span>
                     <span className="ml-auto flex items-center gap-1.5">
                       {field.isRequired && <Badge variant="outline">requis</Badge>}
+                      {field.isReadOnly && <Badge variant="outline">lecture seule</Badge>}
+                      {field.isUnique && <Badge variant="outline">unique</Badge>}
                       {!field.isAccessible && <Badge variant="destructive">inaccessible</Badge>}
                       <Badge variant="secondary">{field.dataType}</Badge>
                     </span>

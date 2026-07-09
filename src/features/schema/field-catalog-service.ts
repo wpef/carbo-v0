@@ -7,6 +7,8 @@ export type FieldInfo = {
   label: string;
   dataType: string;
   isRequired: boolean;
+  isReadOnly: boolean;
+  isUnique: boolean;
   isAccessible: boolean;
   picklistValues: string[] | null;
 };
@@ -49,6 +51,8 @@ export async function getFieldCatalog(
         label: f.label,
         dataType: f.dataType,
         isRequired: f.isRequired,
+        isReadOnly: f.isReadOnly,
+        isUnique: f.isUnique,
         isAccessible: f.isAccessible,
         picklistValues: f.picklistValues ? (JSON.parse(f.picklistValues) as string[]) : null,
       })),
