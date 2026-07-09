@@ -198,10 +198,14 @@ test("parcours guidé complet : création → source → destination → mapping
   await page.waitForURL(`**/plans/${planId}/documents`);
   await expect(page.getByTestId("plan-status")).toHaveText("Prêt");
 
-  // ── Documents (§1.11) : génération de la description, aperçu rendu.
-  await page.getByRole("button", { name: "Générer la description" }).click();
-  await expect(page.getByText("Version 1")).toBeVisible();
+  // ── Documents (§12) : technique enrichi + contractuel 7 articles.
+  await page.getByRole("button", { name: "Générer le document technique" }).click();
+  await expect(page.getByText("Version 1").first()).toBeVisible();
   await expect(page.getByTestId("document-preview")).toContainText("Account");
+  // Contractuel : numéro de référence unique CARBO-YYYYMMDD-XXXX.
+  await page.getByRole("button", { name: "Générer le document contractuel" }).click();
+  await expect(page.getByText(/CARBO-\d{8}-\d{4}/).first()).toBeVisible();
+  await expect(page.getByTestId("document-preview")).toContainText("Article 1");
 
   // ── Navigation arrière sans reverrouillage (§3.3) : retour à Source par
   // la sidebar, puis Documents reste cliquable.
@@ -226,7 +230,7 @@ test("gates de frontière : les URL profondes ne corrompent ni le statut ni l'av
   await page.goto(`/plans/${planId}/documents`);
   await expect(page.getByText(/Le plan n'est pas encore prêt/)).toBeVisible();
   await expect(page.getByTestId("plan-status")).toHaveText("Brouillon");
-  await expect(page.getByRole("button", { name: "Générer la description" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Générer le document technique" })).toBeDisabled();
 
   // URL profonde vers /field-mapping sans connexions : pas de cul-de-sac,
   // le message oriente vers l'action qui débloque.
